@@ -1,0 +1,1558 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8fa">
+  <title>PCAP Baselining Guide · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="baselineTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#pcap" data-copy="backToPcap">Back to PCAP</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="baselineTitle">PCAP Baselining Guide</h1>
+      <p class="guide-meta">
+        <time datetime="2026-11-24" data-copy="guideDate">24 November 2026</time>
+        <span aria-hidden="true">·</span><span>@Sung Lee</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#confirm-case">Step 0 · Confirm the case</a></li>
+<li><a href="#log-inventory">1-1 · Inventory Zeek logs</a></li>
+<li><a href="#capture-window">1-2 · Establish the time window</a></li>
+<li><a href="#internal-hosts">1-3 · Identify internal connection originators</a></li>
+<li><a href="#arkime">1-4 · Cross-check with Arkime</a></li>
+<li><a href="#host-identity">1-5 · Identify hosts and accounts</a></li>
+<li><a href="#worked-case">Worked case · Sorting through the alerts</a></li>
+<li><a href="#checklist">Ticket, checklist, and query reference</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#overview">개요</a></li>
+<li><a href="#confirm-case">0단계 — 케이스 확인</a></li>
+<li><a href="#log-inventory">1-1. 어떤 로그가 있나</a></li>
+<li><a href="#capture-window">1-2. 캡처 시간 범위</a></li>
+<li><a href="#internal-hosts">1-3. 어떤 내부 IP가 연결을 시작하나</a></li>
+<li><a href="#arkime">1-4. Arkime 교차 확인</a></li>
+<li><a href="#host-identity">1-5. 호스트 정체 찾기</a></li>
+<li><a href="#worked-case">사례 적용 — 2018-06-30 Sorting through the alerts</a></li>
+<li><a href="#checklist">티켓 규칙, 체크리스트, 복사용 쿼리</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="overview">
+<div lang="en" data-guide-language>
+<h2>Overview</h2>
+<p>Baselining means getting to know a capture before investigating suspicious activity. Establish when it was collected, which logs are available, which internal hosts appear, what their traffic looks like, and how to identify them. This makes unusual behavior easier to spot and gives you evidence for the affected-host details in an incident ticket.</p>
+
+<p>For each step, start with the purpose, read the Splunk query line by line, then interpret its results. Use Arkime for a packet-level cross-check where helpful.</p>
+
+<ol type="1">
+<li>Confirm the case is searchable.</li>
+<li>List the Zeek log types.</li>
+<li>Establish the observed connection window.</li>
+<li>Count connections and destinations by originating IP.</li>
+<li>Cross-check with Arkime.</li>
+<li>Identify the host, account, and domain.</li>
+</ol>
+
+<p><strong>Two principles</strong></p>
+
+<ul>
+<li><strong>Work in UTC.</strong> Set Splunk’s user time zone to UTC in Preferences and Arkime’s time zone to UTC under Settings. Formatting a timestamp in Adelaide time gives a different displayed time, with the offset depending on the date.</li>
+<li><strong>Use Zeek’s <code>ts</code> to order events.</strong> Zeek records event time as seconds since the Unix epoch. Splunk’s <code>_time</code> is the event timestamp assigned during indexing. A missing or unrecognized source timestamp can cause ingestion time to be used. Use <code>ts</code> for this workflow, and check the Splunk time picker if older capture events are missing. Use <code>eval t=strftime(ts,"%H:%M:%S")</code> to format a time for display.</li>
+</ul>
+
+<p><strong>Field names used throughout the guide</strong></p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="Overview"><table>
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id_orig_h</code> / <code>id_orig_p</code></td>
+<td>Originator IP address and port</td>
+</tr>
+<tr>
+<td><code>id_resp_h</code> / <code>id_resp_p</code></td>
+<td>Responder IP address and port</td>
+</tr>
+<tr>
+<td><code>orig_bytes</code> / <code>resp_bytes</code></td>
+<td>Payload bytes sent by the originator and responder, respectively</td>
+</tr>
+<tr>
+<td><code>ts</code></td>
+<td>Event time in epoch seconds</td>
+</tr>
+<tr>
+<td><code>pcap_case</code></td>
+<td>Lab-specific case field assigned by pcapbox from the PCAP filename without its extension</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>개요</h2>
+<p>베이스라이닝은 악성 행위를 찾기 전에 PCAP의 <strong>평소 모습</strong>(시간 범위, 로그 종류, 내부 PC, 통신량, PC 정체)을 먼저 파악하는 단계예요. 이걸 알아야 이상한 것이 눈에 띄고, 티켓의 호스트 정보(IP, 호스트 이름, 사용자)를 채울 수 있어요.</p>
+
+<p>순서는 아래와 같아요. 단계마다 <strong>목적 → Splunk 쿼리 → 한 줄씩 설명 → 결과 읽기 → (필요하면) Arkime 확인</strong> 순서로 진행해요.</p>
+
+<ol type="1">
+<li>0단계 — 케이스 확인: 이번 PCAP의 로그만 골라 볼 수 있는지</li>
+<li>1-1 — 로그 종류: Zeek가 어떤 프로토콜을 알아봤는지</li>
+<li>1-2 — 캡처 시간 범위: 언제부터 언제까지인지</li>
+<li>1-3 — 내부 IP: PC가 몇 대이고 각각 얼마나 통신하는지</li>
+<li>1-4 — Arkime 교차 확인: 같은 그림인지, 눈에 띄는 줄이 있는지</li>
+<li>1-5 — 호스트 정체: 호스트 이름, 사용자, 도메인</li>
+</ol>
+
+<p><strong>두 가지 원칙</strong></p>
+
+<ul>
+<li><strong>시간대는 UTC.</strong> Splunk는 Preferences → Time zone = UTC, Arkime는 Settings → General → Timezone = UTC로 맞춰요. <code>strftime()</code>은 Splunk 사용자 시간대를 따르기 때문에, 애들레이드처럼 UTC와 다른 시간대를 사용하면 날짜에 따라 표시 시간이 달라져요.</li>
+<li><strong>이벤트 시간은 <code>ts</code>로 봐요.</strong> <code>ts</code>는 Zeek가 기록한 이벤트 시간(1970-01-01부터 센 초, epoch)이에요. Splunk의 <code>_time</code>은 인덱싱할 때 정해지는 이벤트 시간이에요. 원본 타임스탬프를 인식하지 못하면 수집 시각이 쓰일 수 있어요. 실습에서는 정렬과 출력에 <code>ts</code>를 사용하고, 검색 결과가 비어 있으면 Splunk 시간 선택기에서 해당 이벤트를 포함하는지 확인해요. 읽을 때는 <code>eval t=strftime(ts,"%H:%M:%S")</code>로 바꿔요.</li>
+</ul>
+
+<p><strong>Zeek 필드 이름 규칙</strong> — 모든 쿼리에 나오니 먼저 외워 두면 편해요.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="개요"><table>
+<thead>
+<tr>
+<th scope="col">필드</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id_orig_h</code> / <code>id_orig_p</code></td>
+<td>연결을 <strong>시작한</strong> 쪽의 IP / 포트 (orig = originator)</td>
+</tr>
+<tr>
+<td><code>id_resp_h</code> / <code>id_resp_p</code></td>
+<td>연결을 <strong>받은</strong> 쪽의 IP / 포트 (resp = responder)</td>
+</tr>
+<tr>
+<td><code>orig_bytes</code> / <code>resp_bytes</code></td>
+<td>시작한 쪽 / 응답한 쪽이 보낸 페이로드 바이트</td>
+</tr>
+<tr>
+<td><code>ts</code></td>
+<td>이벤트 시간 (epoch 초)</td>
+</tr>
+<tr>
+<td><code>pcap_case</code></td>
+<td>pcapbox가 붙인 케이스 이름 (= PCAP 파일 이름에서 <code>.pcap</code>을 뺀 것)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<section id="confirm-case">
+<div lang="en" data-guide-language>
+<h2>Step 0 · Confirm the case</h2>
+<p>In this lab, name the capture after the case before ingesting it into pcapbox. For example, use <code>20180630_SORTING_THROUGH_THE_ALERTS.pcap</code>. Each log gets the same <code>pcap_case</code> value so you can isolate the capture even when multiple exercises share one index.</p>
+
+<ol type="1">
+<li>Place the file in your lab’s capture intake folder, such as <code>incoming</code>.</li>
+<li>On the lab’s pcapbox, watch <code>tail -f /data/logs/ingest.log</code> until <code>DONE case=&lt;case&gt;</code> appears. The <code>sha256=</code> value on the <code>START</code> line records the evidence hash.</li>
+<li>Check that the case appears in Splunk. Select a search time range wide enough to include older practice captures.</li>
+</ol>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn
+| stats count by pcap_case</code></pre>
+</div>
+<ul>
+<li><code>index=zeek</code> limits the search to the index holding Zeek logs.</li>
+<li><code>sourcetype=zeek:conn</code> selects connection records, the starting point for this baseline.</li>
+<li>A pipe, <code>|</code>, passes the current results to the next SPL command.</li>
+<li><code>stats count by pcap_case</code> counts records in each case, similar to grouping rows in a pivot table.</li>
+</ul>
+
+<p>If the case appears, continue. You can use a search such as <code>pcap_case=20180630_SORTING*</code> when the prefix uniquely identifies the case. In Arkime, use the exact case tag with <code>tags ==</code>.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>0단계 — 케이스 확인</h2>
+<p>PCAP을 pcapbox에 넣기 전에 파일 이름을 케이스 이름으로 바꿔요(예: <code>20180630_SORTING_THROUGH_THE_ALERTS.pcap</code>). 그러면 모든 로그에 같은 <code>pcap_case</code> 값이 붙어서, 여러 실습 로그가 한 인덱스에 섞여 있어도 나눌 수 있어요.</p>
+
+<ol type="1">
+<li>파일을 실습 환경의 PCAP 수집 폴더(예: <code>incoming</code>)에 넣어요.</li>
+<li>pcapbox에서 <code>tail -f /data/logs/ingest.log</code>를 보다가 <code>DONE case=&lt;케이스&gt;</code>가 나오면 끝이에요. <code>START</code> 줄의 <code>sha256=</code> 값이 증거 해시예요.</li>
+<li>Splunk에 들어왔는지 확인해요. 오래된 실습 캡처라면 검색 시간 범위를 먼저 넓혀요.</li>
+</ol>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn
+| stats count by pcap_case</code></pre>
+</div>
+<ul>
+<li><code>index=zeek</code> — Zeek 로그가 들어 있는 인덱스(Splunk의 "서랍")만 봐요.</li>
+<li><code>sourcetype=zeek:conn</code> — conn 로그만 봐요. 연결 하나가 한 줄이라서 가장 기본이 되는 로그예요.</li>
+<li><code>|</code> (파이프) — 왼쪽 결과를 오른쪽 명령으로 넘겨요.</li>
+<li><code>stats count by pcap_case</code> — <code>pcap_case</code> 값마다 줄 수를 세요. 엑셀의 피벗 테이블과 비슷해요.</li>
+</ul>
+
+<p>목록에 케이스 이름이 보이면 준비 끝이에요. 케이스 이름이 길어서 오타가 나기 쉽다면 Splunk에서는 <code>pcap_case=20180630_SORTING*</code>처럼 와일드카드(<code>*</code> = 아무 글자)를 써도 돼요. 다른 케이스와 겹치지 않을 때만 쓰세요. Arkime의 <code>tags ==</code>에는 전체 이름을 써요.</p>
+
+</div>
+</section>
+<section id="log-inventory">
+<div lang="en" data-guide-language>
+<h2>1-1 · Inventory Zeek logs</h2>
+<p><strong>Purpose.</strong> Find out which protocols and types of activity Zeek recognized. That tells you where to look next.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek pcap_case=&lt;CASE&gt;
+| stats count by sourcetype
+| sort - count</code></pre>
+</div>
+<ul>
+<li>The first line searches the case across all sourcetypes.</li>
+<li><code>stats count by sourcetype</code> counts the records of each kind.</li>
+<li><code>sort - count</code> puts the highest counts first. An explicit <code>+</code> sorts in ascending order.</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-1 · Inventory Zeek logs"><table>
+<thead>
+<tr>
+<th scope="col">Log</th>
+<th scope="col">What it records</th>
+<th scope="col">Where it helps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>zeek:conn</code></td>
+<td>Endpoints, ports, byte counts, and connection state</td>
+<td>Establish the starting baseline</td>
+</tr>
+<tr>
+<td><code>zeek:dns</code></td>
+<td>DNS questions and answers</td>
+<td>Link observed addresses and names</td>
+</tr>
+<tr>
+<td><code>zeek:http</code></td>
+<td>Visible HTTP fields such as Host, URI, User-Agent, Referer, and lengths</td>
+<td>Trace web activity or candidate C2</td>
+</tr>
+<tr>
+<td><code>zeek:ssl</code> / <code>zeek:x509</code></td>
+<td>TLS metadata, including available server names and certificates</td>
+<td>Identify possible peers for encrypted traffic</td>
+</tr>
+<tr>
+<td><code>zeek:files</code></td>
+<td>Observed files and their available size, MIME type, and hashes</td>
+<td>Inspect file transfers</td>
+</tr>
+<tr>
+<td><code>zeek:ocsp</code></td>
+<td>Certificate status checks</td>
+<td>Recognize routine certificate-validation traffic</td>
+</tr>
+<tr>
+<td><code>zeek:dhcp</code></td>
+<td>Lease traffic that may contain hostnames and MAC addresses</td>
+<td>Identify hosts</td>
+</tr>
+<tr>
+<td><code>zeek:kerberos</code> / <code>zeek:ntlm</code></td>
+<td>Windows domain authentication activity</td>
+<td>Identify accounts and computers</td>
+</tr>
+<tr>
+<td><code>zeek:ldap</code>, <code>zeek:ldap_search</code>, <code>zeek:dce_rpc</code>, <code>zeek:smb_mapping</code>, <code>zeek:smb_files</code></td>
+<td>Directory queries, group policy, file shares, and other internal activity</td>
+<td>Establish a baseline for investigating possible lateral movement</td>
+</tr>
+<tr>
+<td><code>zeek:software</code></td>
+<td>Detected applications and version information</td>
+<td>Compare software observed in the capture</td>
+</tr>
+<tr>
+<td><code>zeek:ntp</code></td>
+<td>Time synchronization</td>
+<td>Identify common infrastructure traffic</td>
+</tr>
+<tr>
+<td><code>zeek:weird</code></td>
+<td>Unexpected protocol behavior detected by Zeek</td>
+<td>Check the protocol context before drawing a conclusion</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Read the results</strong></p>
+
+<ul>
+<li>Missing DHCP can mean the host already had a lease or that the exchange was outside the capture. Use the other host-identification sources in step 1-5.</li>
+<li>High HTTP or TLS counts can reflect browsing or other applications. Visible HTTP fields can help trace what requested a resource.</li>
+<li>Kerberos, LDAP, and SMB together can indicate an Active Directory environment. Use them as leads for account attribution and for later investigation of internal activity.</li>
+</ul>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1-1. 어떤 로그가 있나</h2>
+<p><strong>목적:</strong> Zeek가 이 PCAP에서 어떤 프로토콜을 알아봤는지 봐요. 어떤 로그가 있느냐에 따라 다음 단계에서 어디를 볼지 정해져요.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek pcap_case=&lt;케이스&gt;
+| stats count by sourcetype
+| sort - count</code></pre>
+</div>
+<ul>
+<li>1줄: <code>sourcetype</code>을 지정하지 않아서 이 케이스의 <strong>모든 종류</strong>의 로그를 가져와요.</li>
+<li>2줄: 로그 종류(<code>sourcetype</code>)마다 줄 수를 세요.</li>
+<li>3줄: <code>sort - count</code> — 많은 순서로 정렬해요. <code>-</code>는 내림차순, <code>+</code>(또는 생략)는 오름차순이에요.</li>
+</ul>
+
+<p><strong>로그별 뜻과 쓰는 곳</strong></p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-1. 어떤 로그가 있나"><table>
+<thead>
+<tr>
+<th scope="col">로그</th>
+<th scope="col">알려 주는 것</th>
+<th scope="col">쓰는 곳</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>zeek:conn</code></td>
+<td>모든 연결(누가, 누구에게, 몇 번 포트, 얼마나, 어떻게 끝났는지)</td>
+<td>모든 단계의 기본</td>
+</tr>
+<tr>
+<td><code>zeek:dns</code></td>
+<td>이름 조회와 답(IP)</td>
+<td>IP 뒤의 도메인 이름 찾기</td>
+</tr>
+<tr>
+<td><code>zeek:http</code></td>
+<td>암호화 안 된 웹 요청: URL, Host, User-Agent, Referer, 크기</td>
+<td>감염 경로, C2 찾기</td>
+</tr>
+<tr>
+<td><code>zeek:ssl</code> / <code>zeek:x509</code></td>
+<td>HTTPS 연결의 서버 이름(SNI)과 인증서</td>
+<td>암호화된 통신의 상대 확인</td>
+</tr>
+<tr>
+<td><code>zeek:files</code></td>
+<td>오간 파일의 크기, 형식(MIME), 해시</td>
+<td>다운로드된 파일 확인</td>
+</tr>
+<tr>
+<td><code>zeek:ocsp</code></td>
+<td>인증서가 취소됐는지 확인하는 요청</td>
+<td>보통 정상(브라우징하면 자동으로 생김)</td>
+</tr>
+<tr>
+<td><code>zeek:dhcp</code></td>
+<td>PC가 IP를 받을 때 보낸 호스트 이름과 MAC</td>
+<td>호스트 이름 찾기</td>
+</tr>
+<tr>
+<td><code>zeek:kerberos</code> / <code>zeek:ntlm</code></td>
+<td>윈도우 도메인 로그온</td>
+<td>사용자와 컴퓨터 이름 찾기</td>
+</tr>
+<tr>
+<td><code>zeek:ldap</code> / <code>zeek:ldap_search</code> / <code>zeek:dce_rpc</code> / <code>zeek:smb_mapping</code> / <code>zeek:smb_files</code></td>
+<td>PC와 DC의 평소 대화(그룹 정책, 디렉터리 조회, 공유 폴더)</td>
+<td>내부 확산 확인</td>
+</tr>
+<tr>
+<td><code>zeek:software</code></td>
+<td>트래픽에서 알아낸 프로그램 이름과 버전(브라우저 등)</td>
+<td>평소와 다른 프로그램 찾기</td>
+</tr>
+<tr>
+<td><code>zeek:ntp</code></td>
+<td>시간 맞추기</td>
+<td>보통 정상</td>
+</tr>
+<tr>
+<td><code>zeek:weird</code></td>
+<td>Zeek가 보기에 프로토콜 규칙에 안 맞는 패킷</td>
+<td>대부분 별일 아님</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>결과 읽기</strong></p>
+
+<ul>
+<li><strong>없는 로그도 정보예요.</strong> 예를 들어 <code>zeek:dhcp</code>가 없으면 캡처가 시작되기 전에 PC가 이미 IP를 받았거나, 캡처 범위에서 DHCP 교환을 관찰하지 못했을 수 있어요. 그러면 호스트 이름은 1-5의 다른 방법으로 찾아요.</li>
+<li><strong>웹 로그(<code>http</code>, <code>ssl</code>)가 많으면</strong> 브라우징이나 웹을 사용하는 프로그램이 있었을 수 있어요. <code>http</code>는 내용까지 볼 수 있어서 가장 중요한 재료예요.</li>
+<li><strong>도메인 로그(<code>kerberos</code>, <code>ldap</code>, <code>smb_*</code>)가 있으면</strong> AD 환경이에요. 사용자 이름을 찾을 수 있고, 나중에 내부 확산도 확인해야 해요.</li>
+</ul>
+
+</div>
+</section>
+<section id="capture-window">
+<div lang="en" data-guide-language>
+<h2>1-2 · Establish the time window</h2>
+<p><strong>Purpose.</strong> Find the times of the earliest and latest observed connection starts. In <code>conn.log</code>, <code>ts</code> is the time of the first packet of each connection. Use the timestamps on the first and last packets of the capture for the exact PCAP boundaries.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;CASE&gt;
+| stats min(ts) as first max(ts) as last count as sessions
+| eval duration_min=round((last-first)/60,1)
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<ul>
+<li>The first line selects connection logs for this case.</li>
+<li><code>min(ts)</code>, <code>max(ts)</code>, and <code>count</code> produce one summary row with the earliest start, latest start, and number of connection records. <code>as</code> gives each result a useful name.</li>
+<li><code>(last-first)/60</code> converts the elapsed seconds to minutes. <code>round(...,1)</code> rounds to one decimal place.</li>
+<li><code>strftime()</code> formats the numeric timestamps for reading. For example, <code>%Y-%m-%d</code> produces <code>2018-06-30</code>, and <code>%H:%M:%S</code> produces <code>20:27:15</code>.</li>
+</ul>
+
+<p>Calculate the duration before formatting the timestamps. The formatted values are strings.</p>
+
+<p><strong>Read the results</strong></p>
+
+<ul>
+<li>A short capture might cover the whole incident or start after the first suspicious activity. Preserve that uncertainty in the report.</li>
+<li>If the times differ from Arkime by a fixed offset, check that both tools are displaying UTC.</li>
+<li>Zeek’s connection count may differ from Arkime’s session count because the tools can group traffic differently or use different filters. This exercise reports the Splunk count and records the Arkime count separately.</li>
+</ul>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1-2. 캡처 시간 범위</h2>
+<p><strong>목적:</strong> Zeek 연결이 관찰된 시간대를 파악해요. <code>conn</code> 로그의 <code>ts</code>는 각 연결의 첫 패킷 시각이므로 아래 쿼리는 첫 연결과 마지막으로 시작된 연결의 범위를 구해요. PCAP 자체의 정확한 시작과 끝은 첫 패킷과 마지막 패킷의 타임스탬프로 확인해요.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;케이스&gt;
+| stats min(ts) as first max(ts) as last count as sessions
+| eval duration_min=round((last-first)/60,1)
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<ul>
+<li>1줄: 이 케이스의 conn 로그만 가져와요.</li>
+<li>2줄: 전체를 <strong>한 줄로 요약</strong>해요. <code>min(ts) as first</code>는 가장 이른 시간, <code>max(ts) as last</code>는 가장 늦은 시간, <code>count as sessions</code>는 연결 수예요. <code>as</code>는 결과에 새 이름을 붙여요.</li>
+<li>3줄: <code>eval</code>은 새 필드를 계산해요. <code>(last-first)/60</code>은 초를 분으로 바꾸고, <code>round(…, 1)</code>은 소수점 한 자리로 반올림해요.</li>
+<li>4줄: <code>strftime(숫자, "형식")</code>은 epoch 숫자를 읽을 수 있는 날짜로 바꿔요. <code>%Y-%m-%d</code> = 2018-06-30, <code>%H:%M:%S</code> = 20:27:15.</li>
+</ul>
+
+<p><strong>순서가 중요해요.</strong> 3줄(계산)을 4줄(글자로 바꾸기)보다 먼저 둬야 해요. 4줄을 지나면 <code>first</code>와 <code>last</code>가 글자가 되어서 뺄셈을 할 수 없어요.</p>
+
+<p><strong>결과 읽기</strong></p>
+
+<ul>
+<li>캡처 길이가 짧으면(수십 분) 악성 행위의 시작부터 끝까지가 다 들어 있을 수도 있고, 감염이 캡처 전에 일어났을 수도 있어요. 둘 다 염두에 둬요.</li>
+<li>시간에 일정한 차이가 나면 먼저 Splunk 시간대가 UTC인지 확인해요.</li>
+<li>Zeek의 연결 수는 다른 도구(Arkime 등)의 세션 수와 다를 수 있어요. 세션을 나누는 방식이나 필터 범위가 다를 수 있어요. 이 실습에서는 Splunk 숫자를 기준으로 기록해요.</li>
+</ul>
+
+</div>
+</section>
+<section id="internal-hosts">
+<div lang="en" data-guide-language>
+<h2>1-3 · Identify internal connection originators</h2>
+<p><strong>Purpose.</strong> See which hosts initiated traffic, how many destinations they reached, and how much data flowed in each direction. The query groups all originators. Compare the returned addresses with the capture’s internal network range.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;CASE&gt;
+| stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first max(ts) as last by id_orig_h
+| eval first=strftime(first,"%H:%M:%S"), last=strftime(last,"%H:%M:%S")
+| sort - sessions</code></pre>
+</div>
+<ul>
+<li><code>count as sessions</code> counts connections associated with each originator.</li>
+<li><code>dc(id_resp_h) as destinations</code> counts distinct responder IP addresses.</li>
+<li><code>sum(orig_bytes)</code> and <code>sum(resp_bytes)</code> total sent and received payload bytes for the originator.</li>
+<li><code>min(ts)</code> and <code>max(ts)</code> provide the first and last recorded connection start for each IP.</li>
+<li><code>by id_orig_h</code> makes a row per originator. The final sort brings the busiest originators to the top.</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-3 · Identify internal connection originators"><table>
+<thead>
+<tr>
+<th scope="col">Observation</th>
+<th scope="col">How to interpret it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>One internal IP initiates traffic</td>
+<td>Prioritize the observed host, while considering what the capture covers</td>
+</tr>
+<tr>
+<td>The DC is absent from the list or rarely initiates traffic</td>
+<td>A server often responds to requests. Its replies can appear under the client that initiated the flow</td>
+</tr>
+<tr>
+<td>A few destinations recur at regular intervals</td>
+<td>A possible beacon. Check timing, protocol, and the expected purpose of the traffic</td>
+</tr>
+<tr>
+<td>Dozens or hundreds of destinations</td>
+<td>Browsing can load many third-party services and CDNs. Use context alongside volume</td>
+</tr>
+<tr>
+<td>Received bytes far exceed sent bytes</td>
+<td>Common during browsing and downloads</td>
+</tr>
+<tr>
+<td>Sent bytes far exceed received bytes</td>
+<td>Examine legitimate uploads, backups, and possible exfiltration. Volume by itself is insufficient</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1-3. 어떤 내부 IP가 연결을 시작하나</h2>
+<p><strong>목적:</strong> 네트워크에 PC가 몇 대인지, 각 PC가 얼마나 바쁜지 봐요. 조사할 호스트를 고르는 첫걸음이에요. 아래 쿼리는 내부·외부 구분 없이 모든 연결 시작 IP를 모으므로, 결과를 실습의 내부 네트워크 범위와 대조해요.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;케이스&gt;
+| stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first max(ts) as last by id_orig_h
+| eval first=strftime(first,"%H:%M:%S"), last=strftime(last,"%H:%M:%S")
+| sort - sessions</code></pre>
+</div>
+<ul>
+<li><code>count as sessions</code> — 그 IP가 시작한 연결 수</li>
+<li><code>dc(id_resp_h) as destinations</code> — 서로 다른 목적지 IP 수. <code>dc</code> = distinct count(중복 빼고 세기)</li>
+<li><code>sum(orig_bytes) as sent</code> / <code>sum(resp_bytes) as received</code> — 보낸 / 받은 데이터 바이트 합계</li>
+<li><code>min(ts)</code> / <code>max(ts)</code> — 그 IP의 첫 연결과 마지막 연결 시간</li>
+<li><code>by id_orig_h</code> — 위 계산을 시작한 IP마다 따로 해요.</li>
+<li><code>sort - sessions</code> — 연결이 많은 IP를 맨 위로 올려요.</li>
+</ul>
+
+<p><strong>결과 읽기 — 이렇게 판단해요</strong></p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-3. 어떤 내부 IP가 연결을 시작하나"><table>
+<thead>
+<tr>
+<th scope="col">보이는 모습</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>내부 IP가 한 개뿐</td>
+<td>이 캡처에서 한 대의 내부 PC가 연결을 시작했어요. 그 PC를 우선 조사해요.</td>
+</tr>
+<tr>
+<td>DC가 목록에 없거나 연결이 아주 적음</td>
+<td>정상. 서버는 보통 요청을 <strong>받는</strong> 쪽이라서. Zeek는 UDP도 먼저 보낸 쪽을 orig로 정해서, DC의 응답은 PC가 시작한 연결에 들어가요</td>
+</tr>
+<tr>
+<td>목적지가 1–3곳, 일정한 간격</td>
+<td>비콘(C2) 후보. 반복 간격과 통신 목적을 더 확인해요.</td>
+</tr>
+<tr>
+<td>목적지가 수십~수백 곳</td>
+<td>사람이 웹을 본 모습. 뉴스 사이트 하나가 광고·CDN을 수십 곳 불러요. 이때는 "많이 통신한 곳 = 악성"이 통하지 않아요. 정상을 하나씩 지워서 찾아요</td>
+</tr>
+<tr>
+<td>받은 양 ≫ 보낸 양</td>
+<td>브라우징이나 다운로드에서 볼 수 있어요.</td>
+</tr>
+<tr>
+<td>보낸 양 ≫ 받은 양</td>
+<td>업로드, 백업, 데이터 유출 등을 검토해요. 전송량만으로 판단할 수는 없어요.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>1-4 · Cross-check with Arkime</h2>
+<p><strong>Purpose.</strong> Check whether Arkime shows a similar picture, and note unusual sessions for later investigation.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;CASE&gt;</code></pre>
+</div>
+<ul>
+<li><code>tags ==</code> selects sessions with the tag assigned during ingestion.</li>
+<li>Choose <strong>All</strong> or a range that includes the capture. A recent time range usually excludes older exercises.</li>
+<li>Open <strong>SPIView → General</strong> and compare <strong>Src IP</strong> and <strong>Dst IP</strong> with the Splunk results.</li>
+<li>In <strong>Sessions</strong>, use <strong>Start Time</strong> to control the ordering. The newest sessions may appear first.</li>
+</ul>
+
+<p><strong>Databytes and Bytes</strong></p>
+
+<ul>
+<li><strong>Databytes</strong> counts observed payload.</li>
+<li><strong>Bytes</strong> includes packet headers.</li>
+<li>Zero Databytes means no payload was observed in that session. Check connection state or packet details before calling it a failed connection.</li>
+</ul>
+
+<p><strong>Sessions worth a closer look</strong></p>
+
+<ul>
+<li>Repeated connections to the same external IP every few minutes.</li>
+<li>Repeated sessions with zero Databytes.</li>
+<li>Unexpected destination ports for the network.</li>
+<li>Connections to an IP where no matching DNS activity is visible in the capture.</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-4 · Cross-check with Arkime"><table>
+<thead>
+<tr>
+<th scope="col">Port</th>
+<th scope="col">Common protocol or use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>53</td>
+<td>DNS</td>
+</tr>
+<tr>
+<td>88</td>
+<td>Kerberos</td>
+</tr>
+<tr>
+<td>123</td>
+<td>NTP</td>
+</tr>
+<tr>
+<td>135 / 49152 and above</td>
+<td>DCE-RPC endpoint mapper and commonly used dynamic ports</td>
+</tr>
+<tr>
+<td>137 / 138</td>
+<td>NetBIOS name service or datagrams, including browser announcements</td>
+</tr>
+<tr>
+<td>389</td>
+<td>LDAP</td>
+</tr>
+<tr>
+<td>445</td>
+<td>SMB, including shares and group policy</td>
+</tr>
+<tr>
+<td>1900</td>
+<td>SSDP</td>
+</tr>
+<tr>
+<td>5355</td>
+<td>LLMNR name resolution, including lookups such as <code>wpad</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1-4. Arkime 교차 확인</h2>
+<p><strong>목적:</strong> Splunk와 같은 그림인지 확인하고, 화면에서 모양이 다른 줄을 <strong>메모만</strong> 해 둬요. 아직 결론은 내지 않아요.</p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;케이스&gt;</code></pre>
+</div>
+<ul>
+<li><code>tags ==</code> — pcapbox가 PCAP을 넣을 때 케이스 이름을 태그로 붙여 둬요. 그래서 이 케이스의 세션만 나와요.</li>
+<li>시간 범위를 <strong>All</strong>로 바꿔요. 기본값(최근 1시간)으로는 오래된 PCAP이 안 보여요.</li>
+<li><strong>SPIView → General</strong>에서 <strong>Src IP</strong>와 <strong>Dst IP</strong>를 펼쳐 Splunk 1-3 결과와 비교해요.</li>
+<li><strong>Sessions</strong> 화면은 기본이 최신 순이라서 캡처 끝부분이 먼저 보여요. Start Time 제목을 눌러 정렬을 바꿀 수 있어요.</li>
+</ul>
+
+<p><strong>Databytes / Bytes 칸 읽는 법</strong></p>
+
+<ul>
+<li>윗줄 <strong>Databytes</strong> = 실제 데이터(페이로드) 바이트</li>
+<li>아랫줄 <strong>Bytes</strong> = 패킷 헤더까지 포함한 전체 바이트</li>
+<li>윗줄이 <strong>0</strong>이면 <strong>페이로드가 관찰되지 않았다</strong>는 뜻이에요. 실패 여부는 연결 상태나 패킷으로 확인해요.</li>
+</ul>
+
+<p><strong>베이스라인에서 눈여겨볼 줄</strong></p>
+
+<ul>
+<li>같은 외부 IP로 몇 분마다 반복되는 연결</li>
+<li>Databytes가 0인 연결이 반복됨</li>
+<li>흔하지 않은 목적지 포트(80, 443, 53 등이 아닌 것)</li>
+<li>DNS 이름 없이 IP로만 가는 연결</li>
+</ul>
+
+<p><strong>내부 서비스에서 흔히 볼 수 있는 포트</strong></p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-4. Arkime 교차 확인"><table>
+<thead>
+<tr>
+<th scope="col">포트</th>
+<th scope="col">프로토콜</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>53</td>
+<td>DNS</td>
+</tr>
+<tr>
+<td>88</td>
+<td>Kerberos</td>
+</tr>
+<tr>
+<td>123</td>
+<td>NTP(시간)</td>
+</tr>
+<tr>
+<td>135 / 49152 이상</td>
+<td>DCE-RPC</td>
+</tr>
+<tr>
+<td>137 / 138</td>
+<td>NetBIOS 이름 / 브라우저 알림(브로드캐스트)</td>
+</tr>
+<tr>
+<td>389</td>
+<td>LDAP</td>
+</tr>
+<tr>
+<td>445</td>
+<td>SMB(공유 폴더, 그룹 정책)</td>
+</tr>
+<tr>
+<td>1900</td>
+<td>SSDP(UPnP 기기 찾기)</td>
+</tr>
+<tr>
+<td>5355</td>
+<td>LLMNR(이름 찾기, <code>wpad</code> 등)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<section id="host-identity">
+<div lang="en" data-guide-language>
+<h2>1-5 · Identify hosts and accounts</h2>
+<p>Determine the host name, user and domain for <strong>Impacted Internal Machines</strong>. Compare at least two relevant sources where possible. Tie the evidence to the same IP and time window before calling a match confirmed.</p>
+
+<h3>DHCP</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case=&lt;CASE&gt;
+| eval t=strftime(ts,"%H:%M:%S")
+| table t client_addr assigned_addr mac host_name domain msg_types</code></pre>
+</div>
+<ul>
+<li><code>host_name</code> is the name supplied by the client. <code>domain</code> is the domain supplied by DHCP.</li>
+<li><code>table</code> shows selected fields for individual events. Aggregation commands such as <code>stats</code> group events.</li>
+<li>If there is no DHCP record, the host may already have had an address or the exchange may be outside the capture. Continue with the sources below.</li>
+</ul>
+
+<h3>Kerberos</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case=&lt;CASE&gt;
+| stats min(ts) as first count values(request_type) as types values(success) as success values(error_msg) as errors by client
+| sort first
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<ul>
+<li><code>client</code> identifies the requesting principal. Its representation can include an account and realm.</li>
+<li><code>values()</code> lists distinct observations for the grouped principal. Sorting uses the numeric <code>ts</code> result before it is formatted.</li>
+<li><strong>AS</strong> requests the initial ticket-granting ticket. <strong>TGS</strong> requests a service ticket. <strong>AP</strong> presents a ticket to a service.</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-5 · Identify hosts and accounts"><table>
+<thead>
+<tr>
+<th scope="col">Observed value</th>
+<th scope="col">Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name ending in <code>$</code> such as <code>NAME$</code></td>
+<td>Typically a computer account. Use it as a hostname lead</td>
+</tr>
+<tr>
+<td>A name without <code>$</code>, such as <code>first.last</code></td>
+<td>Often a user account. Verify against the other logs</td>
+</tr>
+<tr>
+<td>A blank client name in an AP record</td>
+<td>The name can be inside encrypted data and unavailable to Zeek</td>
+</tr>
+<tr>
+<td>Differences in case or realm</td>
+<td>Case can be a naming variation. Verify differences in realm before merging accounts</td>
+</tr>
+<tr>
+<td><code>KDC_ERR_PREAUTH_REQUIRED</code> followed by success</td>
+<td>Can be a normal pre-authentication exchange</td>
+</tr>
+<tr>
+<td><code>KDC_ERR_PREAUTH_FAILED</code></td>
+<td>Pre-authentication failed. Investigate repeated failures in context</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3>NTLM</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:ntlm pcap_case=&lt;CASE&gt;
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h id_resp_p username hostname domainname server_nb_computer_name success</code></pre>
+</div>
+<ul>
+<li><code>username</code>, <code>hostname</code>, and <code>domainname</code> can identify the account, originating system, and domain.</li>
+<li><code>server_nb_computer_name</code> is the responder’s NetBIOS name. It can help confirm the DC in this exercise.</li>
+<li>If the account ends in <code>$</code>, check Kerberos for an associated user account.</li>
+</ul>
+
+<h3>DNS SOA and dynamic registration</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=&lt;CASE&gt; qtype_name=SOA
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h query qtype_name rcode_name</code></pre>
+</div>
+<ul>
+<li>Domain-joined Windows clients can register their DNS names dynamically. An SOA question can help identify the DNS zone and server involved.</li>
+<li>A <code>query</code> such as <code>&lt;host&gt;.&lt;domain&gt;</code> can corroborate a hostname. <code>id_resp_h</code> identifies the DNS responder.</li>
+<li>SOA alone is a clue. Inspect packets for a DNS UPDATE request to verify actual registration.</li>
+</ul>
+
+<h3>Observed software</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:software pcap_case=&lt;CASE&gt;
+| eval t=strftime(ts,"%H:%M:%S")
+| table t host software_type name unparsed_version</code></pre>
+</div>
+<ul>
+<li>Zeek can infer software and versions from fields such as an HTTP User-Agent. Availability depends on the traffic and Zeek configuration.</li>
+<li><code>software_type</code> indicates the reported type. For example, <code>HTTP::BROWSER</code> identifies software reported in an HTTP client context, and <code>OS::WINDOWS</code> denotes a reported Windows OS.</li>
+<li><code>Windows NT 6.1</code> is consistent with Windows 7 in this workstation example, and <code>Win64; x64</code> indicates a 64-bit user-agent environment.</li>
+<li>Note familiar browser and Windows service traffic, then record timestamps for software that differs from the baseline.</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-5 · Identify hosts and accounts"><table>
+<thead>
+<tr>
+<th scope="col">User-Agent or name</th>
+<th scope="col">What to check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chrome, Firefox, or Edge</td>
+<td>Common browser activity. Compare with the host baseline</td>
+</tr>
+<tr>
+<td>Microsoft BITS</td>
+<td>Windows background transfer service. Check where it connected</td>
+</tr>
+<tr>
+<td>Microsoft-CryptoAPI</td>
+<td>Often seen with certificate validation, such as OCSP or CRL activity</td>
+</tr>
+<tr>
+<td><code>MSIE 7.0</code> with <code>Trident/7.0</code></td>
+<td>Could be compatibility mode or a component making HTTP requests. Review the process or surrounding traffic if available</td>
+</tr>
+<tr>
+<td>No User-Agent</td>
+<td>Could be automation or another application. Check the request context</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3>Arkime NetBIOS and MAC address</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;CASE&gt; &amp;&amp; ip.src == &lt;PC IP&gt; &amp;&amp; port.dst == 138</code></pre>
+</div>
+<ul>
+<li>UDP port 138 can carry NetBIOS browser announcements. Expand the session to check <strong>Src MAC</strong> and look near <code>\MAILSLOT\BROWSE</code> for the sender’s computer name.</li>
+<li>Use this when other logs leave gaps or when the reporting template calls for a MAC address.</li>
+</ul>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1-5. 호스트 정체 찾기</h2>
+<p>티켓의 IMPACTED INTERNAL MACHINES에 들어갈 <strong>호스트 이름, 사용자, 도메인</strong>을 찾아요. 윈도우는 자기 이름을 여러 곳에서 말하니, 두 곳 이상에서 같은 값이 나오면 확인된 걸로 봐요.</p>
+
+<h3>① DHCP — 있으면 가장 먼저</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case=&lt;케이스&gt;
+| eval t=strftime(ts,"%H:%M:%S")
+| table t client_addr assigned_addr mac host_name domain msg_types</code></pre>
+</div>
+<ul>
+<li><code>host_name</code> — PC가 IP를 요청할 때 보낸 컴퓨터 이름</li>
+<li><code>domain</code> — DHCP 서버가 알려 준 도메인</li>
+<li><code>table</code> — 지정한 필드만 표로 보여 줘요(<code>stats</code>처럼 묶지 않아요).</li>
+<li><strong>결과가 없으면</strong> 캡처 전에 IP를 받았거나 DHCP 교환이 수집되지 않았을 수 있어요. ②–⑤로 찾아요.</li>
+</ul>
+
+<h3>② Kerberos — 컴퓨터 계정과 사용자 계정</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case=&lt;케이스&gt;
+| stats min(ts) as first count values(request_type) as types values(success) as success values(error_msg) as errors by client
+| sort first
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<ul>
+<li><code>client</code> — 티켓을 요청한 계정, <code>계정/영역(REALM)</code> 모양</li>
+<li><code>values(…)</code> — 그 계정에서 나온 서로 다른 값을 모두 보여 줘요.</li>
+<li><code>request_type</code> — <strong>AS</strong> = 로그온할 때 받는 첫 티켓(TGT), <strong>TGS</strong> = 특정 서비스용 티켓, <strong>AP</strong> = 받은 티켓을 서비스에 내미는 단계</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-5. 호스트 정체 찾기"><table>
+<thead>
+<tr>
+<th scope="col">보이는 값</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>이름이 <code>$</code>로 끝남 (<code>NAME$</code>)</td>
+<td><strong>컴퓨터 계정</strong> → 호스트 이름</td>
+</tr>
+<tr>
+<td><code>$</code> 없음 (<code>first.last</code>)</td>
+<td><strong>사용자 계정</strong></td>
+</tr>
+<tr>
+<td>계정 이름이 빈 줄 (<code>/REALM</code>, 종류 AP)</td>
+<td>AP 요청은 계정 이름이 암호화된 부분 안에 있어서 Zeek가 못 보여 줘요. 정상</td>
+</tr>
+<tr>
+<td>같은 계정이 대소문자·REALM만 다르게 여러 줄</td>
+<td>대소문자 차이는 표기 차이일 수 있어요. REALM이 다르면 같은 계정으로 묶기 전에 확인해요.</td>
+</tr>
+<tr>
+<td><code>KDC_ERR_PREAUTH_REQUIRED</code> 다음 성공</td>
+<td>정상적인 사전 인증. 비밀번호 오류 아님</td>
+</tr>
+<tr>
+<td><code>KDC_ERR_PREAUTH_FAILED</code></td>
+<td>사전 인증 실패. 반복되면 비밀번호 오류나 추측 시도를 조사해요.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3>③ NTLM — 한 줄에 이름 세 개</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:ntlm pcap_case=&lt;케이스&gt;
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h id_resp_p username hostname domainname server_nb_computer_name success</code></pre>
+</div>
+<ul>
+<li><code>username</code> / <code>hostname</code> / <code>domainname</code> — 누가, 어느 PC에서, 어느 도메인으로 로그온했는지</li>
+<li><code>server_nb_computer_name</code> — 상대 서버(보통 DC)의 NetBIOS 이름</li>
+<li><code>username</code>이 <code>$</code>로 끝나면 사람이 아니라 <strong>컴퓨터 계정</strong>이 로그온한 거예요. 이때 사용자는 Kerberos에서 찾아요.</li>
+</ul>
+
+<h3>④ DNS 동적 업데이트 — PC가 자기 이름을 DC에 등록</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=&lt;케이스&gt; qtype_name=SOA
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h query qtype_name rcode_name</code></pre>
+</div>
+<ul>
+<li>도메인에 가입된 윈도우 PC는 자기 이름과 IP를 DNS에 동적으로 등록할 수 있어요. 등록 전에 "이 영역의 주인 서버가 누구야?"라는 <strong>SOA 질의</strong>를 먼저 보내요.</li>
+<li><code>query</code> = <code>&lt;PC 이름&gt;.&lt;도메인&gt;</code>, <code>id_resp_h</code> = DNS 서버(보통 DC)</li>
+<li>SOA 질의는 이름 확인의 단서예요. 실제 동적 업데이트가 있었는지 확인하려면 DNS 패킷의 UPDATE 요청도 확인해요.</li>
+</ul>
+
+<h3>⑤ software — 이 PC가 쓰는 프로그램</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:software pcap_case=&lt;케이스&gt;
+| eval t=strftime(ts,"%H:%M:%S")
+| table t host software_type name unparsed_version</code></pre>
+</div>
+<ul>
+<li>Zeek는 HTTP User-Agent 같은 곳에서 프로그램 이름과 버전을 뽑아, 관찰된 프로그램 이름과 버전을 기록해요. 어떤 항목을 볼 수 있는지는 트래픽과 Zeek 설정에 따라 달라요.</li>
+<li><code>software_type</code> — 종류(<code>HTTP::BROWSER</code> = 웹 요청을 보낸 프로그램, <code>OS::WINDOWS</code> = 운영체제)</li>
+<li><code>Windows NT 6.1</code> = 윈도우 7, <code>Win64; x64</code> = 64비트</li>
+<li><strong>쓰는 법:</strong> 평소 브라우저와 윈도우 자체 프로그램(BITS, CryptoAPI)을 지우고, <strong>남는 프로그램과 그 시각</strong>을 메모해요. 다음 단계에서 그 시각 주변을 봐요.</li>
+</ul>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="1-5. 호스트 정체 찾기"><table>
+<thead>
+<tr>
+<th scope="col">User-Agent / 이름</th>
+<th scope="col">보통 뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chrome / Firefox / Edge</td>
+<td>사람이 쓰는 브라우저</td>
+</tr>
+<tr>
+<td>Microsoft BITS</td>
+<td>윈도우 백그라운드 다운로드(업데이트 등). 악성코드도 악용할 수 있으니 목적지를 확인</td>
+</tr>
+<tr>
+<td>Microsoft-CryptoAPI</td>
+<td>윈도우의 인증서 확인(OCSP, CRL)</td>
+</tr>
+<tr>
+<td><code>MSIE 7.0</code> + <code>Trident/7.0</code> (윈도우 7 이상)</td>
+<td>IE 호환 모드 또는 <strong>스크립트용 HTTP 객체</strong>(wscript, 오피스 매크로 등). 평소 브라우저가 아니면 의심 후보</td>
+</tr>
+<tr>
+<td>없음(User-Agent 없음)</td>
+<td>자동화 클라이언트나 프로그램의 단서일 수 있어요. 요청의 맥락을 확인해요.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3>⑥ Arkime — MAC과 NetBIOS 이름 (필요할 때만)</h3>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;케이스&gt; &amp;&amp; ip.src == &lt;PC IP&gt; &amp;&amp; port.dst == 138</code></pre>
+</div>
+<ul>
+<li>138번은 NetBIOS 브라우저 알림("나 여기 있어요")이에요. 세션을 펼치면 <strong>Src MAC</strong>과 <code>\MAILSLOT\BROWSE</code> 근처의 대문자 PC 이름이 보여요.</li>
+<li>MAC은 티켓에 넣지 않으므로, DHCP·Kerberos·NTLM·DNS로 이름이 확인되면 이 단계는 건너뛰어도 돼요.</li>
+</ul>
+
+</div>
+</section>
+<section id="worked-case">
+<div lang="en" data-guide-language>
+<h2>Worked case · Sorting through the alerts</h2>
+<p>In the case <code>20180630_SORTING_THROUGH_THE_ALERTS</code>, the baseline shows roughly 32 minutes of web traffic from one Windows 7 workstation, <code>172.16.2.169</code> (<code>CONSERVATOR-PC</code>), with <code>lloyd.maxwell</code> observed as the user.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="Worked case · Sorting through the alerts"><table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Finding</th>
+<th scope="col">Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Observed connection-start window</td>
+<td>2018-06-30 20:27:15–20:59:06 UTC, approximately 31.9 minutes</td>
+<td>Step 1-2</td>
+</tr>
+<tr>
+<td>Log types</td>
+<td>17, including 729 conn, 313 dns, 265 ssl, 176 files, 171 x509, and 134 http. No DHCP was observed</td>
+<td>Step 1-1</td>
+</tr>
+<tr>
+<td>Internal workstation</td>
+<td><code>172.16.2.169</code>, 729 connections, 184 destinations, 0.85 MB sent and 34.3 MB received</td>
+<td>Step 1-3</td>
+</tr>
+<tr>
+<td>Domain controller</td>
+<td><code>172.16.2.9</code>, <code>FABULOUSDUKE-DC</code></td>
+<td>NTLM <code>server_nb_computer_name</code></td>
+</tr>
+<tr>
+<td>Hostname</td>
+<td><code>CONSERVATOR-PC</code></td>
+<td>Kerberos <code>CONSERVATOR-PC$</code>, NTLM <code>hostname</code>, DNS SOA <code>conservator-pc.fabulousdukes.com</code></td>
+</tr>
+<tr>
+<td>User</td>
+<td><code>lloyd.maxwell</code>, authentication observed at 20:27:18</td>
+<td>Kerberos AS/TGS</td>
+</tr>
+<tr>
+<td>Domain</td>
+<td><code>FABULOUSDUKES</code> / <code>fabulousdukes.com</code></td>
+<td>Kerberos realm, NTLM <code>domainname</code>, and DNS SOA</td>
+</tr>
+<tr>
+<td>OS and software</td>
+<td>Windows 7 x64, Chrome 67, BITS, CryptoAPI, and one <code>MSIE 7.0</code> observation</td>
+<td>Software and User-Agent information</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Leads to investigate</strong></p>
+
+<ul>
+<li><code>46.105.131[.]66:443</code> recurred every few minutes with zero Databytes.</li>
+<li><code>107.170.231[.]118:4143</code> also recurred with zero Databytes on an uncommon port.</li>
+<li>At 20:28:47 UTC, an <code>MSIE 7.0</code> User-Agent differed from the observed Chrome baseline.</li>
+</ul>
+
+<p><strong>Differences to record</strong></p>
+
+<ul>
+<li>Zeek reported 729 connections and Arkime reported 654 sessions. Compare how the tools group sessions and which filters were applied before trying to reconcile counts.</li>
+<li>The DC did not appear as an originator in this case. Its NetBIOS responses were associated with a flow initiated by the workstation.</li>
+</ul>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/06/30/index.html">Original public exercise — Sorting through the alerts</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>사례 적용 — 2018-06-30 Sorting through the alerts</h2>
+<p>케이스 <code>20180630_SORTING_THROUGH_THE_ALERTS</code>의 베이스라인은 <strong>윈도우 7 PC 한 대(172.16.2.169, CONSERVATOR-PC, 사용자 lloyd.maxwell)에서 약 32분 동안 웹 트래픽이 관찰된 모습</strong>이에요.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="사례 적용 — 2018-06-30 Sorting through the alerts"><table>
+<thead>
+<tr>
+<th scope="col">항목</th>
+<th scope="col">결과</th>
+<th scope="col">근거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>관찰된 연결 시작 시간 범위</td>
+<td>2018-06-30 20:27:15 – 20:59:06 UTC (31.9분)</td>
+<td>1-2</td>
+</tr>
+<tr>
+<td>로그 종류</td>
+<td>17개. conn 729, dns 313, ssl 265, files 176, x509 171, http 134 … <strong>dhcp 없음</strong></td>
+<td>1-1</td>
+</tr>
+<tr>
+<td>내부 PC</td>
+<td>172.16.2.169 한 대(연결 729, 목적지 184곳, 보냄 0.85 MB / 받음 34.3 MB)</td>
+<td>1-3</td>
+</tr>
+<tr>
+<td>DC</td>
+<td>172.16.2.9, FABULOUSDUKE-DC</td>
+<td>NTLM <code>server_nb_computer_name</code></td>
+</tr>
+<tr>
+<td>호스트 이름</td>
+<td>CONSERVATOR-PC</td>
+<td>Kerberos <code>CONSERVATOR-PC$</code>, NTLM <code>hostname</code>, DNS SOA <code>conservator-pc.fabulousdukes.com</code></td>
+</tr>
+<tr>
+<td>사용자</td>
+<td>lloyd.maxwell (20:27:18 로그온)</td>
+<td>Kerberos AS/TGS</td>
+</tr>
+<tr>
+<td>도메인</td>
+<td>FABULOUSDUKES / fabulousdukes.com</td>
+<td>Kerberos REALM, NTLM <code>domainname</code>, DNS SOA</td>
+</tr>
+<tr>
+<td>운영체제·프로그램</td>
+<td>윈도우 7 x64, Chrome 67(평소 브라우저), BITS, CryptoAPI, <code>MSIE 7.0</code> 1회</td>
+<td>software</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>메모해 둔 후보 (베이스라인에서는 결론 없음)</strong></p>
+
+<ul>
+<li><code>46.105.131[.]66:443</code> — Databytes 0, 몇 분 간격 반복 (Arkime)</li>
+<li><code>107.170.231[.]118:4143</code> — Databytes 0, 흔하지 않은 포트, 몇 분 간격 반복 (Arkime)</li>
+<li>20:28:47 <code>MSIE 7.0</code> User-Agent — 평소 브라우저(Chrome)가 아닌 프로그램이 웹 요청을 보냄 (software)</li>
+</ul>
+
+<p><strong>예상과 달랐던 점</strong></p>
+
+<ul>
+<li>Zeek 연결 수(729)와 Arkime 세션 수(654)가 달라요. 세션 구성 방식이나 필터 범위가 다를 수 있으므로, 각 도구가 무엇을 집계하는지 확인해요.</li>
+<li>DC는 1-3 목록에 없어요. DC의 NetBIOS 응답이 PC가 시작한 연결에 들어갔기 때문이에요.</li>
+</ul>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/06/30/index.html">공개 실습 원문 — Sorting through the alerts</a></p>
+
+</div>
+</section>
+<section id="checklist">
+<div lang="en" data-guide-language>
+<h2>Ticket, checklist, and query reference</h2>
+<p>For this lab’s ticket, put the affected machine on one line in <strong>Impacted Internal Machines</strong> using the format <code>&lt;IP&gt; &lt;hostname&gt; – user &lt;domain&gt;\&lt;user&gt;</code>. Keep baselining queries and working notes in your analysis record. Follow your reporting template for MAC addresses. The original public exercise’s <strong>Details</strong> section requests the MAC address.</p>
+
+<p>Example: <code>172.16.2.169 CONSERVATOR-PC – user FABULOUSDUKES\lloyd.maxwell</code></p>
+
+<p><strong>Checklist</strong></p>
+
+<ul class="task-list">
+<li><label><input type="checkbox">Splunk and Arkime are set to UTC and Arkime’s time range includes the capture.</label></li>
+<li><label><input type="checkbox">The case name is confirmed and the ingestion SHA-256 has been recorded.</label></li>
+<li><label><input type="checkbox">Available log types and important gaps such as DHCP are recorded.</label></li>
+<li><label><input type="checkbox">The observed time window and duration are noted.</label></li>
+<li><label><input type="checkbox">Internal hosts, connection counts, destinations, and sent and received bytes are recorded.</label></li>
+<li><label><input type="checkbox">Arkime was checked for consistency and unusual sessions.</label></li>
+<li><label><input type="checkbox">Hostname, domain, user, and DC are corroborated where possible.</label></li>
+<li><label><input type="checkbox">Routine and unexpected software observations are noted.</label></li>
+</ul>
+
+<p>Replace <code>&lt;CASE&gt;</code> and <code>&lt;PC IP&gt;</code> with your case and address. Run one applicable query per line.</p>
+
+<p>Related documentation <a href="https://help.splunk.com/en/splunk-enterprise/search/spl2-search-manual/dates-and-time/time-zones">Splunk time zones</a> · <a href="https://docs.zeek.org/en/lts/scripts/base/protocols/conn/main.zeek.html">Zeek connection log fields</a></p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn | stats count by pcap_case</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek pcap_case=&lt;CASE&gt; | stats count by sourcetype | sort - count</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;CASE&gt; | stats min(ts) as first max(ts) as last count as sessions | eval duration_min=round((last-first)/60,1) | eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;CASE&gt; | stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first max(ts) as last by id_orig_h | eval first=strftime(first,"%H:%M:%S"), last=strftime(last,"%H:%M:%S") | sort - sessions</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case=&lt;CASE&gt; | eval t=strftime(ts,"%H:%M:%S") | table t client_addr assigned_addr mac host_name domain msg_types</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case=&lt;CASE&gt; | stats min(ts) as first count values(request_type) as types values(success) as success values(error_msg) as errors by client | sort first | eval first=strftime(first,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:ntlm pcap_case=&lt;CASE&gt; | eval t=strftime(ts,"%H:%M:%S") | table t id_orig_h id_resp_h id_resp_p username hostname domainname server_nb_computer_name success</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=&lt;CASE&gt; qtype_name=SOA | eval t=strftime(ts,"%H:%M:%S") | table t id_orig_h id_resp_h query qtype_name rcode_name</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:software pcap_case=&lt;CASE&gt; | eval t=strftime(ts,"%H:%M:%S") | table t host software_type name unparsed_version</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;CASE&gt;</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;CASE&gt; &amp;&amp; ip.src == &lt;PC IP&gt; &amp;&amp; port.dst == 138</code></pre>
+</div>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>티켓 규칙, 체크리스트, 복사용 쿼리</h2>
+<p><strong>티켓에 넣는 것과 넣지 않는 것</strong></p>
+
+<ul>
+<li>넣음: IMPACTED INTERNAL MACHINES의 한 줄 — <code>&lt;IP&gt; &lt;호스트 이름&gt; – user &lt;도메인&gt;\&lt;사용자&gt;</code></li>
+<li>이 실습의 티켓 양식에서는 상세 쿼리와 작업 로그를 작업 노트에 남겨요. MAC 주소가 필요한지는 보고서 양식에 따라 달라요. 아래 공개 실습의 DETAILS 양식은 MAC 주소도 요구해요.</li>
+<li>예: <code>172.16.2.169 CONSERVATOR-PC – user FABULOUSDUKES\lloyd.maxwell</code></li>
+</ul>
+
+<p><strong>체크리스트</strong></p>
+
+<ul class="task-list">
+<li><label><input type="checkbox">Splunk·Arkime 시간대 UTC, Arkime 시간 범위 All</label></li>
+<li><label><input type="checkbox">케이스 이름 확인, ingest.log의 SHA256 기록</label></li>
+<li><label><input type="checkbox">로그 종류 목록 — 특히 없는 로그(dhcp 등)</label></li>
+<li><label><input type="checkbox">관찰된 연결 시간 범위와 길이</label></li>
+<li><label><input type="checkbox">내부 PC 수, PC별 연결 수·목적지 수·보낸/받은 양</label></li>
+<li><label><input type="checkbox">Arkime에서 같은 그림 확인, 모양이 다른 줄 메모</label></li>
+<li><label><input type="checkbox">호스트 이름, 사용자, 도메인, DC — 두 곳 이상에서 같은 값</label></li>
+<li><label><input type="checkbox">평소 브라우저와 그 밖의 프로그램(software)</label></li>
+</ul>
+
+<p><strong>복사용 쿼리</strong> — <code>&lt;케이스&gt;</code>를 실제 케이스 이름으로 바꾸고, 필요한 쿼리 한 줄씩 실행해요.</p>
+
+<p>관련 문서 <a href="https://help.splunk.com/en/splunk-enterprise/search/spl2-search-manual/dates-and-time/time-zones">Splunk 시간대</a> · <a href="https://docs.zeek.org/en/lts/scripts/base/protocols/conn/main.zeek.html">Zeek conn 로그 필드</a></p>
+
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn | stats count by pcap_case</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek pcap_case=&lt;케이스&gt; | stats count by sourcetype | sort - count</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;케이스&gt; | stats min(ts) as first max(ts) as last count as sessions | eval duration_min=round((last-first)/60,1) | eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=&lt;케이스&gt; | stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first max(ts) as last by id_orig_h | eval first=strftime(first,"%H:%M:%S"), last=strftime(last,"%H:%M:%S") | sort - sessions</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case=&lt;케이스&gt; | eval t=strftime(ts,"%H:%M:%S") | table t client_addr assigned_addr mac host_name domain msg_types</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case=&lt;케이스&gt; | stats min(ts) as first count values(request_type) as types values(success) as success values(error_msg) as errors by client | sort first | eval first=strftime(first,"%Y-%m-%d %H:%M:%S")</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:ntlm pcap_case=&lt;케이스&gt; | eval t=strftime(ts,"%H:%M:%S") | table t id_orig_h id_resp_h id_resp_p username hostname domainname server_nb_computer_name success</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=&lt;케이스&gt; qtype_name=SOA | eval t=strftime(ts,"%H:%M:%S") | table t id_orig_h id_resp_h query qtype_name rcode_name</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">SPL</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:software pcap_case=&lt;케이스&gt; | eval t=strftime(ts,"%H:%M:%S") | table t host software_type name unparsed_version</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;케이스&gt;</code></pre>
+</div>
+<div class="query-block">
+            <div class="query-bar">
+              <span class="query-type">Arkime</span>
+              <span class="query-status" role="status" data-copy-status></span>
+              <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+            </div>
+          <pre class="text" tabindex="0"><code>tags == &lt;케이스&gt; &amp;&amp; ip.src == &lt;PC IP&gt; &amp;&amp; port.dst == 138</code></pre>
+</div>
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

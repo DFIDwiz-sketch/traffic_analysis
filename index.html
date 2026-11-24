@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f5f7fb">
+  <meta name="theme-color" content="#f6f8fa">
   <title>Traffic Analysis</title>
   <script src="./theme.js"></script>
   <link rel="stylesheet" href="./styles.css">
@@ -31,70 +31,55 @@
     </div>
   </header>
 
-  <main class="frame" id="main" tabindex="-1">
+  <main class="frame home" id="main" tabindex="-1">
     <header class="hero">
       <div class="hero-heading">
         <p class="eyebrow" data-copy="eyebrow">PCAP / NETWORK TRAFFIC</p>
-        <h1><span data-copy="heroFirst">Traffic</span> <span data-copy="heroSecond">Analysis</span></h1>
+        <h1 data-copy="brand">Traffic Analysis</h1>
+        <p class="hero-intro" data-copy="heroIntro">Practical guides for investigating network traffic, from baselining a capture to decoding unfamiliar data.</p>
       </div>
       <div class="hero-art" aria-hidden="true">
-        <div class="radar"><i></i><i></i><i></i></div>
-        <div class="packet packet-back"><i></i><i></i><i></i></div>
-        <div class="packet packet-middle"><i></i><i></i><i></i></div>
-        <div class="packet packet-front"><i></i><i></i><i></i></div>
-        <div class="trace trace-top"></div>
-        <div class="trace trace-bottom"></div>
-        <div class="node node-top"></div>
-        <div class="node node-bottom"></div>
+        <div class="traffic-flow">
+          <span class="flow-line"></span><span class="flow-line"></span><span class="flow-line"></span><span class="flow-line"></span><span class="flow-line"></span>
+        </div>
       </div>
     </header>
 
-    <div class="workspace">
-      <aside class="sidebar">
-        <h2 id="nav-title" data-copy="sections">Sections</h2>
-        <nav aria-labelledby="nav-title">
-          <a href="#overview" data-section="overview" aria-current="page">
-            <span class="icon icon-grid" aria-hidden="true"></span>
-            <span data-copy="overview">Overview</span>
-          </a>
-          <a href="#pcap" data-section="pcap">
-            <span class="icon icon-packet" aria-hidden="true"></span>
-            <span data-copy="pcap">PCAP</span>
-          </a>
-          <a href="#analysis" data-section="analysis">
-            <span class="icon icon-chart" aria-hidden="true"></span>
-            <span data-copy="analysis">Traffic Analysis</span>
-          </a>
-          <a href="#resources" data-section="resources">
-            <span class="icon icon-book" aria-hidden="true"></span>
-            <span data-copy="resources">Resources</span>
-          </a>
-        </nav>
-      </aside>
+    <nav class="section-nav" aria-label="Sections" data-label="sections">
+      <a href="#overview" data-section="overview" data-copy="overview" aria-current="page">Overview</a>
+      <a href="#pcap" data-section="pcap" data-copy="pcap">PCAP</a>
+      <a href="#analysis" data-section="analysis" data-copy="analysis">Traffic Analysis</a>
+      <a href="#resources" data-section="resources" data-copy="resources">Resources</a>
+    </nav>
 
-      <div class="panels">
-        <section class="panel" id="panel-overview" aria-labelledby="title-overview">
-          <h2 id="title-overview" tabindex="-1" data-copy="overview">Overview</h2>
-          <div class="section-body"></div>
-        </section>
-        <section class="panel" id="panel-pcap" aria-labelledby="title-pcap" hidden>
-          <h2 id="title-pcap" tabindex="-1" data-copy="pcap">PCAP</h2>
-          <div class="section-body"></div>
-        </section>
-        <section class="panel" id="panel-analysis" aria-labelledby="title-analysis" hidden>
-          <h2 id="title-analysis" tabindex="-1" data-copy="analysis">Traffic Analysis</h2>
-          <div class="section-body">
-            <article class="guide-card">
-              <h3><a href="./guides/cyberchef.html" data-copy="guideTitle">Recognizing Encodings and Decoding with CyberChef</a></h3>
-              <p data-copy="guideSummary">Identify unfamiliar encodings in traffic captures and choose the right CyberChef operation for each layer.</p>
-            </article>
-          </div>
-        </section>
-        <section class="panel" id="panel-resources" aria-labelledby="title-resources" hidden>
-          <h2 id="title-resources" tabindex="-1" data-copy="resources">Resources</h2>
-          <div class="section-body"></div>
-        </section>
-      </div>
+    <div class="panels">
+      <section class="panel" id="panel-overview" aria-labelledby="title-overview">
+        <h2 id="title-overview" tabindex="-1" data-copy="fieldGuides">Field guides</h2>
+        <div class="guide-grid" data-guide-list="overview">
+          <article class="guide-card guide-card-pcap" data-guide="pcap">
+            <p class="card-tools" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+            <h3><a href="./guides/pcap-baseline.html" data-copy="baselineTitle">PCAP Baselining Guide</a></h3>
+            <p data-copy="baselineSummary">Establish a capture’s timeline, identify internal hosts, and cross-check your findings in Arkime.</p>
+          </article>
+          <article class="guide-card guide-card-analysis" data-guide="analysis">
+            <p class="card-tools">CyberChef</p>
+            <h3><a href="./guides/cyberchef.html" data-copy="guideTitle">Recognizing Encodings and Decoding with CyberChef</a></h3>
+            <p data-copy="guideSummary">Identify unfamiliar encodings in traffic captures and choose the right CyberChef operation for each layer.</p>
+          </article>
+        </div>
+      </section>
+      <section class="panel" id="panel-pcap" aria-labelledby="title-pcap" hidden>
+        <h2 id="title-pcap" tabindex="-1" data-copy="pcap">PCAP</h2>
+        <div class="guide-grid" data-guide-list="pcap"></div>
+      </section>
+      <section class="panel" id="panel-analysis" aria-labelledby="title-analysis" hidden>
+        <h2 id="title-analysis" tabindex="-1" data-copy="analysis">Traffic Analysis</h2>
+        <div class="guide-grid" data-guide-list="analysis"></div>
+      </section>
+      <section class="panel" id="panel-resources" aria-labelledby="title-resources" hidden>
+        <h2 id="title-resources" tabindex="-1" data-copy="resources">Resources</h2>
+        <p class="empty-message" data-copy="emptyResources">No resources have been added yet.</p>
+      </section>
     </div>
   </main>
 </body>

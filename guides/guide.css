@@ -1,6 +1,8 @@
 .guide-header {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: clamp(1.5rem, 5vw, 3rem);
+  border: 1px solid var(--line);
+  border-radius: 1.15rem;
+  padding: clamp(1.2rem, 3.6vw, 2.5rem);
+  background: linear-gradient(112deg, var(--surface) 45%, var(--hero-tint));
 }
 
 .guide-back {
@@ -14,8 +16,8 @@
 }
 
 .guide-header h1 {
-  max-width: 22ch;
-  font-size: clamp(2.2rem, 5vw, 4.5rem);
+  max-width: 30ch;
+  font-size: clamp(1.9rem, 4.1vw, 3.15rem);
   line-height: 1.08;
   letter-spacing: -.052em;
 }
@@ -42,6 +44,7 @@
   top: 1rem;
   max-height: calc(100vh - 2rem);
   overflow: auto;
+  border-inline-start: 1px solid var(--line);
   padding: .2rem .85rem;
 }
 
@@ -136,4 +139,69 @@ html[lang="ko"] :is(.guide-header, .guide-toc, .guide-article) {
     padding: .85rem;
     background: var(--surface);
   }
+}
+
+.guide-article h3 {
+  margin: 1.65rem 0 .65rem;
+  font-size: 1.14rem;
+}
+
+.guide-article p a, .guide-article li a {
+  color: var(--blue);
+  text-decoration: underline;
+  text-underline-offset: .18em;
+}
+
+.query-block {
+  margin: 1rem 0 1.3rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: .7rem;
+  background: var(--surface-subtle);
+}
+
+.query-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem .75rem;
+  border-bottom: 1px solid var(--line);
+  padding: .35rem .65rem .35rem .85rem;
+}
+
+.query-type {
+  margin-inline-end: auto;
+  color: var(--muted);
+  font: 650 .8125rem ui-monospace, Consolas, monospace;
+}
+
+.query-copy {
+  min-height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: .4rem;
+  padding: .25rem .6rem;
+  color: var(--accent);
+  background: var(--surface);
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 650;
+}
+
+.query-copy:hover { background: var(--surface-selected); }
+.query-status { color: var(--muted); font-size: .875rem; }
+.query-status:empty { display: none; }
+
+.query-block pre {
+  overflow: auto;
+  margin: 0;
+  padding: .8rem .85rem;
+  line-height: 1.6;
+}
+
+.query-block code {
+  display: inline;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  font-size: .875rem;
 }

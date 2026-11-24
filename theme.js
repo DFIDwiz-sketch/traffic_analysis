@@ -5,7 +5,7 @@
 
   function applyTheme(theme) {
     root.dataset.theme = theme;
-    themeColor.content = theme === "dark" ? "#0b1220" : "#f5f7fb";
+    themeColor.content = theme === "dark" ? "#0b1220" : "#f6f8fa";
   }
 
   function preferredTheme(fallback = "light") {
