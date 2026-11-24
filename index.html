@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f6f8fa">
+  <meta name="theme-color" content="#f4ead1">
   <title>Traffic Analysis</title>
   <script src="./theme.js"></script>
   <link rel="stylesheet" href="./styles.css">
@@ -49,12 +49,27 @@
       <a href="#overview" data-section="overview" data-copy="overview" aria-current="page">Overview</a>
       <a href="#pcap" data-section="pcap" data-copy="pcap">PCAP</a>
       <a href="#analysis" data-section="analysis" data-copy="analysis">Traffic Analysis</a>
+      <a href="#investigations" data-section="investigations" data-copy="investigations">Investigations</a>
       <a href="#resources" data-section="resources" data-copy="resources">Resources</a>
     </nav>
 
     <div class="panels">
       <section class="panel" id="panel-overview" aria-labelledby="title-overview">
-        <h2 id="title-overview" tabindex="-1" data-copy="fieldGuides">Field guides</h2>
+        <h2 id="title-overview" tabindex="-1" data-copy="recentInvestigations">Recent investigations</h2>
+        <div class="guide-grid" data-investigation-list>
+          <article class="guide-card case-card" data-guide="investigations">
+            <p class="card-tools"><time datetime="2018-06-15">2018-06-15</time> · SMB</p>
+            <h3><a href="./guides/2018-06-15-emotet-trickbot-smb.html" data-copy="emotetSmbTitle">Emotet and Trickbot via SMB</a></h3>
+            <p data-copy="emotetSmbSummary">Trace a workstation’s SMB activity to the Oyster domain controller.</p>
+          </article>
+          <article class="guide-card case-card" data-guide="investigations">
+            <p class="card-tools"><time datetime="2018-07-18">2018-07-18</time> · SMB</p>
+            <h3><a href="./guides/2018-07-18-trickbot-smb.html" data-copy="trickbotSmbTitle">Trickbot from client to domain controller</a></h3>
+            <p data-copy="trickbotSmbSummary">Find SMB write activity and distinguish it from unrelated outbound traffic.</p>
+          </article>
+        </div>
+        <a class="all-investigations" href="#investigations" data-copy="allInvestigations">View all investigations</a>
+        <h2 data-copy="fieldGuides">Field guides</h2>
         <div class="guide-grid" data-guide-list="overview">
           <article class="guide-card guide-card-pcap" data-guide="pcap">
             <p class="card-tools" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
@@ -75,6 +90,10 @@
       <section class="panel" id="panel-analysis" aria-labelledby="title-analysis" hidden>
         <h2 id="title-analysis" tabindex="-1" data-copy="analysis">Traffic Analysis</h2>
         <div class="guide-grid" data-guide-list="analysis"></div>
+      </section>
+      <section class="panel" id="panel-investigations" aria-labelledby="title-investigations" hidden>
+        <h2 id="title-investigations" tabindex="-1" data-copy="investigations">Investigations</h2>
+        <div class="guide-grid" data-guide-list="investigations"></div>
       </section>
       <section class="panel" id="panel-resources" aria-labelledby="title-resources" hidden>
         <h2 id="title-resources" tabindex="-1" data-copy="resources">Resources</h2>

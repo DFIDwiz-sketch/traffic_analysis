@@ -1,6 +1,7 @@
 .guide-header {
   border: 1px solid var(--line);
-  border-radius: 1.15rem;
+  border-radius: .24rem;
+  box-shadow: .2rem .2rem 0 var(--line);
   padding: clamp(1.2rem, 3.6vw, 2.5rem);
   background: linear-gradient(112deg, var(--surface) 45%, var(--hero-tint));
 }
@@ -76,7 +77,7 @@
 .guide-article {
   min-width: 0;
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: .3rem;
   padding: clamp(1rem, 3vw, 2.5rem);
   background: var(--surface);
   line-height: 1.68;

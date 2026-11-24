@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Trickbot from client to domain controller · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="trickbotSmbTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="trickbotSmbTitle">Trickbot from client to domain controller</h1>
+      <p class="guide-meta">
+        <time datetime="2018-07-18">2018-07-18</time>
+        <span aria-hidden="true">·</span><span>SMB</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Findings at a glance</a></li>
+<li><a href="#baseline">1 · Establish scope in Splunk</a></li>
+<li><a href="#smb">2 · Link shares, files and RPC</a></li>
+<li><a href="#arkime">3 · Corroborate the timeline in Arkime</a></li>
+<li><a href="#tshark">4 · Resolve the SMB1 write response with TShark if needed</a></li>
+<li><a href="#incident-note">5 · Write the incident note</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">한눈에 보는 결과</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 케이스 범위 좁히기</a></li>
+<li><a href="#smb">2단계 · 공유, 파일 작업, RPC를 연결하기</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 타임라인 교차 확인</a></li>
+<li><a href="#tshark">4단계 · 필요할 때 TShark로 SMB1 쓰기 응답 확인</a></li>
+<li><a href="#incident-note">5단계 · 사고 티켓 작성</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Findings at a glance</h2>
+<p>The publication identifies Trickbot moving from <code>172.16.1.205</code> to the AD domain controller at <code>172.16.1.8</code>. Its screenshots also report Tor traffic and a new module. The SMB activity is a separate line of evidence: offline inspection of the original capture found two executable filenames written over SMB1 on the same client-initiated TCP connection. Treat outbound sessions and the internal transfer as separate scopes unless other evidence ties them together.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="Findings at a glance"><table>
+<thead>
+<tr class="header">
+<th scope="col">Evidence</th>
+<th scope="col">Observed value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Original capture</td>
+<td>20,761 packets, 17:41:53.165–18:00:37.816 UTC on 18 July 2018</td>
+</tr>
+<tr class="even">
+<td>Host pair using TCP/445</td>
+<td>1,124 packets in both directions, including control and ACK-only packets</td>
+</tr>
+<tr class="odd">
+<td>File-write connection</td>
+<td><code>172.16.1.205:49552 → 172.16.1.8:445</code></td>
+</tr>
+<tr class="even">
+<td>Source attribution</td>
+<td>Trickbot and Tor observations are described by the publisher. SMB frame numbers, file metadata, capture times and hash were independently checked in the original PCAP</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The Splunk and Arkime steps below are lab queries and verification steps. The packet observations are from an offline read of the capture.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>한눈에 보는 결과</h2>
+<p>공개 원문은 Trickbot이 <code>172.16.1.205</code>에서 AD 도메인 컨트롤러 <code>172.16.1.8</code>로 이동했다고 보고합니다. 원문에는 Tor 통신과 새 모듈도 나옵니다. 내부 SMB 통신은 별도로 살펴봤습니다. 원본 PCAP에서 클라이언트가 시작한 같은 TCP 연결을 타고 실행 파일 이름 두 개에 대한 SMB1 쓰기가 이뤄졌습니다. 내부 파일 전송과 외부 통신을 연결할 별도 근거가 생기기 전까지는 각각 조사합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="한눈에 보는 결과"><table>
+<thead>
+<tr class="header">
+<th scope="col">근거</th>
+<th scope="col">관찰값</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>원본 캡처</td>
+<td>20,761개 패킷, 2018년 7월 18일 17:41:53.165–18:00:37.816 UTC</td>
+</tr>
+<tr class="even">
+<td>두 호스트 간 TCP/445</td>
+<td>양방향 1,124개 패킷, 제어 패킷과 ACK 포함</td>
+</tr>
+<tr class="odd">
+<td>파일 쓰기 연결</td>
+<td><code>172.16.1.205:49552 → 172.16.1.8:445</code></td>
+</tr>
+<tr class="even">
+<td>출처 구분</td>
+<td>Trickbot과 Tor는 공개 원문에 근거합니다. SMB 프레임, 파일 메타데이터, 캡처 시각·해시는 원본 PCAP에서 직접 확인했습니다.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>아래 Splunk와 Arkime 절차는 실습 환경에서 돌려 볼 쿼리입니다. 표에 나오는 패킷은 원본 캡처를 오프라인에서 읽어 확인했습니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Establish scope in Splunk</h2>
+<p>Ingest only the original PCAP. Use UTC and a time range that includes the capture. Replace <code>&lt;CASE&gt;</code> with your importer’s <code>pcap_case</code> value. The examples use the flattened Zeek address and port fields described in the site's PCAP Baselining Guide.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Review each sourcetype and its time range. <code>ts</code> from a Zeek connection record is the connection’s start time. The packet-level capture boundaries in the findings table refer to the entire PCAP.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+| stats count as connections sum(orig_bytes) as sent sum(resp_bytes) as received
+    values(conn_state) as states by id_orig_h id_resp_h
+| sort - connections</code></pre>
+</div>
+<p>The direction filter highlights initiators of TCP/445. Compare this host pair against other destinations before drawing a conclusion, then open the connections for <code>172.16.1.205</code> and <code>172.16.1.8</code>. The first matching client SYN in the raw capture is frame 5218 at 17:49:57.734 UTC. The executable-file evidence appears a few seconds later.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 케이스 범위 좁히기</h2>
+<p>원본 PCAP을 수집하고 시간대를 UTC로 맞춘 뒤 캡처 시각을 포함해 검색합니다. <code>&lt;CASE&gt;</code>는 수집기가 붙인 <code>pcap_case</code> 값으로 바꾸세요. 쿼리는 이 사이트의 PCAP 베이스라이닝 가이드와 같은 Zeek 필드 이름을 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>로그 종류와 각 시간 범위를 봅니다. Zeek 연결 로그의 <code>ts</code>는 연결이 시작한 시각입니다. 앞의 표에 나온 캡처 경계는 전체 PCAP의 패킷을 기준으로 합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+| stats count as connections sum(orig_bytes) as sent sum(resp_bytes) as received
+    values(conn_state) as states by id_orig_h id_resp_h
+| sort - connections</code></pre>
+</div>
+<p>목적지 포트가 445인 연결을 보고 누가 시작했는지 파악합니다. 다른 목적지와 비교한 뒤 <code>172.16.1.205</code>와 <code>172.16.1.8</code> 두 주소 사이를 확인합니다. 원본에서 첫 클라이언트 SYN은 17:49:57.734 UTC의 5218번 프레임이며, 몇 초 뒤 실행 파일과 관련된 쓰기가 관찰됩니다.</p>
+
+</div>
+</section>
+<section id="smb">
+<div lang="en" data-guide-language>
+<h2>2 · Link shares, files and RPC</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_orig_h=172.16.1.205 id_resp_h=172.16.1.8
+    id_orig_p=49552 id_resp_p=445
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc","zeek:ntlm")
+| sort 0 ts
+| eval time_utc=strftime(ts,"%Y-%m-%d %H:%M:%S.%3N %Z")
+| table time_utc sourcetype uid conn_state path name action endpoint operation</code></pre>
+</div>
+<p>Correlate the <code>zeek:conn</code> record for client port <code>49552</code> by its <code>uid</code> with available SMB mapping, file and RPC records from the same Zeek run. Inspect <code>action</code> with <code>path</code> and <code>name</code> so a share or file open is not mistaken for a data write. If the Zeek SMB analyzer gives little detail, narrow the raw packets in Arkime.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Link shares, files and RPC"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC on 18 July</th>
+<th scope="col">Frames</th>
+<th scope="col">Direct packet evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>17:49:57.734</td>
+<td>5218</td>
+<td>First observed client SYN to the DC on TCP/445</td>
+</tr>
+<tr class="even">
+<td>17:50:08.286</td>
+<td>5540, 5541</td>
+<td>Write and zero-status reply mapped to the <code>lsarpc</code> named pipe</td>
+</tr>
+<tr class="odd">
+<td>17:50:08.303</td>
+<td>5605, 5607</td>
+<td>Write and zero-status reply for <code>\WINDOWS\dhbo0tpu…exe</code></td>
+</tr>
+<tr class="even">
+<td>17:50:08.501</td>
+<td>5922, 5924</td>
+<td>Second executable filename <code>\WINDOWS\sny4u_un…exe</code> with successful reply</td>
+</tr>
+<tr class="odd">
+<td>17:50:08.528</td>
+<td>6016, 6017</td>
+<td>Write and successful reply on the <code>svcctl</code> named pipe</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The names are abbreviated. The file evidence comes from matching SMB file-open and write metadata. The <code>svcctl</code> observation warrants a check for endpoint service activity. A named-pipe write alone does not establish what service was installed or run.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · 공유, 파일 작업, RPC를 연결하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_orig_h=172.16.1.205 id_resp_h=172.16.1.8
+    id_orig_p=49552 id_resp_p=445
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc","zeek:ntlm")
+| sort 0 ts
+| eval time_utc=strftime(ts,"%Y-%m-%d %H:%M:%S.%3N %Z")
+| table time_utc sourcetype uid conn_state path name action endpoint operation</code></pre>
+</div>
+<p>클라이언트 포트 <code>49552</code>의 <code>zeek:conn</code> 기록을 찾아 같은 Zeek 처리 실행에서 생성된 공유·파일·RPC 로그를 <code>uid</code>로 연결합니다. <code>action</code>을 <code>path</code>, <code>name</code>과 함께 봐야 공유나 파일을 연 것과 데이터를 쓴 것을 구분할 수 있습니다. Zeek SMB 로그에 필요한 정보가 적으면 Arkime에서 원본 패킷을 좁혀 봅니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · 공유, 파일 작업, RPC를 연결하기"><table>
+<thead>
+<tr class="header">
+<th scope="col">7월 18일 UTC</th>
+<th scope="col">프레임</th>
+<th scope="col">PCAP에서 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>17:49:57.734</td>
+<td>5218</td>
+<td>클라이언트가 DC의 TCP/445로 보낸 첫 SYN</td>
+</tr>
+<tr class="even">
+<td>17:50:08.286</td>
+<td>5540, 5541</td>
+<td><code>lsarpc</code> 이름 파이프 쓰기와 상태값이 0인 응답</td>
+</tr>
+<tr class="odd">
+<td>17:50:08.303</td>
+<td>5605, 5607</td>
+<td><code>\WINDOWS\dhbo0tpu…exe</code> 파일 쓰기와 성공 응답</td>
+</tr>
+<tr class="even">
+<td>17:50:08.501</td>
+<td>5922, 5924</td>
+<td>두 번째 실행 파일 <code>\WINDOWS\sny4u_un…exe</code>에 대한 쓰기와 성공 응답</td>
+</tr>
+<tr class="odd">
+<td>17:50:08.528</td>
+<td>6016, 6017</td>
+<td><code>svcctl</code> 이름 파이프 쓰기와 성공 응답</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>파일명은 줄여 적었습니다. 파일 열기와 쓰기 메타데이터를 연결해 확인했습니다. <code>svcctl</code>이 보이면 엔드포인트에서 서비스 관련 기록을 확인할 근거가 됩니다. 이름 파이프에 쓰기가 관찰됐다는 사실만으로 어떤 서비스가 설치되거나 실행됐는지 판단할 수 없습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Corroborate the timeline in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp;
+ip.src == 172.16.1.205 &amp;&amp; ip.dst == 172.16.1.8 &amp;&amp;
+port.src == 49552 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Set the time picker around 17:50:08 UTC. The filter narrows the session to the verified client port and DC. Compare the endpoints and packet activity with the Splunk results. Keep any Tor or other outbound-traffic investigation in its own pivot so it does not get counted as part of this SMB transfer.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 타임라인 교차 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp;
+ip.src == 172.16.1.205 &amp;&amp; ip.dst == 172.16.1.8 &amp;&amp;
+port.src == 49552 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>17:50:08 UTC 전후를 선택합니다. 필터는 확인된 클라이언트 포트와 DC로 세션을 좁혀 줍니다. 양 끝 주소와 패킷 흐름을 Splunk 결과와 대조하세요. Tor 등 외부 통신은 별도의 검색으로 조사해 이 SMB 전송의 패킷이나 세션 수에 섞이지 않도록 합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Resolve the SMB1 write response with TShark if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2018-07-18-Trickbot-infection-in-AD-environment.pcap" \
+  -Y 'ip.addr == 172.16.1.205 &amp;&amp; ip.addr == 172.16.1.8 &amp;&amp; tcp.port == 49552 &amp;&amp; smb.cmd == 0x2f' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src \
+  -e ip.dst -e tcp.stream -e smb.cmd -e smb.mid -e smb.nt_status</code></pre>
+</div>
+<p>Focus on the request-reply pair for the first executable filename. A zero response status supports a successful write operation. Compare the SMB Multiplex ID within the same connection rather than treating nearby packets as a match. Frame references are for the SHA-256 listed below. Reassembly may change where a dissector displays a message.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요할 때 TShark로 SMB1 쓰기 응답 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2018-07-18-Trickbot-infection-in-AD-environment.pcap" \
+  -Y 'ip.addr == 172.16.1.205 &amp;&amp; ip.addr == 172.16.1.8 &amp;&amp; tcp.port == 49552 &amp;&amp; smb.cmd == 0x2f' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src \
+  -e ip.dst -e tcp.stream -e smb.cmd -e smb.mid -e smb.nt_status</code></pre>
+</div>
+<p>첫 실행 파일의 요청·응답을 확인합니다. 응답 상태값 0은 성공한 쓰기의 근거입니다. 프레임이 가까운 것만으로 짝을 정하지 말고 같은 연결의 SMB Multiplex ID를 비교합니다. 프레임 번호는 아래 SHA-256의 파일을 기준으로 하며, 재조립에 따라 디섹터가 메시지를 표시하는 프레임이 달라질 수 있습니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Write the incident note</h2>
+<p>Record the client and DC, the file-write connection, the two write times, and the named-pipe observation. Report the publisher’s Trickbot attribution separately and use DC process, file and service telemetry to assess execution. Compare with approved software deployment activity before treating administrative share traffic as malicious in a new case.</p>
+
+<p><strong>Capture SHA-256</strong> <code>7e191f6ec7ab3174e89443e018341d487af678dd21663a3842aeef7284fcc87d</code></p>
+
+<p><a href="https://malware-traffic-analysis.net/2018/07/18/index2.html">Original post and PCAP source</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb.html">Wireshark SMB fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 사고 티켓 작성</h2>
+<p>클라이언트와 DC, 파일 쓰기 연결, 두 쓰기 시각, 이름 파이프 관찰을 기록하세요. Trickbot 식별은 공개 원문을 출처로 표시합니다. 실제 실행 여부는 DC의 프로세스·파일·서비스 기록으로 검증합니다. 다른 사건에서 관리자 공유 작업을 해석할 때는 승인된 소프트웨어 배포 기록도 대조하세요.</p>
+
+<p><strong>캡처 SHA-256</strong> <code>7e191f6ec7ab3174e89443e018341d487af678dd21663a3842aeef7284fcc87d</code></p>
+
+<p><a href="https://malware-traffic-analysis.net/2018/07/18/index2.html">공개 원문 및 PCAP</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB 로그</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb.html">Wireshark SMB 필드</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
