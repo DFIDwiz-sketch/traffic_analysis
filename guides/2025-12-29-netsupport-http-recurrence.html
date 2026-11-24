@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>NetSupport RAT · separate a one-off POST from recurring traffic · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="netSupportRecurrenceCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="netSupportRecurrenceCaseTitle">NetSupport RAT · separate a one-off POST from recurring traffic</h1>
+      <p class="guide-meta">
+        <time datetime="2025-12-29">2025-12-29</time>
+        <span aria-hidden="true">·</span><span>HTTP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Which destination shows recurring HTTP activity?</a></li>
+<li><a href="#baseline">1 · Set the workstation baseline in Splunk</a></li>
+<li><a href="#evidence">2 · Rank HTTP destinations and check the recurring stream</a></li>
+<li><a href="#arkime">3 · Compare both sessions in Arkime</a></li>
+<li><a href="#tshark">4 · Confirm two HTTP exchanges offline if needed</a></li>
+<li><a href="#incident-note">5 · Record priority and collect corroboration</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">어느 목적지에서 HTTP 요청이 반복됐나</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 워크스테이션 베이스라인 확인</a></li>
+<li><a href="#evidence">2단계 · HTTP 목적지를 비교하고 반복 연결 확인</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 두 세션 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 두 HTTP 교환을 오프라인 확인</a></li>
+<li><a href="#incident-note">5단계 · 우선순위를 기록하고 추가 근거 요청</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Which destination shows recurring HTTP activity?</h2>
+<p>The publisher describes a ClickFix infection leading to NetSupport RAT, with an initial HTTP POST to a shared edge address followed by recurring POSTs to a different destination. In the original capture, <code>10.12.29.101</code> sends one observed POST to <code>104.21.96.46:443</code> and receives HTTP 400. It also sends recurring plaintext HTTP POSTs to <code>185.39.19.96:443</code> on a separate TCP connection. The publisher's role attribution and the packet-visible behavior are separate pieces of evidence.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2025-12-29-ClickFix-page-sends-NetSupportRAT.pcap</code></li>
+<li>UTC · 2025-12-29 16:01:01.644 – 2025-12-29 17:31:17.371</li>
+<li>Packets · 52,602</li>
+<li>SHA-256 · <code>7b18868c20aff09e15c6bc68806a304b45af6f33d4776834238388a0666c660f</code></li>
+</ul>
+
+<p>The family and campaign come from the source post. Request timing, connection tuples, selected replies and recurrence were checked from the original PCAP. Run the search examples against your own case import.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>어느 목적지에서 HTTP 요청이 반복됐나</h2>
+<p>공개 원문은 ClickFix로 시작해 NetSupport RAT으로 이어진 사례를 소개합니다. 처음에는 공유 인프라 주소로 HTTP POST를 한 차례 보내고, 이후 다른 목적지로 POST가 반복됐다고 설명합니다. 원본 PCAP에서 <code>10.12.29.101</code>이 <code>104.21.96.46:443</code>으로 보낸 POST 한 건에는 HTTP 400이 돌아왔습니다. 별도 TCP 연결의 <code>185.39.19.96:443</code>에서는 평문 HTTP POST가 반복됐습니다. 각 목적지의 역할에 대한 원문의 해석과 패킷에서 확인한 동작을 각각 기록합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2025-12-29-ClickFix-page-sends-NetSupportRAT.pcap</code></li>
+<li>UTC · 2025-12-29 16:01:01.644 – 2025-12-29 17:31:17.371</li>
+<li>패킷 · 52,602</li>
+<li>SHA-256 · <code>7b18868c20aff09e15c6bc68806a304b45af6f33d4776834238388a0666c660f</code></li>
+</ul>
+
+<p>악성코드 계열과 캠페인 설명은 공개 원문에 근거합니다. 요청 시각, 연결 주소·포트, 선택한 응답과 반복 여부는 원본 PCAP에서 확인했습니다. 검색 예제는 자신의 수집 환경에서 검증합니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Set the workstation baseline in Splunk</h2>
+<p>Set UTC in Splunk and replace <code>&lt;CASE&gt;</code> with the tag applied during import. Search the full capture interval. If <code>_time</code> is stored as ingest time, adjust the picker and use numeric Zeek <code>ts</code> for packet-era timestamps. The searches use flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Check for connection and HTTP logs. A missing HTTP row can result from protocol recognition or input settings. TCP/443 can carry plaintext HTTP, as confirmed in the packet view for these connections.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.12.29.101 proto=tcp
+| eval minute=floor(ts/60)*60
+| stats count as connections dc(id_resp_h) as destinations values(id_resp_p) as ports by minute
+| sort 0 minute</code></pre>
+</div>
+<p>Review destination counts and ports per minute. The query counts connection records by their start time. A long-lived connection can continue sending requests after its initial minute, so use HTTP transaction times to measure recurrence.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 워크스테이션 베이스라인 확인</h2>
+<p>Splunk 표시 시간대를 UTC로 설정하고 <code>&lt;CASE&gt;</code>에 가져올 때 붙인 태그를 넣습니다. 전체 캡처 구간을 검색합니다. <code>_time</code>이 수집 시각이면 범위를 조정하고 사건 시각은 숫자형 Zeek <code>ts</code>로 읽습니다. 예제는 평탄화된 필드를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결과 HTTP 로그가 조회되는지 확인합니다. HTTP 행이 없으면 분석기의 프로토콜 인식과 수집 설정을 점검합니다. 이 사례에서는 TCP/443에서 평문 HTTP를 패킷으로 확인했습니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.12.29.101 proto=tcp
+| eval minute=floor(ts/60)*60
+| stats count as connections dc(id_resp_h) as destinations values(id_resp_p) as ports by minute
+| sort 0 minute</code></pre>
+</div>
+<p>분마다 목적지 수와 포트를 봅니다. 이 검색은 연결 시작 시각으로 연결 행을 집계합니다. 오래 열린 연결은 시작한 분 이후에도 요청을 보낼 수 있으므로 반복 여부는 HTTP 트랜잭션 시각으로 확인합니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Rank HTTP destinations and check the recurring stream</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.12.29.101 id_resp_p=443 method=POST
+    id_resp_h IN ("104.21.96.46","185.39.19.96")
+| stats count as posts dc(uid) as connections values(status_code) as response_codes
+        min(ts) as first max(ts) as last by id_resp_h
+| sort 0 - posts</code></pre>
+</div>
+<p>Compare POST count, distinct UIDs, first and last timestamps, and available reply codes. The original PCAP contains 85 distinct packet-start POST request headers to the recurring endpoint on source port 57735, counted once per TCP sequence position on that connection. This is a measurement from packet headers. Zeek's transaction count can differ because it uses its own stream parsing.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;HTTP_UID&gt;" sourcetype IN ("zeek:conn","zeek:http")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p trans_depth method status_code request_body_len</code></pre>
+</div>
+<p>Use one HTTP UID to look up its connection in the <strong>same Zeek processing run</strong>. Use <code>trans_depth</code> where present to distinguish requests on one connection. The earlier edge attempt and recurring session each have their own UID. Compare them by workstation address and time.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Rank HTTP destinations and check the recurring stream"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 29 December</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>16:02:13.009–16:02:14.180</td>
+<td>5079, 5081, 5096, 5098</td>
+<td>Two HTTP GETs to <code>80.253.249.145:80</code> and two HTTP 200 response headers</td>
+</tr>
+<tr class="even">
+<td>16:02:22.701–16:02:22.766</td>
+<td>24779, 24781</td>
+<td>Single observed POST to <code>104.21.96.46:443</code>, client port 57734, and HTTP 400</td>
+</tr>
+<tr class="odd">
+<td>16:02:22.973–16:02:23.168</td>
+<td>24789, 24790</td>
+<td>First observed POST to <code>185.39.19.96:443</code>, client port 57735, and HTTP 200</td>
+</tr>
+<tr class="even">
+<td>16:03:23.535 → 16:04:23.710</td>
+<td>25081, 25107</td>
+<td>Two later POSTs on port 57735 about 60 seconds apart</td>
+</tr>
+<tr class="odd">
+<td>17:24:31.684</td>
+<td>51715</td>
+<td>Last observed packet-start POST header on port 57735</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The one-off HTTP 400 and recurring traffic support assigning different priorities for follow-up. A negative HTTP response only describes that exchange, and approved remote support or application polling can be periodic. Execution, operator identity and the meaning of POST data require independent evidence.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · HTTP 목적지를 비교하고 반복 연결 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.12.29.101 id_resp_p=443 method=POST
+    id_resp_h IN ("104.21.96.46","185.39.19.96")
+| stats count as posts dc(uid) as connections values(status_code) as response_codes
+        min(ts) as first max(ts) as last by id_resp_h
+| sort 0 - posts</code></pre>
+</div>
+<p>POST 수, 고유 UID 수, 최초와 최종 시각, 수집된 응답 코드를 확인합니다. 원본에서는 출발지 포트 57735의 연결에서 패킷 시작부에 보이는 POST 요청 헤더가 85개였습니다. 같은 TCP 시퀀스 위치는 한 번만 셌습니다. 이 값은 패킷 헤더 기준이고, Zeek의 트랜잭션 집계는 스트림 파싱 방식에 따라 다를 수 있습니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;HTTP_UID&gt;" sourcetype IN ("zeek:conn","zeek:http")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p trans_depth method status_code request_body_len</code></pre>
+</div>
+<p>HTTP UID 하나를 선택해 <strong>같은 Zeek 처리 실행</strong>의 연결 기록을 찾습니다. <code>trans_depth</code>가 있으면 연결 하나의 여러 요청을 구분합니다. 처음 공유 인프라로 향한 TCP 연결과 반복 요청을 보낸 연결은 UID가 서로 다릅니다. 두 흐름은 워크스테이션 IP와 시각으로 대조합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · HTTP 목적지를 비교하고 반복 연결 확인"><table>
+<thead>
+<tr class="header">
+<th scope="col">12월 29일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>16:02:13.009–16:02:14.180</td>
+<td>5079, 5081, 5096, 5098</td>
+<td><code>80.253.249.145:80</code>의 HTTP GET 두 건과 각각의 HTTP 200 응답 헤더</td>
+</tr>
+<tr class="even">
+<td>16:02:22.701–16:02:22.766</td>
+<td>24779, 24781</td>
+<td>출발지 포트 57734에서 <code>104.21.96.46:443</code>으로 보낸 단발 POST와 HTTP 400</td>
+</tr>
+<tr class="odd">
+<td>16:02:22.973–16:02:23.168</td>
+<td>24789, 24790</td>
+<td>출발지 포트 57735에서 <code>185.39.19.96:443</code>으로 보낸 첫 관찰 POST와 HTTP 200</td>
+</tr>
+<tr class="even">
+<td>16:03:23.535 → 16:04:23.710</td>
+<td>25081, 25107</td>
+<td>출발지 포트 57735에서 약 60초 간격의 후속 POST 두 건</td>
+</tr>
+<tr class="odd">
+<td>17:24:31.684</td>
+<td>51715</td>
+<td>출발지 포트 57735에서 패킷 시작부에 확인한 마지막 POST</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>단발 HTTP 400과 반복 트래픽을 구분하면 후속 조사 우선순위를 정할 수 있습니다. HTTP 오류는 그 교환의 응답을 설명합니다. 승인된 원격 지원이나 애플리케이션 폴링도 주기적으로 발생할 수 있습니다. 실행 여부, 운영 주체와 POST 데이터의 의미는 별도 근거로 확인합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Compare both sessions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.12.29.101 &amp;&amp; ip.dst == 104.21.96.46 &amp;&amp; port.src == 57734 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>Set the case tag and inspect the one-off session around 16:02:22 UTC. Check the request and error response in the packet pane.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.12.29.101 &amp;&amp; ip.dst == 185.39.19.96 &amp;&amp; port.src == 57735 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>Open the recurring flow and check the first exchange and at least two later request times. Keep the source port and original frame timestamp in your notes. A split Arkime view of a long-lived connection can show its activity in more than one session record.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 두 세션 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.12.29.101 &amp;&amp; ip.dst == 104.21.96.46 &amp;&amp; port.src == 57734 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>케이스 태그를 적용하고 16:02:22 UTC 전후의 단발 세션을 엽니다. 패킷 화면에서 요청과 오류 응답을 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.12.29.101 &amp;&amp; ip.dst == 185.39.19.96 &amp;&amp; port.src == 57735 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>반복 연결에서 첫 교환과 이후 요청 시각 두 건 이상을 확인합니다. 출발지 포트와 원본 프레임 시각을 남깁니다. 오래 열린 연결은 Arkime 수집 방식에 따라 여러 세션 행으로 나뉠 수 있습니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Confirm two HTTP exchanges offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2025-12-29-ClickFix-page-sends-NetSupportRAT.pcap" -d tcp.port==57734,http -d tcp.port==57735,http \
+  -Y '(frame.number == 24779 || frame.number == 24781 || frame.number == 24789 || frame.number == 24790)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e ip.dst \
+  -e tcp.stream -e http.request.method -e http.response.code</code></pre>
+</div>
+<p>If Arkime labels TCP/443 ambiguously, this offline example applies the HTTP decoder only to the two confirmed client port numbers and displays metadata for four original frames. Compare TCP stream, direction, method and status. The filter leaves message bodies out of the output.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 두 HTTP 교환을 오프라인 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2025-12-29-ClickFix-page-sends-NetSupportRAT.pcap" -d tcp.port==57734,http -d tcp.port==57735,http \
+  -Y '(frame.number == 24779 || frame.number == 24781 || frame.number == 24789 || frame.number == 24790)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e ip.dst \
+  -e tcp.stream -e http.request.method -e http.response.code</code></pre>
+</div>
+<p>Arkime에서 TCP/443의 프로토콜이 불분명하면 확인된 클라이언트 포트 두 개에만 HTTP 디코더를 적용하고 원본 프레임 네 개의 메타데이터를 읽습니다. TCP 스트림, 방향, 메서드와 응답 상태를 대조합니다. 출력은 이 메타데이터로 제한됩니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record priority and collect corroboration</h2>
+<p>Record the capture hash, both endpoints and tuples, request counts, time range and example responses. Keep shared infrastructure separate from the recurring destination in the ticket. Ask for process-network telemetry, approved remote-support inventory, proxy records and file-creation or execution evidence. Confirm scope and business ownership before drawing conclusions about the operator or taking action against a shared address.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2025/12/29/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2025/12/29/2025-12-29-ClickFix-page-sends-NetSupportRAT.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 우선순위를 기록하고 추가 근거 요청</h2>
+<p>캡처 해시, 두 목적지와 연결 주소·포트, 요청 건수, 시각, 대표 응답을 기록합니다. 공유 인프라 주소와 반복 요청의 목적지를 티켓에서 별도로 적습니다. 프로세스 네트워크 기록, 승인된 원격지원 목록, 프록시 기록, 파일 생성·실행 증거를 요청합니다. 운영 주체를 지목하거나 공유 주소에 조치하기 전에 범위와 업무 소유자를 확인합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2025/12/29/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2025/12/29/2025-12-29-ClickFix-page-sends-NetSupportRAT.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

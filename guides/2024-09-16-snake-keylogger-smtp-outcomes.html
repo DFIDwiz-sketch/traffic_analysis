@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Snake KeyLogger · distinguish SMTP acceptance and rejection · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="snakeSmtpCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="snakeSmtpCaseTitle">Snake KeyLogger · distinguish SMTP acceptance and rejection</h1>
+      <p class="guide-meta">
+        <time datetime="2024-09-16">2024-09-16</time>
+        <span aria-hidden="true">·</span><span>SMTP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Which SMTP submission did the server accept?</a></li>
+<li><a href="#baseline">1 · Baseline mail connections in Splunk</a></li>
+<li><a href="#evidence">2 · Read the final SMTP outcome for each connection</a></li>
+<li><a href="#arkime">3 · Compare just the two SMTP sessions in Arkime</a></li>
+<li><a href="#tshark">4 · Check only the selected replies offline if needed</a></li>
+<li><a href="#incident-note">5 · Record acceptance, rejection and follow-up</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">SMTP 서버가 어느 메시지를 수락했나</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 메일 연결 베이스라인 확인</a></li>
+<li><a href="#evidence">2단계 · 연결별 최종 SMTP 결과 읽기</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 SMTP 세션 두 건 비교</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 선택한 응답만 오프라인 확인</a></li>
+<li><a href="#incident-note">5단계 · 수락과 거부를 따로 기록하고 후속 확인</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Which SMTP submission did the server accept?</h2>
+<p>The publisher identifies Snake KeyLogger activity with SMTP exfiltration. The PCAP contains two message submissions from <code>10.9.16.101</code> to <code>208.91.199.223:587</code>. In both sessions a server <code>354</code> reply preceded client message data. The first submission ended with <code>250</code>, and the second ended with <code>550</code>. This guide uses the reply after the message terminator to distinguish acceptance from rejection.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2024-09-16-Snake-KeyLogger-traffic.pcap</code></li>
+<li>UTC · 2024-09-16 20:08:31.996 – 2024-09-16 20:10:16.424</li>
+<li>Packets · 1,122</li>
+<li>SHA-256 · <code>7df46e9e79ea0bd3c31f22f0a08162999b71292038a215136f0a787851b0ef66</code></li>
+</ul>
+
+<p>The family attribution is from the publisher. The two TCP connections, protocol stages and reply codes below were checked in the original capture. The search examples are for your own ingest.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>SMTP 서버가 어느 메시지를 수락했나</h2>
+<p>공개 원문은 Snake KeyLogger가 SMTP로 데이터를 유출한 사례를 소개합니다. 원본 PCAP에서 <code>10.9.16.101</code>은 <code>208.91.199.223:587</code>로 메시지를 두 번 제출했습니다. 두 세션 모두 서버의 <code>354</code> 응답 뒤에 클라이언트가 메시지 데이터를 보냈습니다. 첫 제출에 대한 최종 응답은 <code>250</code>, 두 번째는 <code>550</code>이었습니다. 메시지 종료 표시 뒤의 응답으로 서버 수락과 거부를 구분합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2024-09-16-Snake-KeyLogger-traffic.pcap</code></li>
+<li>UTC · 2024-09-16 20:08:31.996 – 2024-09-16 20:10:16.424</li>
+<li>패킷 · 1,122</li>
+<li>SHA-256 · <code>7df46e9e79ea0bd3c31f22f0a08162999b71292038a215136f0a787851b0ef66</code></li>
+</ul>
+
+<p>악성코드 계열은 공개 원문에 근거합니다. 두 TCP 연결, 프로토콜 단계와 응답 코드는 원본 PCAP에서 확인했습니다. 검색 예제는 자신의 수집 환경에서 검증합니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline mail connections in Splunk</h2>
+<p>Replace <code>&lt;CASE&gt;</code> with the import label and display timestamps in UTC. Scope the search to the capture range. If <code>_time</code> is ingest time, include the ingest window and order events using numeric Zeek <code>ts</code>. The examples use flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Check that connection and SMTP logs arrived. A missing SMTP log can reflect analyzer or ingest coverage.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_orig_h=10.9.16.101
+    id_resp_p IN (25,465,587,2525)
+| stats count as connections values(service) as services values(conn_state) as states
+        min(ts) as first max(ts) as last by id_resp_h id_resp_p
+| sort 0 first</code></pre>
+</div>
+<p>The query counts connections to common submission and mail ports by destination. This is a starting scope. Read the connection state and service fields, then verify the recorded SMTP exchange. The original capture contains two TCP/587 connections for the selected pair, with client ports 49887 and 49888.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 메일 연결 베이스라인 확인</h2>
+<p><code>&lt;CASE&gt;</code>에 수집 때 지정한 값을 넣고 UTC로 표시합니다. 검색 범위를 캡처 구간으로 설정합니다. <code>_time</code>이 수집 시각이면 수집 구간을 포함하고 숫자형 Zeek <code>ts</code>로 사건 순서를 읽습니다. 예제는 평탄화된 필드를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결과 SMTP 로그가 조회되는지 확인합니다. SMTP 로그가 없으면 분석기와 수집 범위를 점검합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_orig_h=10.9.16.101
+    id_resp_p IN (25,465,587,2525)
+| stats count as connections values(service) as services values(conn_state) as states
+        min(ts) as first max(ts) as last by id_resp_h id_resp_p
+| sort 0 first</code></pre>
+</div>
+<p>일반적인 메일 및 메시지 제출 포트에 해당하는 연결을 목적지별로 집계합니다. 연결 상태와 서비스 분류로 범위를 좁힌 뒤 패킷에서 SMTP 교환을 확인합니다. 원본에서 선택한 두 호스트 사이에는 TCP/587 연결 두 개가 있으며, 클라이언트 포트는 49887과 49888입니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Read the final SMTP outcome for each connection</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:smtp pcap_case="&lt;CASE&gt;"
+    id_orig_h=10.9.16.101 id_resp_h=208.91.199.223 id_resp_p=587
+| sort 0 ts
+| table ts uid id_orig_p trans_depth tls last_reply</code></pre>
+</div>
+<p>Use the selected SMTP rows to identify source port, TLS status and <code>last_reply</code> where present. A reply after another command can be the last reply recorded, so verify its position in the exchange. A <code>354</code> is permission to send message data. Evaluate acceptance only after the message terminator.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" uid="&lt;SMTP_UID&gt;"
+| table ts uid id_orig_h id_orig_p id_resp_h id_resp_p conn_state orig_bytes resp_bytes missed_bytes</code></pre>
+</div>
+<p>Use each SMTP UID with its <code>zeek:conn</code> data from the <strong>same Zeek processing run</strong>. If you loaded the capture twice, select one run. The two SMTP sessions have different UIDs. A TCP connection state describes transport. SMTP replies describe what the server said about the transaction.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Read the final SMTP outcome for each connection"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 16 September</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>20:08:50.690–20:08:50.785</td>
+<td>136, 138</td>
+<td>Source port 49887 sends <code>DATA</code>, and server replies <code>354</code></td>
+</tr>
+<tr class="even">
+<td>20:08:50.790–20:08:51.441</td>
+<td>153, 155</td>
+<td>Message terminator and server <code>250</code> acceptance</td>
+</tr>
+<tr class="odd">
+<td>20:08:53.710–20:08:53.799</td>
+<td>182, 184</td>
+<td>Source port 49888 sends <code>DATA</code>, and server replies <code>354</code></td>
+</tr>
+<tr class="even">
+<td>20:08:54.365–20:08:55.247</td>
+<td>1089, 1106</td>
+<td>Message terminator and server <code>550</code> rejection</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The second connection still carried client data before rejection. The first reply confirms acceptance by the observed server. Final mailbox delivery requires mail-side evidence. An approved application notification could produce accepted and rejected submissions. Use the source process, relay policy and case context to evaluate that explanation.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · 연결별 최종 SMTP 결과 읽기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:smtp pcap_case="&lt;CASE&gt;"
+    id_orig_h=10.9.16.101 id_resp_h=208.91.199.223 id_resp_p=587
+| sort 0 ts
+| table ts uid id_orig_p trans_depth tls last_reply</code></pre>
+</div>
+<p>SMTP 행에서 출발지 포트, TLS 상태와 <code>last_reply</code>를 확인합니다. 다른 명령에 대한 응답이 마지막으로 기록될 수도 있으므로 교환 내 위치를 확인합니다. <code>354</code>는 메시지 데이터를 보내도 된다는 뜻입니다. 서버의 수락 여부는 메시지 종료 표시 이후의 응답으로 판단합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" uid="&lt;SMTP_UID&gt;"
+| table ts uid id_orig_h id_orig_p id_resp_h id_resp_p conn_state orig_bytes resp_bytes missed_bytes</code></pre>
+</div>
+<p>각 SMTP UID로 <strong>같은 Zeek 처리 실행</strong>의 <code>zeek:conn</code> 기록을 찾습니다. 두 번 가져온 캡처라면 한 실행으로 제한합니다. 두 SMTP 세션의 UID는 서로 다릅니다. TCP 연결 상태는 전송 계층을 설명하고 SMTP 응답은 서버의 처리 결과를 설명합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · 연결별 최종 SMTP 결과 읽기"><table>
+<thead>
+<tr class="header">
+<th scope="col">9월 16일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>20:08:50.690–20:08:50.785</td>
+<td>136, 138</td>
+<td>출발지 포트 49887에서 <code>DATA</code>, 서버의 <code>354</code> 응답</td>
+</tr>
+<tr class="even">
+<td>20:08:50.790–20:08:51.441</td>
+<td>153, 155</td>
+<td>메시지 종료 표시와 서버의 <code>250</code> 수락 응답</td>
+</tr>
+<tr class="odd">
+<td>20:08:53.710–20:08:53.799</td>
+<td>182, 184</td>
+<td>출발지 포트 49888에서 <code>DATA</code>, 서버의 <code>354</code> 응답</td>
+</tr>
+<tr class="even">
+<td>20:08:54.365–20:08:55.247</td>
+<td>1089, 1106</td>
+<td>메시지 종료 표시와 서버의 <code>550</code> 거부 응답</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>두 번째 연결도 거부 응답 전에 클라이언트 데이터를 전송했습니다. 첫 응답에서 확인한 범위는 관찰된 서버의 수락까지입니다. 수신함 배달은 메일 시스템의 추가 근거가 필요합니다. 승인된 애플리케이션 알림도 수락과 거부를 모두 겪을 수 있으므로 출발지 프로세스와 릴레이 정책을 대조합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Compare just the two SMTP sessions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.9.16.101 &amp;&amp; ip.dst == 208.91.199.223 &amp;&amp; port.src == 49887 &amp;&amp; port.dst == 587</code></pre>
+</div>
+<p>Apply the tag and UTC interval, then note the direction and reply after the end of message data on source port 49887.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.9.16.101 &amp;&amp; ip.dst == 208.91.199.223 &amp;&amp; port.src == 49888 &amp;&amp; port.dst == 587</code></pre>
+</div>
+<p>Check the same phase on source port 49888. Use the tuple and time to align with the original frames. Keep packet review and ticket excerpts limited to commands, timings and reply codes.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 SMTP 세션 두 건 비교</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.9.16.101 &amp;&amp; ip.dst == 208.91.199.223 &amp;&amp; port.src == 49887 &amp;&amp; port.dst == 587</code></pre>
+</div>
+<p>케이스 태그와 UTC 구간을 적용합니다. 출발지 포트 49887에서 메시지 데이터 종료 이후 응답과 방향을 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.9.16.101 &amp;&amp; ip.dst == 208.91.199.223 &amp;&amp; port.src == 49888 &amp;&amp; port.dst == 587</code></pre>
+</div>
+<p>출발지 포트 49888에서도 같은 단계를 확인합니다. 주소·포트와 시각을 원본 프레임과 대조합니다. 패킷 조사와 티켓 발췌에는 명령 이름, 시각과 응답 코드를 사용합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Check only the selected replies offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2024-09-16-Snake-KeyLogger-traffic.pcap" \
+  -Y '(frame.number == 138 || frame.number == 155 || frame.number == 184 || frame.number == 1106)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.dstport -e smtp.response.code</code></pre>
+</div>
+<p>If Arkime leaves the SMTP reply ambiguous, compare the four selected replies in the original capture. Use the destination port to distinguish the client connections, and read the <code>354</code> and final replies in sequence.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 선택한 응답만 오프라인 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2024-09-16-Snake-KeyLogger-traffic.pcap" \
+  -Y '(frame.number == 138 || frame.number == 155 || frame.number == 184 || frame.number == 1106)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.dstport -e smtp.response.code</code></pre>
+</div>
+<p>Arkime에서 SMTP 응답이 분명하지 않다면 원본의 응답 네 개를 대조합니다. 응답 패킷의 목적지 포트로 클라이언트 연결을 구분하고 <code>354</code>와 최종 응답을 순서대로 봅니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record acceptance, rejection and follow-up</h2>
+<p>Record the capture hash, the tuples and the two different outcomes. Ask the mail team for submission and relay logs and the endpoint team to identify the originating process. Verify approved service-account use and delivery records before assessing recipients or exposure. Keep message content and authentication data in the appropriate restricted evidence channel.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2024/09/16/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2024/09/16/2024-09-16-Snake-KeyLogger-traffic.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smtp.html">Zeek SMTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smtp.html">Wireshark SMTP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 수락과 거부를 따로 기록하고 후속 확인</h2>
+<p>캡처 해시, 두 연결의 주소·포트와 각 결과를 남깁니다. 메일 담당자에게 제출 및 릴레이 로그를 요청하고 호스트 담당자에게 실행 프로세스를 확인합니다. 수신자나 노출 범위를 판단하기 전에 승인된 서비스 계정 활동과 배달 기록을 대조합니다. 메시지 내용이나 인증 데이터는 접근이 제한된 증거 경로에서 관리합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2024/09/16/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2024/09/16/2024-09-16-Snake-KeyLogger-traffic.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smtp.html">Zeek SMTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smtp.html">Wireshark SMTP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

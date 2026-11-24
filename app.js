@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    snakeSmtpCaseTitle: "Snake KeyLogger · distinguish SMTP acceptance and rejection",
+    snakeSmtpCaseSummary: "Compare two outbound mail submissions at the final SMTP reply.",
+    netSupportRecurrenceCaseTitle: "NetSupport RAT · separate a one-off POST from recurring traffic",
+    netSupportRecurrenceCaseSummary: "Compare the two HTTP destinations, their responses and connection timelines.",
     raspberryRobinTlsCaseTitle: "Raspberry Robin · scope encrypted traffic after a reported WebDAV download",
     raspberryRobinTlsCaseSummary: "Use visible TLS handshake metadata to track early and later connections.",
     agentTeslaFtpCaseTitle: "AgentTesla · verify uploads across FTP control and data channels",
@@ -63,6 +67,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    snakeSmtpCaseTitle: "Snake KeyLogger · SMTP 메시지 수락과 거부 구분",
+    snakeSmtpCaseSummary: "외부 메일 제출 두 건을 최종 SMTP 응답으로 구분합니다.",
+    netSupportRecurrenceCaseTitle: "NetSupport RAT · 단발 POST와 반복 트래픽 구분",
+    netSupportRecurrenceCaseSummary: "두 HTTP 목적지의 응답과 연결 타임라인을 대조합니다.",
     raspberryRobinTlsCaseTitle: "Raspberry Robin · WebDAV 다운로드 보고와 TLS 타임라인",
     raspberryRobinTlsCaseSummary: "TLS 핸드셰이크에서 보이는 메타데이터로 초기와 후속 연결을 추적합니다.",
     agentTeslaFtpCaseTitle: "AgentTesla · FTP 제어·데이터 채널로 업로드 확인",
