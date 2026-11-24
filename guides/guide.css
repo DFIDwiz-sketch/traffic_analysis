@@ -68,14 +68,14 @@
   line-height: 1.45;
 }
 
-.guide-toc a:hover { background: #eaf0ff; text-decoration: underline; }
+.guide-toc a:hover { background: var(--surface-selected); text-decoration: underline; }
 
 .guide-article {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 1rem;
   padding: clamp(1rem, 3vw, 2.5rem);
-  background: white;
+  background: var(--surface);
   line-height: 1.68;
 }
 
@@ -90,8 +90,8 @@
 .guide-article code {
   border-radius: .25rem;
   padding: .08em .22em;
-  color: #183065;
-  background: #edf1fa;
+  color: var(--code-text);
+  background: var(--code-background);
   font: .88em ui-monospace, Consolas, monospace;
   overflow-wrap: anywhere;
 }
@@ -117,9 +117,9 @@
   vertical-align: top;
 }
 
-.guide-table th { color: #233a71; background: #eef3ff; }
+.guide-table th { color: var(--table-text); background: var(--table-header); }
 .guide-table td { border-top: 1px solid var(--line); }
-.guide-table tr:nth-child(even) td { background: #f8faff; }
+.guide-table tr:nth-child(even) td { background: var(--table-stripe); }
 
 html[lang="ko"] :is(.guide-header, .guide-toc, .guide-article) {
   word-break: keep-all;
@@ -134,6 +134,6 @@ html[lang="ko"] :is(.guide-header, .guide-toc, .guide-article) {
     border: 1px solid var(--line);
     border-radius: .8rem;
     padding: .85rem;
-    background: #fff;
+    background: var(--surface);
   }
 }
