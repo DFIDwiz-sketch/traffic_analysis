@@ -11,6 +11,11 @@ const copy = {
     resources: "Resources",
     skip: "Skip to content",
     language: "Language",
+    guideTitle: "Recognizing Encodings and Decoding with CyberChef",
+    guideSummary: "Identify unfamiliar encodings in traffic captures and choose the right CyberChef operation for each layer.",
+    guideDate: "24 November 2026",
+    guideContents: "On this page",
+    backToAnalysis: "Back to Traffic Analysis",
   },
   ko: {
     brand: "트래픽 분석",
@@ -24,6 +29,11 @@ const copy = {
     resources: "자료실",
     skip: "본문으로 건너뛰기",
     language: "언어",
+    guideTitle: "인코딩 알아보기와 CyberChef 해독 가이드",
+    guideSummary: "트래픽 캡처에서 낯선 인코딩을 구분하고, 각 겹에 맞는 CyberChef 작업을 고르는 방법을 알아봅니다.",
+    guideDate: "2026년 11월 24일",
+    guideContents: "목차",
+    backToAnalysis: "트래픽 분석으로 돌아가기",
   },
 };
 
@@ -45,7 +55,8 @@ function preferredLanguage() {
 function showLanguage(language) {
   const strings = copy[language];
   document.documentElement.lang = language;
-  document.title = strings.brand;
+  const titleKey = document.body.dataset.title;
+  document.title = titleKey ? `${strings[titleKey]} · ${strings.brand}` : strings.brand;
 
   for (const element of document.querySelectorAll("[data-copy]")) {
     element.textContent = strings[element.dataset.copy];
@@ -55,6 +66,9 @@ function showLanguage(language) {
   }
   for (const button of buttons) {
     button.setAttribute("aria-pressed", button.dataset.language === language);
+  }
+  for (const element of document.querySelectorAll("[data-guide-language]")) {
+    element.hidden = element.lang !== language;
   }
 }
 
@@ -90,6 +104,8 @@ for (const button of buttons) {
   });
 }
 
-window.addEventListener("hashchange", () => showSection(true));
 showLanguage(preferredLanguage());
-showSection();
+if (panels.size) {
+  window.addEventListener("hashchange", () => showSection(true));
+  showSection();
+}

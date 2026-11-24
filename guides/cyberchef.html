@@ -1,0 +1,1654 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>Recognizing Encodings and Decoding with CyberChef · Traffic Analysis</title>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="guideTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#analysis" data-copy="backToAnalysis">Back to Traffic Analysis</a>
+      <h1 data-copy="guideTitle">Recognizing Encodings and Decoding with CyberChef</h1>
+      <p class="guide-meta">
+        <time datetime="2026-11-24" data-copy="guideDate">24 November 2026</time>
+        <span aria-hidden="true">·</span><span>@Sung Lee</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+
+<ul lang="en" data-guide-language>
+<li><a href="#choose-a-decoder">How to choose a decoder</a></li>
+<li><a href="#recognize-encodings">Recognizing common encodings</a></li>
+<li><a href="#file-signatures">Common prefixes and file signatures</a></li>
+<li><a href="#xor">When to suspect XOR</a></li>
+<li><a href="#cribs">Choosing a crib</a></li>
+<li><a href="#code-to-cyberchef">Mapping code to CyberChef operations</a></li>
+<li><a href="#worked-examples">Worked examples</a></li>
+<li><a href="#tools-and-mistakes">CyberChef tools and common mistakes</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#choose-a-decoder">판단 순서</a></li>
+<li><a href="#recognize-encodings">글자 모양으로 인코딩 알아보기</a></li>
+<li><a href="#file-signatures">자주 보는 시작 글자와 파일 시그니처</a></li>
+<li><a href="#xor">XOR — 언제 의심하고 어떻게 푸나</a></li>
+<li><a href="#cribs">Crib 고르는 법</a></li>
+<li><a href="#code-to-cyberchef">코드 함수 → CyberChef 번역표</a></li>
+<li><a href="#worked-examples">실제 예시</a></li>
+<li><a href="#tools-and-mistakes">CyberChef 도움 기능과 흔한 실수</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<div lang="en" data-guide-language>
+<p>When a traffic capture contains unreadable text, start by looking at its shape and choosing a CyberChef operation that fits. <strong>Decode one layer, inspect the result, then choose the next operation.</strong></p>
+</div>
+<div lang="ko" data-guide-language hidden>
+<p>트래픽 분석에서 만나는 알아볼 수 없는 글자를 <strong>모양으로 구별하고</strong>, 맞는 CyberChef 작업을 고르는 방법을 정리했어요. 핵심은 한 번에 다 풀려고 하지 않고, <strong>한 겹 풀고 → 결과 모양을 다시 보고 → 다음 겹을 고르는 것</strong>이에요.</p>
+</div>
+<section id="choose-a-decoder">
+<div lang="en" data-guide-language>
+<h2>How to choose a decoder</h2>
+<p>Use the following checks whenever you find unfamiliar text. After peeling off a layer, start again from step 1. Malware traffic can have several layers. For example, an analyst might decode Hex, then XOR, then URL encoding.</p>
+<ol type="1">
+<li><strong>Isolate the value.</strong> Remove enclosing quotes, field labels such as <code>a=</code>, and any formatting whitespace or line breaks that are outside the data. Paste the value into CyberChef and check the character count beside <code>ABC</code>.</li>
+<li><strong>Look at the character set.</strong> Is it limited to <code>0-9a-f</code>? Does it use <code>A-Z a-z 0-9 + /</code>, possibly with <code>=</code> at the end? Do you see many percent signs, or markers like <code>\x</code>, <code>\u</code>, or <code>&amp;#</code>? Compare it with the table below.</li>
+<li><strong>Check the length.</strong> A complete sequence of Hex bytes has an even number of digits. Padded Base64 has a length divisible by four.</li>
+<li><strong>Check the prefix.</strong> Strings beginning with <code>TVqQ</code>, <code>H4sI</code>, <code>aHR0c</code>, or <code>4d5a</code> can suggest what is inside.</li>
+<li><strong>Read the surrounding code.</strong> Functions such as <code>atob</code>, <code>getUrl</code>, and <code>FromBase64String</code> can show how a value is decoded.</li>
+<li><strong>Decode one layer and inspect the output.</strong>
+<ul>
+<li>If you get readable text, stop or check for another pattern such as <code>%xx</code>.</li>
+<li>If the output resembles another encoding, such as Base64 or Hex, use the character-set check again.</li>
+<li>If you see a recognizable file signature, such as <code>MZ</code>, <code>PK</code>, or <code>1f8b</code>, identify the file type. Decompress recognized compressed data in your analysis environment. Stop if you find an executable.</li>
+<li>If you get unrecognizable bytes, consider XOR, compression, or encryption.</li>
+</ul></li>
+<li><strong>Try Magic when you get stuck.</strong> It tests common operations and suggests candidate outputs for you to inspect.</li>
+<li><strong>Know when to stop.</strong> Entropy close to 8 bits per byte and an absence of obvious repetition can suggest compression or encryption. Entropy is a clue. If you cannot identify the format or obtain the key for confirmed encryption, document what you observed and escalate for malware analysis.</li>
+</ol>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>판단 순서</h2>
+<p>알아볼 수 없는 글자를 만나면 아래 순서대로 확인해요. 한 단계를 풀 때마다 <strong>결과를 다시 1번부터</strong> 봐요. 악성코드 트래픽에는 여러 겹이 겹칠 수 있어요(예: Hex → XOR → URL 인코딩).</p>
+<ol type="1">
+<li><strong>앞뒤를 다듬어요.</strong> 따옴표, <code>a=</code> 같은 이름 부분, 공백, 줄바꿈을 빼고 <strong>데이터만</strong> Input에 넣어요. CyberChef 아래의 <code>ABC</code> 글자 수가 예상과 맞는지 봐요.</li>
+<li><strong>쓰인 글자의 종류(문자 집합)를 봐요.</strong> <code>0-9a-f</code>뿐인가? <code>A-Z a-z 0-9 + /</code>에 끝이 <code>=</code>인가? <code>%</code>가 많은가? <code>\x</code>, <code>\u</code>, <code>&amp;#</code>가 보이는가? → 다음 섹션의 표에서 찾아요.</li>
+<li><strong>길이를 봐요.</strong> 완전한 바이트를 나타내는 Hex는 짝수, 패딩을 포함한 Base64는 4의 배수예요.</li>
+<li><strong>시작 글자를 봐요.</strong> <code>TVqQ</code>, <code>H4sI</code>, <code>aHR0c</code>, <code>4d5a</code>처럼 자주 나오는 접두어가 있어요(시작 글자 섹션).</li>
+<li><strong>주변 코드를 봐요.</strong> 글자를 감싼 함수(<code>atob</code>, <code>getUrl</code>, <code>FromBase64String</code>)가 있으면 <strong>그 함수가 해독 방법</strong>이에요(번역표 섹션).</li>
+<li><strong>한 겹 풀고 결과를 판단해요.</strong>
+<ul>
+<li>읽을 수 있는 글자 → 끝, 또는 여전히 <code>%xx</code>가 있으면 URL Decode</li>
+<li>또 인코딩 모양(Base64, Hex) → 2번으로</li>
+<li>파일 시그니처(<code>MZ</code>, <code>PK</code>, <code>1f8b</code>) → 파일이에요. 압축이면 풀고, 실행 파일이면 멈춰요</li>
+<li>알아볼 수 없는 바이트 → XOR이나 압축, 암호화를 의심해요(XOR 섹션)</li>
+</ul></li>
+<li><strong>막히면 Magic을 써요.</strong> CyberChef의 <strong>Magic</strong> 작업은 흔한 해독을 자동으로 시험해서 그럴듯한 결과를 보여 줘요(도움 기능 섹션).</li>
+<li><strong>멈출 때를 알아요.</strong> Entropy가 8에 가깝고 반복 무늬가 없으면 압축이나 암호화를 의심할 수 있어요. Entropy만으로 둘을 구분할 수는 없어요. 형식을 확인하기 어렵거나 암호화가 확인됐는데 키가 없다면, 관찰한 내용을 티켓에 적고 악성코드 분석 담당에게 넘겨요.</li>
+</ol>
+</div>
+</section>
+<section id="recognize-encodings">
+<div lang="en" data-guide-language>
+<h2>Recognizing common encodings</h2>
+<p>The characters used are often your best starting clue. The Base64 alphabet includes the letters and digits used by Hex. If a string consists entirely of Hex digits and has an even length, try Hex first.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Recognizing common encodings"><table>
+<thead>
+<tr>
+<th scope="col">What it looks like</th>
+<th scope="col">Example</th>
+<th scope="col">Format</th>
+<th scope="col">CyberChef operation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Only <code>0-9</code>, <code>a-f</code>, or <code>A-F</code>, with an even length</td>
+<td><code>075d6d603e65</code></td>
+<td>Hex</td>
+<td>From Hex</td>
+</tr>
+<tr>
+<td>Byte pairs separated by spaces, commas, or colons</td>
+<td><code>4d 5a 90 00</code>, <code>4d:5a:90</code></td>
+<td>Delimited Hex</td>
+<td>From Hex (Delimiter Auto)</td>
+</tr>
+<tr>
+<td>Each byte starts with <code>\x</code></td>
+<td><code>\x4d\x5a</code></td>
+<td>Hex escapes</td>
+<td>From Hex or Unescape string</td>
+</tr>
+<tr>
+<td>Each byte starts with <code>0x</code></td>
+<td><code>0x4d,0x5a</code></td>
+<td>Hex literals in code</td>
+<td>From Hex (Delimiter Auto)</td>
+</tr>
+<tr>
+<td><code>A-Z a-z 0-9 + /</code>, sometimes ending with <code>=</code> or <code>==</code></td>
+<td><code>aHR0cDovL2V4YW1wbGU=</code></td>
+<td>Base64</td>
+<td>From Base64</td>
+</tr>
+<tr>
+<td><code>- _</code> in place of <code>+ /</code></td>
+<td><code>-_8</code></td>
+<td>Base64url</td>
+<td>From Base64 (URL-safe alphabet)</td>
+</tr>
+<tr>
+<td>Uppercase <code>A-Z</code> and digits <code>2-7</code>, sometimes with trailing <code>=</code></td>
+<td><code>NBSWY3DP</code></td>
+<td>Base32</td>
+<td>From Base32</td>
+</tr>
+<tr>
+<td>Many percent signs followed by two Hex digits</td>
+<td><code>C%3A%5CUsers%5C</code></td>
+<td>URL encoding</td>
+<td>URL Decode</td>
+</tr>
+<tr>
+<td><code>%25</code> followed by characters that form another escape after decoding</td>
+<td><code>%253A</code></td>
+<td>Possibly nested URL encoding</td>
+<td>URL Decode, inspect, then decode again if needed</td>
+</tr>
+<tr>
+<td><code>&amp;lt;</code>, <code>&amp;#60;</code>, or <code>&amp;#x3C;</code></td>
+<td><code>&amp;lt;script&amp;gt;</code></td>
+<td>HTML entities</td>
+<td>From HTML Entity</td>
+</tr>
+<tr>
+<td><code>\u</code> followed by four Hex digits</td>
+<td><code>\u0068\u0074</code></td>
+<td>Unicode escapes</td>
+<td>Unescape Unicode Characters</td>
+</tr>
+<tr>
+<td>Comma-separated decimal values, often in the range 32–126</td>
+<td><code>104,116,116,112</code></td>
+<td>Character codes</td>
+<td>From Charcode (Comma, Base 10)</td>
+</tr>
+<tr>
+<td>Space-separated decimal values</td>
+<td><code>104 116 116 112</code></td>
+<td>Decimal bytes</td>
+<td>From Decimal</td>
+</tr>
+<tr>
+<td>A backslash followed by three digits</td>
+<td><code>\150\164</code></td>
+<td>Octal escapes</td>
+<td>From Octal</td>
+</tr>
+<tr>
+<td>Groups of eight zeros and ones</td>
+<td><code>01101000</code></td>
+<td>Binary</td>
+<td>From Binary</td>
+</tr>
+<tr>
+<td>Garbled letters with punctuation and digits preserved</td>
+<td><code>uggc://rknzcyr.pbz</code></td>
+<td>ROT13</td>
+<td>ROT13</td>
+</tr>
+<tr>
+<td>An address written backwards</td>
+<td><code>moc.elpmaxe//:ptth</code></td>
+<td>Reversed text</td>
+<td>Reverse</td>
+</tr>
+<tr>
+<td>Extra characters interleaved with an address</td>
+<td><code>h(t{t;p</code></td>
+<td>Interleaved text</td>
+<td>Find / Replace (Regex)</td>
+</tr>
+<tr>
+<td>A NUL byte after each ASCII character</td>
+<td><code>h\0t\0t\0p\0</code></td>
+<td>Possible UTF-16LE text</td>
+<td>Decode text (UTF-16LE 1200) or Remove null bytes for ASCII-only samples</td>
+</tr>
+<tr>
+<td>Unreadable bytes with unusually frequent repeated values</td>
+<td>Output after From Hex</td>
+<td>Possible XOR</td>
+<td>XOR Brute Force if the context supports it</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>Points that often cause confusion</strong></p>
+<ul>
+<li><strong>Hex vs. Base64.</strong> Letters beyond <code>A–F</code> or <code>a–f</code> rule out plain Hex. An odd number of digits cannot represent complete Hex byte pairs.</li>
+<li><strong>Base64 padding is sometimes absent.</strong> Some values need no padding, and some formats omit it. When present, <code>=</code> padding belongs at the end. An internal <code>=</code> can separate a field name from its value.</li>
+<li><strong>Interpret URL escapes in context.</strong> For form-encoded data, <code>+</code> can represent a space. Decode the outermost layer first. In the POST example below, URL escapes only appeared after removing Hex and XOR.</li>
+</ul>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>글자 모양으로 인코딩 알아보기</h2>
+<p><strong>쓰인 글자의 종류</strong>가 가장 큰 단서예요. 위에서부터 차례로 맞춰 보세요. Hex에 쓰이는 글자(<code>0-9a-f</code>)는 Base64에도 들어 있어서, <strong><code>0-9a-f</code>뿐이면 Hex를 먼저</strong> 시험해요.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="글자 모양으로 인코딩 알아보기"><table>
+<thead>
+<tr>
+<th scope="col">보이는 모양</th>
+<th scope="col">예</th>
+<th scope="col">인코딩</th>
+<th scope="col">CyberChef 작업</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0-9</code>, <code>a-f</code>(또는 <code>A-F</code>)만, 길이 짝수</td>
+<td><code>075d6d603e65</code></td>
+<td>Hex</td>
+<td>From Hex</td>
+</tr>
+<tr>
+<td>두 글자마다 공백·쉼표·<code>:</code></td>
+<td><code>4d 5a 90 00</code>, <code>4d:5a:90</code></td>
+<td>Hex(구분자 있음)</td>
+<td>From Hex (Delimiter Auto)</td>
+</tr>
+<tr>
+<td><code>\x</code>가 앞에 붙음</td>
+<td><code>\x4d\x5a</code></td>
+<td>Hex 이스케이프</td>
+<td>From Hex 또는 Unescape string</td>
+</tr>
+<tr>
+<td><code>0x</code>가 앞에 붙음</td>
+<td><code>0x4d,0x5a</code></td>
+<td>Hex(C/파이썬 코드)</td>
+<td>From Hex (Delimiter Auto)</td>
+</tr>
+<tr>
+<td><code>A-Z a-z 0-9 + /</code>, 끝에 <code>=</code> 또는 <code>==</code>가 붙을 수 있음</td>
+<td><code>aHR0cDovL2V4YW1wbGU=</code></td>
+<td>Base64</td>
+<td>From Base64</td>
+</tr>
+<tr>
+<td>위와 같은데 <code>+ /</code> 대신 <code>- _</code></td>
+<td><code>-_8</code></td>
+<td>Base64 URL-safe</td>
+<td>From Base64 (Alphabet: URL safe)</td>
+</tr>
+<tr>
+<td>대문자 <code>A-Z</code>와 숫자 <code>2-7</code>만, 끝에 <code>=</code>가 붙을 수 있음</td>
+<td><code>NBSWY3DP</code></td>
+<td>Base32</td>
+<td>From Base32</td>
+</tr>
+<tr>
+<td><code>%</code> + Hex 두 글자가 많음</td>
+<td><code>C%3A%5CUsers%5C</code></td>
+<td>URL 인코딩</td>
+<td>URL Decode</td>
+</tr>
+<tr>
+<td><code>%25</code>를 푼 뒤에도 <code>%xx</code>가 남을 수 있음</td>
+<td><code>%253A</code></td>
+<td>중첩된 URL 인코딩 가능성</td>
+<td>URL Decode 후 확인하고 필요하면 다시 적용</td>
+</tr>
+<tr>
+<td><code>&amp;lt;</code>, <code>&amp;#60;</code>, <code>&amp;#x3C;</code></td>
+<td><code>&amp;lt;script&amp;gt;</code></td>
+<td>HTML 엔티티</td>
+<td>From HTML Entity</td>
+</tr>
+<tr>
+<td><code>\u</code> + Hex 네 글자</td>
+<td><code>\u0068\u0074</code></td>
+<td>유니코드 이스케이프</td>
+<td>Unescape Unicode Characters</td>
+</tr>
+<tr>
+<td>쉼표로 나뉜 10진수(대부분 32~126)</td>
+<td><code>104,116,116,112</code></td>
+<td>문자 코드(Charcode)</td>
+<td>From Charcode (Delimiter Comma, Base 10)</td>
+</tr>
+<tr>
+<td>공백으로 나뉜 10진수</td>
+<td><code>104 116 116 112</code></td>
+<td>10진수</td>
+<td>From Decimal</td>
+</tr>
+<tr>
+<td><code>\</code> + 숫자 세 개</td>
+<td><code>\150\164</code></td>
+<td>8진수</td>
+<td>From Octal</td>
+</tr>
+<tr>
+<td><code>0</code>과 <code>1</code>만, 8개씩</td>
+<td><code>01101000</code></td>
+<td>2진수</td>
+<td>From Binary</td>
+</tr>
+<tr>
+<td>영어 글자 모양인데 읽을 수 없음, 기호·숫자는 그대로</td>
+<td><code>uggc://rknzcyr.pbz</code></td>
+<td>ROT13</td>
+<td>ROT13</td>
+</tr>
+<tr>
+<td>거꾸로 쓴 주소</td>
+<td><code>moc.elpmaxe//:ptth</code></td>
+<td>뒤집기</td>
+<td>Reverse</td>
+</tr>
+<tr>
+<td>주소 글자 사이사이에 쓰레기 글자</td>
+<td><code>h(t{t;p</code></td>
+<td>글자 섞기</td>
+<td>Find / Replace(Regex)로 골라내기</td>
+</tr>
+<tr>
+<td>글자 사이마다 NUL(<code>\0</code>, <code>00</code>)</td>
+<td><code>h\0t\0t\0p\0</code></td>
+<td>UTF-16LE 텍스트</td>
+<td>Decode text (UTF-16LE 1200) 또는 ASCII 범위 예시에 한해 Remove null bytes</td>
+</tr>
+<tr>
+<td>읽을 수 없는 바이트, 같은 바이트가 자주 반복</td>
+<td>From Hex 뒤의 깨진 글자</td>
+<td>XOR 가능성</td>
+<td>XOR Brute Force (XOR 섹션)</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>헷갈리기 쉬운 점</strong></p>
+<ul>
+<li><strong>Hex인지 Base64인지:</strong> <code>A–F</code>나 <code>a–f</code> 범위를 벗어난 알파벳이 섞여 있으면 순수한 Hex가 아니에요. 길이가 홀수여도 Hex가 아니에요(앞뒤에 다른 글자가 붙었는지도 확인).</li>
+<li><strong>Base64에 <code>=</code>가 없을 수도 있어요.</strong> 길이가 딱 맞으면 <code>=</code>가 필요 없어요. 패딩인 <code>=</code>는 끝에만 와요. 중간의 <code>=</code>는 <code>이름=값</code>을 나누는 구분자일 수 있어요.</li>
+<li><strong>URL 인코딩은 데이터가 오간 맥락을 보고 풀어요.</strong> 웹 폼 인코딩의 <code>+</code>는 공백을 뜻할 수 있어요. 바깥쪽부터 풀고, 아래 POST 사례처럼 Hex와 XOR을 푼 뒤에 <code>%xx</code>가 보이면 그때 URL Decode를 적용해요.</li>
+</ul>
+</div>
+</section>
+<section id="file-signatures">
+<div lang="en" data-guide-language>
+<h2>Common prefixes and file signatures</h2>
+<p>Many file formats start with recognizable bytes called signatures or magic numbers. Encoded prefixes can help you choose a next step. Check the decoded bytes before drawing a conclusion.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Common prefixes and file signatures"><table>
+<thead>
+<tr>
+<th scope="col">Likely content</th>
+<th scope="col">Initial bytes or text</th>
+<th scope="col">Hex prefix</th>
+<th scope="col">Common Base64 prefix</th>
+<th scope="col">Next step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows executable or DLL</td>
+<td><code>MZ</code></td>
+<td><code>4d5a</code></td>
+<td><code>TVqQ</code> is common</td>
+<td>Verify the format and hash the file without executing it</td>
+</tr>
+<tr>
+<td>gzip</td>
+<td><code>1f 8b 08</code></td>
+<td><code>1f8b08</code></td>
+<td><code>H4sI</code></td>
+<td>Gunzip</td>
+</tr>
+<tr>
+<td>zlib</td>
+<td><code>78 9c</code>, <code>78 01</code>, or <code>78 da</code></td>
+<td><code>789c</code> for one common header</td>
+<td><code>eJ</code> for that header</td>
+<td>Zlib Inflate</td>
+</tr>
+<tr>
+<td>ZIP, DOCX, XLSX, or JAR</td>
+<td><code>PK\x03\x04</code></td>
+<td><code>504b0304</code></td>
+<td><code>UEsDB</code></td>
+<td>Unzip</td>
+</tr>
+<tr>
+<td>PDF</td>
+<td><code>%PDF-</code></td>
+<td><code>255044462d</code></td>
+<td><code>JVBERi0</code></td>
+<td>Analyze as a PDF</td>
+</tr>
+<tr>
+<td>Legacy Office document (DOC, XLS)</td>
+<td><code>D0 CF 11 E0</code></td>
+<td><code>d0cf11e0</code></td>
+<td><code>0M8R4</code></td>
+<td>Inspect with document or macro-analysis tools</td>
+</tr>
+<tr>
+<td>Linux executable (ELF)</td>
+<td><code>\x7fELF</code></td>
+<td><code>7f454c46</code></td>
+<td><code>f0VMR</code></td>
+<td>Stop and hash the file</td>
+</tr>
+<tr>
+<td>PNG image</td>
+<td><code>\x89PNG</code></td>
+<td><code>89504e47</code></td>
+<td><code>iVBORw0KGgo</code></td>
+<td>Render Image</td>
+</tr>
+<tr>
+<td>JPEG image</td>
+<td><code>FF D8 FF</code></td>
+<td><code>ffd8ff</code></td>
+<td><code>/9j/</code></td>
+<td>Render Image</td>
+</tr>
+<tr>
+<td>HTTP URL</td>
+<td><code>http://</code></td>
+<td><code>687474703a2f2f</code></td>
+<td><code>aHR0cDovL</code></td>
+<td>Read the text</td>
+</tr>
+<tr>
+<td>HTTPS URL</td>
+<td><code>https://</code></td>
+<td><code>68747470733a2f2f</code></td>
+<td><code>aHR0cHM6Ly</code></td>
+<td>Read the text</td>
+</tr>
+<tr>
+<td>XML declaration</td>
+<td><code>&lt;?xml</code></td>
+<td><code>3c3f786d6c</code></td>
+<td><code>PD94bWw</code></td>
+<td>Read the text</td>
+</tr>
+<tr>
+<td>PowerShell command in UTF-16LE</td>
+<td><code>$</code> followed by NUL</td>
+<td><code>2400</code></td>
+<td><code>JAB</code> when the next character has a matching prefix</td>
+<td>Decode text (UTF-16LE)</td>
+</tr>
+<tr>
+<td>PowerShell <code>IEX</code> in UTF-16LE</td>
+<td><code>I\0E\0X\0</code></td>
+<td><code>490045005800</code></td>
+<td><code>SQBFAFgA</code></td>
+<td>Decode text (UTF-16LE)</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>How to use these clues</strong></p>
+<ul>
+<li><code>TVqQ</code> suggests a payload with an <code>MZ</code> header. <code>H4sI</code> suggests using <strong>From Base64</strong> followed by <strong>Gunzip</strong>.</li>
+<li>Windows PowerShell expects <strong>UTF-16LE</strong> text for <code>-EncodedCommand</code>. The NUL bytes in ASCII-range UTF-16LE commands often produce repeated <code>A</code> characters in Base64. Use <strong>From Base64 → Decode text (UTF-16LE (1200))</strong>.</li>
+<li>If you identify an executable, stop at static triage. Compute SHA-256 or MD5 with <strong>SHA2</strong> or <strong>MD5</strong>, record it in the ticket, and hand the sample to the malware analysis team. Keep it out of your normal working environment.</li>
+<li><strong>Detect File Type</strong> can use the decoded bytes to suggest a file type.</li>
+</ul>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>자주 보는 시작 글자와 파일 시그니처</h2>
+<p>파일은 종류마다 <strong>정해진 첫 바이트</strong>(매직 넘버, 시그니처)로 시작해요. 그래서 인코딩된 글자의 <strong>처음 몇 글자</strong>만 봐도 안에 무엇이 들었는지 짐작할 수 있어요. 아래 값을 외워 두면 풀기 전에 방향이 보여요.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="자주 보는 시작 글자와 파일 시그니처"><table>
+<thead>
+<tr>
+<th scope="col">안에 든 것</th>
+<th scope="col">원래 첫 바이트 (글자)</th>
+<th scope="col">Hex로 보면</th>
+<th scope="col">Base64로 보면</th>
+<th scope="col">다음 작업</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>윈도우 실행 파일(EXE, DLL)</td>
+<td><code>MZ</code></td>
+<td><code>4d5a</code></td>
+<td>흔한 예는 <code>TVqQ</code></td>
+<td>형식을 확인하고 실행 없이 해시 구하기</td>
+</tr>
+<tr>
+<td>gzip 압축</td>
+<td><code>1f 8b 08</code></td>
+<td><code>1f8b08</code></td>
+<td><code>H4sI</code></td>
+<td>Gunzip</td>
+</tr>
+<tr>
+<td>zlib 압축</td>
+<td><code>78 9c</code> (또는 <code>78 01</code>, <code>78 da</code>)</td>
+<td><code>789c</code></td>
+<td><code>eJ</code></td>
+<td>Zlib Inflate</td>
+</tr>
+<tr>
+<td>ZIP, DOCX, XLSX, JAR</td>
+<td><code>PK\x03\x04</code></td>
+<td><code>504b0304</code></td>
+<td><code>UEsDB</code></td>
+<td>Unzip</td>
+</tr>
+<tr>
+<td>PDF</td>
+<td><code>%PDF-</code></td>
+<td><code>255044462d</code></td>
+<td><code>JVBERi0</code></td>
+<td>(파일로 저장해서 분석)</td>
+</tr>
+<tr>
+<td>옛 오피스 문서(DOC, XLS)</td>
+<td><code>D0 CF 11 E0</code></td>
+<td><code>d0cf11e0</code></td>
+<td><code>0M8R4</code></td>
+<td>(매크로 분석 도구로)</td>
+</tr>
+<tr>
+<td>리눅스 실행 파일(ELF)</td>
+<td><code>\x7fELF</code></td>
+<td><code>7f454c46</code></td>
+<td><code>f0VMR</code></td>
+<td>멈추고 해시 구하기</td>
+</tr>
+<tr>
+<td>PNG 그림</td>
+<td><code>\x89PNG</code></td>
+<td><code>89504e47</code></td>
+<td><code>iVBORw0KGgo</code></td>
+<td>Render Image</td>
+</tr>
+<tr>
+<td>JPEG 그림</td>
+<td><code>FF D8 FF</code></td>
+<td><code>ffd8ff</code></td>
+<td><code>/9j/</code></td>
+<td>Render Image</td>
+</tr>
+<tr>
+<td>주소 <code>http://</code></td>
+<td><code>http://</code></td>
+<td><code>687474703a2f2f</code></td>
+<td><code>aHR0cDovL</code></td>
+<td>읽기</td>
+</tr>
+<tr>
+<td>주소 <code>https://</code></td>
+<td><code>https://</code></td>
+<td><code>68747470733a2f2f</code></td>
+<td><code>aHR0cHM6Ly</code></td>
+<td>읽기</td>
+</tr>
+<tr>
+<td>XML</td>
+<td><code>&lt;?xml</code></td>
+<td><code>3c3f786d6c</code></td>
+<td><code>PD94bWw</code></td>
+<td>읽기</td>
+</tr>
+<tr>
+<td>PowerShell 명령(UTF-16LE)</td>
+<td><code>$</code> + NUL</td>
+<td><code>2400</code></td>
+<td>다음 문자에 따라 <code>JAB</code> 등</td>
+<td>Decode text (UTF-16LE)</td>
+</tr>
+<tr>
+<td>PowerShell <code>IEX</code>(UTF-16LE)</td>
+<td><code>I\0E\0X\0</code></td>
+<td><code>490045005800</code></td>
+<td><code>SQBFAFgA</code></td>
+<td>Decode text (UTF-16LE)</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>쓰는 법</strong></p>
+<ul>
+<li>Base64 글자가 <strong><code>TVqQ</code>로 시작</strong>하면 <code>MZ</code> 헤더가 있을 수 있으니 풀린 바이트에서 형식을 확인해요. <code>H4sI</code>면 From Base64 다음에 Gunzip을 붙여요.</li>
+<li>PowerShell의 <code>-enc</code>/<code>-EncodedCommand</code> 뒤의 글자는 <strong>UTF-16LE 텍스트를 Base64로</strong> 바꾼 거예요. 그래서 <code>JAB</code>, <code>SQBFAFgA</code>처럼 <strong><code>A</code>가 반복되는</strong> 모양이 자주 나와요. 레시피는 From Base64 → Decode text(UTF-16LE (1200))예요.</li>
+<li><strong>실행 파일(<code>MZ</code>, <code>ELF</code>)이 나오면 거기서 멈춰요.</strong> SHA256 / MD5만 구해서(CyberChef SHA2, MD5) 티켓에 적고, 파일은 악성코드 분석 담당에게 넘겨요. 풀린 파일을 열거나 실행하지 않아요.</li>
+<li><strong>Detect File Type</strong> 작업을 마지막에 붙이면 CyberChef가 시그니처를 보고 파일 종류를 알려 줘요.</li>
+</ul>
+</div>
+</section>
+<section id="xor">
+<div lang="en" data-guide-language>
+<h2>When to suspect XOR</h2>
+<p>XOR is often used to obscure data. Applying the same XOR key again recovers the original bytes. With a one-byte key there are 256 possibilities.</p>
+<p><strong>Look for these clues</strong></p>
+<ul>
+<li>Hex or Base64 decoding produces unreadable bytes without an obvious compression signature such as <code>1f8b</code> or <code>789c</code>.</li>
+<li>A particular byte appears unusually often. Plaintext spaces or zero bytes can map to one frequently occurring value when XORed with a fixed byte.</li>
+<li>Blocks recur at regular intervals. This can suggest a repeating key. Treat the interval as a candidate key length and verify it with other evidence.</li>
+<li>The code contains <code>^</code>, <code>xor</code>, or <code>Xor</code>.</li>
+</ul>
+<p><strong>Use entropy as a clue.</strong> CyberChef’s <strong>Entropy</strong> operation reports a value from 0 to 8 bits per byte.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="When to suspect XOR"><table>
+<thead>
+<tr>
+<th scope="col">Approximate entropy</th>
+<th scope="col">Possible interpretation</th>
+<th scope="col">What to check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3.5–5</td>
+<td>Text, code, or form data</td>
+<td>If unreadable, consider fixed-byte XOR or a character substitution. Fixed-byte XOR preserves byte entropy.</td>
+</tr>
+<tr>
+<td>5–7</td>
+<td>Executable or mixed data</td>
+<td>Look for frequency patterns and file signatures before drawing a conclusion.</td>
+</tr>
+<tr>
+<td>7.5 or higher</td>
+<td>Compressed or encrypted data</td>
+<td>Check for a format or context clue. Document the result and escalate if you cannot identify it.</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>Estimate the key from byte frequency.</strong> Use <strong>Frequency distribution</strong> to see which bytes occur most often.</p>
+<ul>
+<li>If the original was text and space was the most frequent character, try <strong>most frequent byte XOR 0x20</strong> as a candidate key.</li>
+<li>If the original file had many zero bytes, the most frequent byte can be the key itself because zero XOR the key equals the key.</li>
+</ul>
+<p><strong>XOR Brute Force settings</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="When to suspect XOR"><table>
+<thead>
+<tr>
+<th scope="col">Option</th>
+<th scope="col">Value</th>
+<th scope="col">What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Key length</td>
+<td><code>1</code> to start, or <code>2</code> when supported by the evidence</td>
+<td>Sets the number of key bytes. Two bytes means 65,536 candidates.</td>
+</tr>
+<tr>
+<td>Sample length</td>
+<td>Start with 100 bytes</td>
+<td>Sets how many bytes to test. Increase it if your crib may occur later.</td>
+</tr>
+<tr>
+<td>Sample offset</td>
+<td><code>0</code> to start</td>
+<td>Sets the starting byte.</td>
+</tr>
+<tr>
+<td>Crib</td>
+<td>See the next section</td>
+<td>Keeps candidate results that contain the expected text.</td>
+</tr>
+<tr>
+<td>Print key</td>
+<td>On</td>
+<td>Shows the key beside the result.</td>
+</tr>
+<tr>
+<td>Output as hex</td>
+<td>Off for text</td>
+<td>Displays text for inspection.</td>
+</tr>
+</tbody>
+</table>
+</div><p>Once you have a candidate that you can verify, switch to <strong>XOR</strong>, enter the key in <strong>HEX</strong>, and continue with the next layer.</p>
+<p><strong>Repeating keys.</strong> Repeated structure can point to a candidate period. If you know the original contains a run of zero bytes, that run can expose part or all of the key in the corresponding output. For a longer key, record “repeating-key XOR suspected” and escalate if appropriate. Use the <strong>Null preserving</strong> setting only when it matches the behavior you observe in the sample.</p>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>XOR — 언제 의심하고 어떻게 푸나</h2>
+<p><strong>XOR</strong>은 악성코드가 가장 흔하게 쓰는 간단한 숨기기예요. 바이트마다 키를 XOR하고, 같은 키로 한 번 더 XOR하면 원래대로 돌아와요. 키가 1바이트면 가능한 키가 <strong>256개뿐</strong>이라 다 시험해 볼 수 있어요.</p>
+<p><strong>이럴 때 XOR을 의심해요</strong></p>
+<ul>
+<li>Hex나 Base64를 풀었는데 <strong>알아볼 수 없는 바이트</strong>가 나왔고, 압축 시그니처(<code>1f8b</code>, <code>789c</code>)도 없어요.</li>
+<li>풀린 바이트에 <strong>같은 값이 유난히 자주</strong> 나와요. 원래 글의 공백이나 0 바이트가 키와 XOR돼서 같은 값이 됐기 때문이에요.</li>
+<li><strong>같은 덩어리가 일정한 간격으로 반복</strong>돼요. 여러 바이트 키를 반복해서 쓴 신호예요. 반복 간격을 키 길이 후보로 보고 다른 단서와 대조해요.</li>
+<li>코드에 <code>^</code>, <code>xor</code>, <code>Xor</code>가 보여요.</li>
+</ul>
+<p><strong>Entropy로 먼저 가르기</strong> — CyberChef <strong>Entropy</strong> 작업은 데이터가 얼마나 무작위인지 0~8로 보여 줘요(바이트당 비트).</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="XOR — 언제 의심하고 어떻게 푸나"><table>
+<thead>
+<tr>
+<th scope="col">Entropy</th>
+<th scope="col">보통 뜻</th>
+<th scope="col">할 일</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>약 3.5~5</td>
+<td>글자(영어, 코드, 폼 데이터)</td>
+<td>읽을 수 없다면 <strong>1바이트 XOR</strong>이나 ROT류를 의심해 볼 수 있어요. 1바이트 XOR은 Entropy를 바꾸지 않아요</td>
+</tr>
+<tr>
+<td>약 5~7</td>
+<td>실행 파일, 여러 종류가 섞인 데이터</td>
+<td>XOR된 실행 파일일 수 있어요. 빈도 분석으로 키를 찾아요</td>
+</tr>
+<tr>
+<td>7.5 이상</td>
+<td>압축 또는 암호화 가능성</td>
+<td>형식과 주변 단서를 확인해요. 구별하기 어렵다면 관찰한 내용을 티켓에 적고 넘겨요</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>빈도로 키 찾기 (crib 없이)</strong> — CyberChef <strong>Frequency distribution</strong> 작업으로 가장 많이 나오는 바이트를 봐요.</p>
+<ul>
+<li>원래가 <strong>글자</strong>였다면 가장 흔한 글자는 보통 공백(0x20)이에요. 그래서 <strong>키 = 가장 많은 바이트 XOR 0x20</strong>일 가능성이 높아요.</li>
+<li>원래가 <strong>실행 파일</strong>이었다면 0 바이트가 가장 많아요. 그래서 <strong>가장 많은 바이트 = 키</strong> 그 자체예요(0 XOR 키 = 키).</li>
+</ul>
+<p><strong>XOR Brute Force 설정</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="XOR — 언제 의심하고 어떻게 푸나"><table>
+<thead>
+<tr>
+<th scope="col">옵션</th>
+<th scope="col">값</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Key length</td>
+<td><code>1</code> (안 되면 <code>2</code>)</td>
+<td>시험할 키의 바이트 수. 2는 65,536개라 느려요</td>
+</tr>
+<tr>
+<td>Sample length</td>
+<td>기본값(100)</td>
+<td>앞부분 몇 바이트만 시험할지. crib이 뒤쪽에 있을 것 같으면 늘려요</td>
+</tr>
+<tr>
+<td>Sample offset</td>
+<td><code>0</code></td>
+<td>몇 번째 바이트부터 시험할지</td>
+</tr>
+<tr>
+<td>Crib</td>
+<td>아래 crib 섹션</td>
+<td>이 글자가 나오는 키만 보여 줘요</td>
+</tr>
+<tr>
+<td>Print key</td>
+<td>켜기</td>
+<td>결과 옆에 키를 보여 줘요</td>
+</tr>
+<tr>
+<td>Output as hex</td>
+<td>끄기</td>
+<td>글자로 보여 줘요</td>
+</tr>
+</tbody>
+</table>
+</div><p>키를 찾으면 <strong>XOR Brute Force를 XOR로 바꾸고</strong>(Key = 찾은 값, HEX) 다음 작업을 이어 붙여요.</p>
+<p><strong>여러 바이트 키일 때</strong> — 반복 간격(키 길이)이 보이고, 원래 데이터에 0 바이트가 많으면 그 부분에서 <strong>키가 그대로 드러나요</strong>. 하지만 키가 길면 티켓 단계에서 풀려고 하지 말고, "repeating-key XOR suspected"라고 적고 악성코드 분석으로 넘겨요. Null preserving은 분석 중인 코드가 그 방식으로 처리하는 것이 확인될 때 켜요.</p>
+</div>
+</section>
+<section id="cribs">
+<div lang="en" data-guide-language>
+<h2>Choosing a crib</h2>
+<p>A <strong>crib</strong> is a short string you expect to find in the decoded output. In <strong>XOR Brute Force</strong>, it filters the candidate results. Choose one based on where the data came from.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Choosing a crib"><table>
+<thead>
+<tr>
+<th scope="col">Context</th>
+<th scope="col">Expected content</th>
+<th scope="col">Possible crib</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST with <code>Content-Type: application/x-www-form-urlencoded</code></td>
+<td><code>name=value&amp;name=value</code></td>
+<td><code>&amp;1=</code>, <code>&amp;id=</code>, or <code>=</code>, informed by the surrounding fields such as <code>a=</code> and <code>b=</code></td>
+</tr>
+<tr>
+<td>POST with <code>Content-Type: application/json</code></td>
+<td><code>{"name":"value"}</code></td>
+<td><code>{"</code> or <code>":"</code></td>
+</tr>
+<tr>
+<td>Check-in that may contain endpoint information</td>
+<td>A known host or user name</td>
+<td>A name already observed in the baseline, such as <code>CONSERVATOR</code> or <code>lloyd</code></td>
+</tr>
+<tr>
+<td>Windows path</td>
+<td><code>C:\Users\…</code></td>
+<td><code>Users</code>, <code>.exe</code>, or <code>AppData</code>. If the current layer still contains URL escapes, try <code>C%3A%5C</code>.</td>
+</tr>
+<tr>
+<td>URL in a downloader or configuration</td>
+<td><code>http://…</code></td>
+<td><code>http</code>, <code>://</code>, or <code>.com</code></td>
+</tr>
+<tr>
+<td>Web page or script</td>
+<td>HTML or JavaScript</td>
+<td><code>&lt;html</code>, <code>&lt;script</code>, <code>function</code>, or <code>var</code></td>
+</tr>
+<tr>
+<td>PowerShell command</td>
+<td>Command text</td>
+<td><code>powershell</code>, <code>IEX</code>, <code>New-Object</code>, or <code>http</code></td>
+</tr>
+<tr>
+<td>Embedded executable</td>
+<td><code>MZ</code> followed by a DOS stub</td>
+<td><code>This program</code> or the <code>MZ</code> bytes (<code>4d5a</code> in Hex)</td>
+</tr>
+<tr>
+<td>No clues beyond probable English text</td>
+<td>English words</td>
+<td>A space or <code>the</code></td>
+</tr>
+<tr>
+<td>Known malware format</td>
+<td>A fixed field in that format</td>
+<td>For example, Hancitor <code>GUID=</code> or <code>BUILD=</code></td>
+</tr>
+</tbody>
+</table>
+</div><ol type="1">
+<li><strong>Match the layer you are testing.</strong> If URL escapes are still present immediately after XOR, use <code>C%3A%5C</code> instead of an unescaped path. In the case below, <code>&amp;1=</code> was present as a literal separator in the decoded form structure.</li>
+<li><strong>Prefer a specific crib you can justify.</strong> A single <code>=</code> can occur by chance in many candidates. A correct three-character string such as <code>&amp;1=</code> is more selective.</li>
+<li><strong>Shorten the crib if you get no matches.</strong> For example, try <code>&amp;1=</code>, then <code>=</code>, then a space.</li>
+<li><strong>Check the sample range.</strong> If your crib falls outside the tested bytes, increase Sample length or adjust Sample offset.</li>
+<li><strong>Check separate fields independently.</strong> In the sample POST, the <code>a=</code>, <code>b=</code>, and <code>c=</code> fields used different keys.</li>
+<li><strong>Record your reasoning.</strong> Keep the crib, where it came from, and the recipe in your notes so another analyst can reproduce the result.</li>
+</ol>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>Crib 고르는 법</h2>
+<p><strong>Crib</strong>은 "원래 글에 <strong>틀림없이</strong> 들어 있을 글자"예요. XOR Brute Force는 256개 결과 중 crib이 들어 있는 것만 보여 줘요. crib은 <strong>데이터가 어디에서 왔는지</strong>를 보고 골라요.</p>
+<p><strong>상황별 crib</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Crib 고르는 법"><table>
+<thead>
+<tr>
+<th scope="col">데이터가 있던 곳 / 단서</th>
+<th scope="col">원래 글의 모양(추측)</th>
+<th scope="col">쓸 crib</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST, <code>Content-Type: application/x-www-form-urlencoded</code></td>
+<td><code>이름=값&amp;이름=값</code></td>
+<td><code>&amp;1=</code>, <code>&amp;id=</code>, <code>=</code> — 바깥 이름 규칙(<code>a=</code>, <code>b=</code>)을 보고 추측</td>
+</tr>
+<tr>
+<td>POST, <code>Content-Type: application/json</code></td>
+<td><code>{"이름":"값"}</code></td>
+<td><code>{"</code>, <code>":"</code></td>
+</tr>
+<tr>
+<td>피해 PC 정보를 보냈을 것 같은 체크인</td>
+<td>호스트 이름, 사용자 이름</td>
+<td><strong>베이스라이닝에서 찾은 이름</strong> (예: <code>CONSERVATOR</code>, <code>lloyd</code>) — 가장 강력해요</td>
+</tr>
+<tr>
+<td>윈도우 경로가 있을 것</td>
+<td><code>C:\Users\…</code></td>
+<td><code>Users</code>, <code>.exe</code>, <code>AppData</code>. URL 인코딩되기 전이면 <code>C%3A%5C</code></td>
+</tr>
+<tr>
+<td>주소가 있을 것(다운로더, 설정)</td>
+<td><code>http://…</code></td>
+<td><code>http</code>, <code>://</code>, <code>.com</code></td>
+</tr>
+<tr>
+<td>웹 페이지나 스크립트</td>
+<td>HTML, JavaScript</td>
+<td><code>&lt;html</code>, <code>&lt;script</code>, <code>function</code>, <code>var </code></td>
+</tr>
+<tr>
+<td>PowerShell 명령</td>
+<td>명령어</td>
+<td><code>powershell</code>, <code>IEX</code>, <code>New-Object</code>, <code>http</code></td>
+</tr>
+<tr>
+<td>실행 파일이 들어 있을 것(크기가 큼)</td>
+<td><code>MZ</code> + DOS 문구</td>
+<td><code>This program</code> (또는 Hex <code>4d5a</code>)</td>
+</tr>
+<tr>
+<td>아무 단서도 없는 글자</td>
+<td>영어 문장</td>
+<td>공백 하나, <code>the</code></td>
+</tr>
+<tr>
+<td>알려진 악성코드</td>
+<td>그 악성코드의 고정 형식</td>
+<td>예: Hancitor <code>GUID=</code>, <code>BUILD=</code></td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>규칙</strong></p>
+<ol type="1">
+<li><strong>crib은 "그 겹에서의 모양"으로 써요.</strong> XOR 다음에 URL Decode가 남아 있다면, XOR을 푼 직후의 글에는 <code>\</code>가 아니라 <code>%5C</code>가 있어요. 그래서 crib <code>C:\</code>는 실패하고 <code>C%3A%5C</code>는 성공해요. 이번 POST에서는 필드 구분자인 <code>&amp;1=</code>가 XOR을 푼 폼 구조에 그대로 들어 있었어요.</li>
+<li><strong>길수록 정확하지만, 확실해야 해요.</strong> <code>=</code> 한 글자는 여러 키에서 우연히 나와요. <code>&amp;1=</code>처럼 3글자 이상이면 거의 하나만 남아요. 하지만 길게 쓴 crib이 틀리면 아무것도 안 나와요.</li>
+<li><strong>아무것도 안 나오면 crib을 짧게 바꿔서 다시</strong> 해요. <code>&amp;1=</code> → <code>=</code> → 공백 순서로요.</li>
+<li><strong>crib이 샘플 길이 안에 있어야 해요.</strong> Sample length는 기본 100바이트예요. crib이 뒤쪽에 있을 것 같으면 Sample length를 늘려요.</li>
+<li><strong>여러 메시지는 키가 다를 수 있어요.</strong> 이번 POST는 <code>a=</code>, <code>b=</code>, <code>c=</code>마다 키가 달랐어요. 메시지마다 따로 찾아요.</li>
+<li><strong>crib을 어떻게 골랐는지 작업 노트에 적어요.</strong> 다른 사람이 같은 결과를 다시 만들 수 있어야 해요.</li>
+</ol>
+</div>
+</section>
+<section id="code-to-cyberchef">
+<div lang="en" data-guide-language>
+<h2>Mapping code to CyberChef operations</h2>
+<p>Code that reads or runs an encoded value often contains the routine that decodes it. Read the routine and build the CyberChef recipe in the order the decoding operations appear.</p>
+<p><strong>JavaScript</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Mapping code to CyberChef operations"><table>
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">What it does</th>
+<th scope="col">CyberChef operation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>atob("...")</code></td>
+<td>Decodes Base64</td>
+<td>From Base64</td>
+</tr>
+<tr>
+<td><code>btoa(...)</code></td>
+<td>Encodes Base64</td>
+<td>To Base64</td>
+</tr>
+<tr>
+<td><code>decodeURIComponent(...)</code> or <code>unescape("%41...")</code> for simple byte escapes</td>
+<td>Decodes percent escapes</td>
+<td>URL Decode</td>
+</tr>
+<tr>
+<td><code>String.fromCharCode(104,116,...)</code></td>
+<td>Converts numbers to characters</td>
+<td>From Charcode (Comma, Base 10)</td>
+</tr>
+<tr>
+<td><code>parseInt(x, 16)</code> followed by <code>fromCharCode</code></td>
+<td>Converts Hex values to characters</td>
+<td>From Hex for byte-sized values</td>
+</tr>
+<tr>
+<td><code>.split("").reverse().join("")</code></td>
+<td>Reverses the character order</td>
+<td>Reverse (Character)</td>
+</tr>
+<tr>
+<td><code>if (i % 2 === 1)</code></td>
+<td>Keeps the second character in each pair</td>
+<td>Find / Replace, <code>(.)(.)</code> → <code>$2</code> (Regex, Global)</td>
+</tr>
+<tr>
+<td><code>if (i % 2 === 0)</code></td>
+<td>Keeps the first character in each pair</td>
+<td>Find / Replace, <code>(.)(.)</code> → <code>$1</code> (Regex, Global)</td>
+</tr>
+<tr>
+<td><code>c ^ key</code> or <code>charCodeAt(i) ^ 0x7a</code></td>
+<td>XORs with a key</td>
+<td>XOR (set the key to HEX)</td>
+</tr>
+<tr>
+<td><code>.replace(/x/g, "")</code></td>
+<td>Removes a character</td>
+<td>Find / Replace, <code>x</code> → empty</td>
+</tr>
+<tr>
+<td><code>.split("x").join("")</code></td>
+<td>Removes a character</td>
+<td>Find / Replace (Simple string)</td>
+</tr>
+<tr>
+<td><code>eval(...)</code> or <code>new Function(...)</code></td>
+<td>Treats the decoded text as code</td>
+<td>Inspect the decoded text as data and stop before any execution</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>PowerShell</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Mapping code to CyberChef operations"><table>
+<thead>
+<tr>
+<th scope="col">Code</th>
+<th scope="col">What it does</th>
+<th scope="col">CyberChef operation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-enc</code>, <code>-e</code>, or <code>-EncodedCommand</code> followed by an encoded value</td>
+<td>Supplies a Base64-encoded UTF-16LE command</td>
+<td>From Base64 → Decode text (UTF-16LE (1200))</td>
+</tr>
+<tr>
+<td><code>[Convert]::FromBase64String(...)</code></td>
+<td>Decodes Base64</td>
+<td>From Base64</td>
+</tr>
+<tr>
+<td><code>[Text.Encoding]::Unicode.GetString(...)</code></td>
+<td>Reads UTF-16LE text</td>
+<td>Decode text (UTF-16LE (1200))</td>
+</tr>
+<tr>
+<td><code>IO.Compression.GzipStream</code></td>
+<td>Decompresses gzip</td>
+<td>Gunzip</td>
+</tr>
+<tr>
+<td><code>IO.Compression.DeflateStream</code></td>
+<td>Decompresses deflate data</td>
+<td>Raw Inflate</td>
+</tr>
+<tr>
+<td><code>-bxor 0x..</code></td>
+<td>XORs with a key</td>
+<td>XOR</td>
+</tr>
+<tr>
+<td><code>-join ($s[-1..-($s.Length)])</code></td>
+<td>Reverses a string</td>
+<td>Reverse</td>
+</tr>
+<tr>
+<td><code>[char]104+[char]116</code></td>
+<td>Converts numbers to characters</td>
+<td>From Charcode (Base 10)</td>
+</tr>
+<tr>
+<td><code>'h'+'tt'+'p'</code></td>
+<td>Joins string fragments</td>
+<td>For this literal pattern, remove each <code>'+'</code> separator with Find / Replace</td>
+</tr>
+<tr>
+<td><code>IEX</code> or <code>Invoke-Expression</code></td>
+<td>Executes decoded text</td>
+<td>Inspect the decoded text as data and stop before any execution</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>For complex routines</strong>, read the source statically and recreate only the transformations you understand using CyberChef operations. Escalate to malware analysis if you cannot reproduce the result safely.</p>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>코드 함수 → CyberChef 번역표</h2>
+<p>숨긴 글자 근처에는 보통 <strong>푸는 함수가 같이</strong> 있어요. 브라우저나 윈도우가 실행할 때 풀어야 하기 때문이에요. 그 함수 본문을 읽고, 나오는 명령을 차례대로 CyberChef 작업으로 옮기면 돼요. <strong>코드가 적용하는 순서 그대로</strong> 레시피를 쌓아요.</p>
+<p><strong>JavaScript</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="코드 함수 → CyberChef 번역표"><table>
+<thead>
+<tr>
+<th scope="col">코드에서 보이는 것</th>
+<th scope="col">하는 일</th>
+<th scope="col">CyberChef</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>atob("...")</code></td>
+<td>Base64 풀기</td>
+<td>From Base64</td>
+</tr>
+<tr>
+<td><code>btoa(...)</code></td>
+<td>Base64로 바꾸기(반대)</td>
+<td>To Base64</td>
+</tr>
+<tr>
+<td><code>unescape("%41...")</code>, <code>decodeURIComponent(...)</code></td>
+<td>URL 인코딩 풀기</td>
+<td>URL Decode</td>
+</tr>
+<tr>
+<td><code>String.fromCharCode(104,116,...)</code></td>
+<td>숫자를 글자로</td>
+<td>From Charcode (Comma, Base 10)</td>
+</tr>
+<tr>
+<td><code>parseInt(x, 16)</code> + <code>fromCharCode</code></td>
+<td>Hex를 글자로</td>
+<td>From Hex</td>
+</tr>
+<tr>
+<td><code>.split("").reverse().join("")</code></td>
+<td>글자 순서 뒤집기</td>
+<td>Reverse (Character)</td>
+</tr>
+<tr>
+<td><code>if (i % 2 === 1)</code> 로 글자 고르기</td>
+<td>두 글자마다 두 번째만</td>
+<td>Find / Replace <code>(.)(.)</code> → <code>$2</code> (Regex, Global)</td>
+</tr>
+<tr>
+<td><code>if (i % 2 === 0)</code></td>
+<td>두 글자마다 첫 번째만</td>
+<td>Find / Replace <code>(.)(.)</code> → <code>$1</code></td>
+</tr>
+<tr>
+<td><code>c ^ key</code>, <code>charCodeAt(i) ^ 0x7a</code></td>
+<td>XOR</td>
+<td>XOR (Key 값, HEX)</td>
+</tr>
+<tr>
+<td><code>.replace(/x/g, "")</code></td>
+<td>특정 글자 지우기</td>
+<td>Find / Replace (x → 빈칸)</td>
+</tr>
+<tr>
+<td><code>.split("x").join("")</code></td>
+<td>같은 뜻(특정 글자 지우기)</td>
+<td>Find / Replace (Simple string)</td>
+</tr>
+<tr>
+<td><code>eval(...)</code>, <code>new Function(...)</code></td>
+<td>푼 글자를 <strong>코드로 실행</strong></td>
+<td>없음 — 안에 든 글자를 푼 뒤 다시 읽어요</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>PowerShell</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="코드 함수 → CyberChef 번역표"><table>
+<thead>
+<tr>
+<th scope="col">코드에서 보이는 것</th>
+<th scope="col">하는 일</th>
+<th scope="col">CyberChef</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-enc</code>, <code>-e</code>, <code>-EncodedCommand</code> + 긴 글자</td>
+<td>UTF-16LE 명령을 Base64로 바꾼 것</td>
+<td>From Base64 → Decode text (UTF-16LE (1200))</td>
+</tr>
+<tr>
+<td><code>[Convert]::FromBase64String(...)</code></td>
+<td>Base64 풀기</td>
+<td>From Base64</td>
+</tr>
+<tr>
+<td><code>[Text.Encoding]::Unicode.GetString(...)</code></td>
+<td>UTF-16LE를 글자로</td>
+<td>Decode text (UTF-16LE (1200))</td>
+</tr>
+<tr>
+<td><code>IO.Compression.GzipStream</code></td>
+<td>gzip 풀기</td>
+<td>Gunzip</td>
+</tr>
+<tr>
+<td><code>IO.Compression.DeflateStream</code></td>
+<td>deflate 풀기</td>
+<td>Raw Inflate</td>
+</tr>
+<tr>
+<td><code>-bxor 0x..</code></td>
+<td>XOR</td>
+<td>XOR</td>
+</tr>
+<tr>
+<td><code>-join ($s[-1..-($s.Length)])</code></td>
+<td>뒤집기</td>
+<td>Reverse</td>
+</tr>
+<tr>
+<td><code>[char]104+[char]116</code></td>
+<td>숫자를 글자로</td>
+<td>From Charcode (Base 10)</td>
+</tr>
+<tr>
+<td><code>'h'+'tt'+'p'</code>, 작은따옴표로 쪼개기</td>
+<td>글자 이어 붙이기</td>
+<td>Find / Replace <code>'+'</code> → 빈칸</td>
+</tr>
+<tr>
+<td><code>IEX</code>, <code>Invoke-Expression</code></td>
+<td>푼 글자를 <strong>실행</strong></td>
+<td>없음 — 안의 글자를 풀고 다시 읽어요</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>함수가 복잡할 때:</strong> 코드를 실행하지 않고 읽어 보면서 확인된 변환만 CyberChef에서 재현해요. 정적으로 재현하기 어렵다면 악성코드 분석 담당에게 넘겨요.</p>
+</div>
+</section>
+<section id="worked-examples">
+<div lang="en" data-guide-language>
+<h2>Worked examples</h2>
+<p>Use the observed format, your interpretation, the recipe, and the result to document each case. Ellipses mark abbreviated evidence.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Worked examples"><table>
+<thead>
+<tr>
+<th scope="col">Case</th>
+<th scope="col">Observation</th>
+<th scope="col">Interpretation</th>
+<th scope="col">Recipe</th>
+<th scope="col">Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fake Chrome page, 2018-06-30</td>
+<td><code>getUrl('#1)=(l)d(?as8j…')</code>, with <code>i%2===1</code> and <code>reverse()</code> in the function</td>
+<td>The function selects characters and reverses their order</td>
+<td>Find / Replace, <code>(.)(.)</code> → <code>$2</code> (Regex, Global), then Reverse. Use the value without its enclosing quotes.</td>
+<td>Dropbox download address referencing <code>Chrome_72.3.22.js</code></td>
+</tr>
+<tr>
+<td>Script injected into a church site, 2018-06-30</td>
+<td><code>b("st{n(e4g9A2r,exs,u8")</code></td>
+<td>The script uses the same kind of transformation</td>
+<td>Select alternating characters, then Reverse</td>
+<td><code>userAgent</code>, <code>Windows</code>, <code>Android</code>, and a traffic distribution system (TDS) address</td>
+</tr>
+<tr>
+<td>C2 POST with fields <code>a=</code>, <code>b=</code>, <code>c=</code>, 2018-06-30</td>
+<td>Even-length Hex in an <code>application/x-www-form-urlencoded</code> body</td>
+<td>Hex became unreadable bytes. The form context suggested the crib <code>&amp;1=</code>.</td>
+<td>From Hex → XOR Brute Force (key length 1, crib <code>&amp;1=</code>) → XOR with the recovered key → URL Decode. Keys were <code>5d</code>, <code>db</code>, and <code>c8</code> respectively.</td>
+<td>Endpoint profile, script path, and an EXE path under <code>%TEMP%</code></td>
+</tr>
+<tr>
+<td>349 KB C2 response, 2018-06-30</td>
+<td>Hex, high entropy, and repetition at around 90-byte intervals</td>
+<td>Possible repeating-key XOR</td>
+<td>Stop at triage and record “encoded payload, not decoded”</td>
+<td>Collect the file from the host for further analysis</td>
+</tr>
+<tr>
+<td>Night Dew (Hancitor) C2 response, 2018-05-11</td>
+<td>Base64 alphabet</td>
+<td>Base64 produced unreadable bytes, then XOR</td>
+<td>From Base64 → XOR (<code>7a</code>)</td>
+<td><code>{l:http://…}</code> download instruction</td>
+</tr>
+<tr>
+<td>Practice: PowerShell <code>-enc</code></td>
+<td><code>VwByAGkAdABlAC0ASABvAHMAdAAgACcAaABlAGwAbABvACcA</code></td>
+<td>Base64 with recurring <code>A</code> suggests UTF-16LE text</td>
+<td>From Base64 → Decode text (UTF-16LE (1200))</td>
+<td><code>Write-Host 'hello'</code></td>
+</tr>
+<tr>
+<td>Practice: URL</td>
+<td><code>aHR0cDovL2V4YW1wbGUuY29tL2EuZXhl</code></td>
+<td><code>aHR0cDovL</code> suggests <code>http://</code></td>
+<td>From Base64</td>
+<td><code>http://example.com/a.exe</code></td>
+</tr>
+<tr>
+<td>Practice: gzip</td>
+<td><code>H4sIAJODBWsC…</code></td>
+<td><code>H4sI</code> suggests gzip</td>
+<td>From Base64 → Gunzip with the complete input</td>
+<td>Original text</td>
+</tr>
+</tbody>
+</table>
+</div><p>In each case, use the character set to choose the first operation, decode one layer, and inspect again. Choose cribs from the context in which the data appeared, such as form data, URLs, or endpoint details.</p>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>실제 예시</h2>
+<p>지금까지 푼 사례와 연습용 예제예요. 각 예시는 <strong>본 것 → 판단 → 레시피 → 결과</strong> 순서예요.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="실제 예시"><table>
+<thead>
+<tr>
+<th scope="col">사례</th>
+<th scope="col">본 것</th>
+<th scope="col">판단</th>
+<th scope="col">레시피</th>
+<th scope="col">결과</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2018-06-30 가짜 Chrome 페이지의 <code>fileUrl</code></td>
+<td><code>getUrl('#1)=(l)d(?as8j…')</code>, 함수 안에 <code>i%2===1</code>, <code>reverse()</code></td>
+<td>함수가 있음 → 번역표대로 옮기기</td>
+<td>Find / Replace <code>(.)(.)</code> → <code>$2</code> (Regex, Global) → Reverse. <strong>따옴표는 빼고</strong> 넣기</td>
+<td>Dropbox 다운로드 주소(<code>Chrome_72.3.22.js</code>)</td>
+</tr>
+<tr>
+<td>2018-06-30 교회 사이트에 심어진 코드</td>
+<td><code>b("st{n(e4g9A2r,exs,u8")</code></td>
+<td>같은 방식</td>
+<td>위와 같음</td>
+<td><code>userAgent</code>, <code>Windows</code>, <code>Android</code>, TDS 주소</td>
+</tr>
+<tr>
+<td>2018-06-30 C2 POST 본문 <code>a=</code> <code>b=</code> <code>c=</code></td>
+<td><code>0-9a-f</code>만, 짝수 길이, <code>Content-Type: application/x-www-form-urlencoded</code></td>
+<td>Hex → 풀어도 읽을 수 없음 → XOR. 폼 데이터라 crib <code>&amp;1=</code></td>
+<td>From Hex → XOR Brute Force(Key length 1, crib <code>&amp;1=</code>) → XOR(찾은 키) → URL Decode. 키는 본문마다 달라요(a=<code>5d</code>, b=<code>db</code>, c=<code>c8</code>)</td>
+<td>PC 프로필, 스크립트 경로, <code>%TEMP%</code>의 EXE 경로</td>
+</tr>
+<tr>
+<td>2018-06-30 C2의 349 KB 응답</td>
+<td><code>0-9a-f</code>만, Entropy 높음, 90바이트마다 반복 무늬</td>
+<td>Hex → 여러 바이트 XOR 의심</td>
+<td>티켓 단계에서는 멈춤. "encoded payload, not decoded"</td>
+<td>호스트에서 파일 수집</td>
+</tr>
+<tr>
+<td>2018-05-11 Night Dew(Hancitor) C2 응답</td>
+<td><code>A-Z a-z 0-9 + /</code> 글자</td>
+<td>Base64 → 풀어도 읽을 수 없음 → XOR</td>
+<td>From Base64 → XOR(<code>7a</code>)</td>
+<td><code>{l:http://…}</code> 다운로드 명령</td>
+</tr>
+<tr>
+<td>연습: PowerShell <code>-enc</code></td>
+<td><code>VwByAGkAdABlAC0ASABvAHMAdAAgACcAaABlAGwAbABvACcA</code></td>
+<td>Base64에서 <code>A</code>가 자주 반복됨 → UTF-16LE 가능성</td>
+<td>From Base64 → Decode text (UTF-16LE (1200))</td>
+<td><code>Write-Host 'hello'</code></td>
+</tr>
+<tr>
+<td>연습: 주소</td>
+<td><code>aHR0cDovL2V4YW1wbGUuY29tL2EuZXhl</code></td>
+<td><code>aHR0cDovL</code>로 시작 → <code>http://</code></td>
+<td>From Base64</td>
+<td><code>http://example.com/a.exe</code></td>
+</tr>
+<tr>
+<td>연습: 압축</td>
+<td><code>H4sIAJODBWsC…</code></td>
+<td><code>H4sI</code>로 시작 → gzip</td>
+<td>전체 입력에 From Base64 → Gunzip</td>
+<td>원래 글</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>공통점:</strong> 매번 <strong>문자 집합 → 한 겹 풀기 → 결과 다시 보기</strong>를 반복했어요. crib은 항상 <strong>데이터가 오간 자리</strong>(폼 전송, 주소, PC 정보)에서 골랐어요.</p>
+</div>
+</section>
+<section id="tools-and-mistakes">
+<div lang="en" data-guide-language>
+<h2>CyberChef tools and common mistakes</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="CyberChef tools and common mistakes"><table>
+<thead>
+<tr>
+<th scope="col">Operation</th>
+<th scope="col">When to use it</th>
+<th scope="col">What to look for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Magic</td>
+<td>When the encoding is unclear</td>
+<td>Tests common decoding recipes and suggests candidates. Depth controls how many layers it explores. Intensive mode tests more possibilities at a cost in speed. Try a crib if you expect a known string. Custom transformations like <code>getUrl</code> may require manual analysis.</td>
+</tr>
+<tr>
+<td>Entropy</td>
+<td>When considering compression, encryption, or XOR</td>
+<td>Use the value alongside other evidence.</td>
+</tr>
+<tr>
+<td>Frequency distribution</td>
+<td>When estimating a fixed XOR key without a crib</td>
+<td>Look for the most frequent byte.</td>
+</tr>
+<tr>
+<td>Detect File Type</td>
+<td>When the decoded output may be a file</td>
+<td>Look for recognized signatures.</td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>When looking for text inside binary data</td>
+<td>Start with a minimum length of 4–6 to find URLs, paths, and commands.</td>
+</tr>
+<tr>
+<td>Extract URLs / Extract IP addresses / Extract domains</td>
+<td>When collecting indicators</td>
+<td>Build a list of indicators of compromise.</td>
+</tr>
+<tr>
+<td>Defang URL / Defang IP Addresses</td>
+<td>Before pasting indicators into a ticket</td>
+<td>For example, <code>http</code> → <code>hxxp</code> and <code>.</code> → <code>[.]</code>.</td>
+</tr>
+<tr>
+<td>MD5 / SHA2</td>
+<td>When hashing a decoded file</td>
+<td>Record the hash for tracking or lookup.</td>
+</tr>
+<tr>
+<td>From UNIX Timestamp</td>
+<td>For 10-digit seconds or 13-digit milliseconds</td>
+<td>Set Units to match the input.</td>
+</tr>
+<tr>
+<td>Remove whitespace / Remove null bytes</td>
+<td>When extra formatting is present</td>
+<td>Remove only bytes that the expected format allows you to discard.</td>
+</tr>
+<tr>
+<td>Save / load recipe</td>
+<td>When reusing a tested sequence</td>
+<td>For example, <code>odd-chars-reverse</code> or <code>hex-xor-urldecode</code>.</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>Troubleshooting</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="CyberChef tools and common mistakes"><table>
+<thead>
+<tr>
+<th scope="col">Symptom</th>
+<th scope="col">Possible cause</th>
+<th scope="col">What to check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Output looks shifted</td>
+<td>Quotes, a field prefix such as <code>a=</code>, or whitespace was included</td>
+<td>Compare the expected length with the input count at <code>ABC</code>.</td>
+</tr>
+<tr>
+<td>Only the tail is garbled or missing</td>
+<td>A folded line in Arkime was skipped or the packet-view limit cut off the input</td>
+<td>Compare against available metadata, such as the request body length.</td>
+</tr>
+<tr>
+<td>Find / Replace changes nothing</td>
+<td>Find and Replace were swapped, Simple string was selected, or Global match is off</td>
+<td>Put the pattern in Find and <code>$1</code> or <code>$2</code> in Replace. Enable Regex and Global.</td>
+</tr>
+<tr>
+<td>XOR output looks wrong</td>
+<td>The key was interpreted as UTF-8 text, so <code>5d</code> became two characters</td>
+<td>Select <strong>HEX</strong> for the key.</td>
+</tr>
+<tr>
+<td>An otherwise plausible recipe fails</td>
+<td>The operations are in the wrong order</td>
+<td>Remove the outermost encoding first and inspect each step.</td>
+</tr>
+<tr>
+<td>XOR Brute Force returns no matches</td>
+<td>The crib is wrong, in a different representation, or outside the sample</td>
+<td>Shorten the crib, match the current layer, or increase Sample length.</td>
+</tr>
+<tr>
+<td>Base64 decoding stops early</td>
+<td>The input contains unexpected characters or missing data</td>
+<td>Check that all input was captured. Remove non-alphabet characters only if they are known formatting noise.</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>Analysis precautions</strong></p>
+<ul>
+<li>If a decoded result is an executable, stop after identification and hashing. Handle the sample using your malware-analysis process.</li>
+<li>Leave decoded addresses as text and defang them before putting them in a ticket.</li>
+<li>Keep captured scripts as data. Recreate understood transformations and escalate unfamiliar code for specialist analysis.</li>
+<li>Record the recipe, key and crib in the ticket’s tool output. For example, <code>From Hex -&gt; XOR Brute Force (crib "&amp;1=") -&gt; XOR 5d -&gt; URL Decode</code>.</li>
+</ul>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>CyberChef 도움 기능과 흔한 실수</h2>
+<p><strong>알아 두면 편한 작업</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="CyberChef 도움 기능과 흔한 실수"><table>
+<thead>
+<tr>
+<th scope="col">작업</th>
+<th scope="col">언제</th>
+<th scope="col">설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Magic</td>
+<td>무엇인지 전혀 모를 때</td>
+<td>흔한 해독을 자동으로 시험하고 그럴듯한 결과를 보여 줘요. Depth는 살펴볼 겹 수, Intensive mode는 더 많이 시험(느림), Crib에 기대하는 글자를 넣으면 정확도가 올라요. 사용자 함수로 섞은 글자(<code>getUrl</code> 등)는 못 풀어요</td>
+</tr>
+<tr>
+<td>Entropy</td>
+<td>XOR인지 암호화인지 가를 때</td>
+<td>XOR 섹션의 표 참고</td>
+</tr>
+<tr>
+<td>Frequency distribution</td>
+<td>XOR 키를 crib 없이 찾을 때</td>
+<td>가장 많은 바이트로 키 추측</td>
+</tr>
+<tr>
+<td>Detect File Type</td>
+<td>푼 결과가 파일인지 볼 때</td>
+<td>시그니처로 파일 종류 표시</td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>바이너리 안의 읽을 수 있는 글자만 보고 싶을 때</td>
+<td>Min length 4~6으로 주소, 경로, 명령 찾기</td>
+</tr>
+<tr>
+<td>Extract URLs / Extract IP addresses / Extract domains</td>
+<td>푼 결과에서 지표만 뽑을 때</td>
+<td>IOC 목록 만들기</td>
+</tr>
+<tr>
+<td>Defang URL / Defang IP Addresses</td>
+<td>티켓에 붙이기 전</td>
+<td><code>http</code> → <code>hxxp</code>, <code>.</code> → <code>[.]</code></td>
+</tr>
+<tr>
+<td>MD5 / SHA2</td>
+<td>푼 파일의 해시</td>
+<td>티켓과 해시 조회용</td>
+</tr>
+<tr>
+<td>From UNIX Timestamp</td>
+<td>10자리(초), 13자리(밀리초) 숫자</td>
+<td>Units를 맞게 고르기</td>
+</tr>
+<tr>
+<td>Remove whitespace / Remove null bytes</td>
+<td>줄바꿈·공백·NUL이 섞인 입력</td>
+<td>앞쪽에 붙여서 정리</td>
+</tr>
+<tr>
+<td>저장(💾) / 불러오기(📁)</td>
+<td>자주 쓰는 레시피</td>
+<td>예: <code>odd-chars-reverse</code>, <code>hex-xor-urldecode</code></td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>흔한 실수와 확인법</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="CyberChef 도움 기능과 흔한 실수"><table>
+<thead>
+<tr>
+<th scope="col">증상</th>
+<th scope="col">원인</th>
+<th scope="col">확인·해결</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>결과가 한 칸씩 밀린 듯 깨짐</td>
+<td>따옴표, <code>a=</code> 같은 이름, 공백이 Input에 들어감</td>
+<td>Input의 <code>ABC</code> 글자 수가 예상과 같은지 확인</td>
+</tr>
+<tr>
+<td>끝부분만 깨지거나 짧음</td>
+<td>Arkime에서 여러 줄로 접힌 글자를 다 복사하지 못함, 또는 패킷 표시 제한(<code>200 packets</code>)</td>
+<td>Zeek의 <code>request_body_len</code>과 글자 수 비교</td>
+</tr>
+<tr>
+<td>Find / Replace가 아무것도 안 바꿈</td>
+<td>Find와 Replace 칸이 바뀜, 종류가 Simple string, Global match 꺼짐</td>
+<td>Find에 정규식, Replace에 <code>$1</code>/<code>$2</code>, REGEX, Global</td>
+</tr>
+<tr>
+<td>XOR 결과가 이상함</td>
+<td>Key 종류가 UTF8로 되어 있음(<code>5d</code>를 글자 두 개로 봄)</td>
+<td>Key 옆을 <strong>HEX</strong>로</td>
+</tr>
+<tr>
+<td>레시피가 맞는데 안 풀림</td>
+<td>작업 순서가 바뀜(예: XOR 전에 URL Decode)</td>
+<td>코드가 적용한 순서의 <strong>반대</strong>로 풀어요. 마지막에 입힌 겹을 먼저 벗겨요</td>
+</tr>
+<tr>
+<td>XOR Brute Force에서 아무것도 안 나옴</td>
+<td>crib이 틀렸거나 다른 겹의 모양, 또는 샘플 길이 밖</td>
+<td>crib을 짧게, Sample length 늘리기</td>
+</tr>
+<tr>
+<td>Base64가 일부만 풀림</td>
+<td>줄바꿈이나 다른 글자가 섞임</td>
+<td>입력이 온전한지 확인하고, 섞인 문자가 단순한 서식일 때만 Remove non-alphabet chars를 켜요</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>안전 원칙</strong></p>
+<ul>
+<li>풀린 결과가 실행 파일이면 <strong>해시만 구하고 멈춰요.</strong> 저장해서 열거나 실행하지 않아요.</li>
+<li>풀린 주소는 클릭하지 않고, 티켓에는 <strong>Defang</strong>해서 적어요.</li>
+<li>캡처에서 나온 코드는 데이터로 다뤄요. 확인된 변환만 재현하고 익숙하지 않은 코드는 전문 분석으로 넘겨요.</li>
+<li>티켓의 TOOL OUTPUT에는 레시피와 키, crib을 한 줄로 남겨요. 예: <code>From Hex -&gt; XOR Brute Force (crib "&amp;1=") -&gt; XOR 5d -&gt; URL Decode</code></li>
+</ul>
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
