@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    dirtyRatSmbCaseTitle: "You Dirty Rat · distinguish policy reads from named-pipe activity",
+    dirtyRatSmbCaseSummary: "Attribute SMB2 operations to active share mappings while investigating a workstation's RAT traffic.",
+    macSyncHttpCaseTitle: "MacSync Stealer · verify HTTP upload evidence",
+    macSyncHttpCaseSummary: "Track one HTTP Host across two destinations and check the recorded upload length.",
     snakeSmtpCaseTitle: "Snake KeyLogger · distinguish SMTP acceptance and rejection",
     snakeSmtpCaseSummary: "Compare two outbound mail submissions at the final SMTP reply.",
     netSupportRecurrenceCaseTitle: "NetSupport RAT · separate a one-off POST from recurring traffic",
@@ -67,6 +71,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    dirtyRatSmbCaseTitle: "You Dirty Rat · 정책 파일 읽기와 명명된 파이프 쓰기 구분",
+    dirtyRatSmbCaseSummary: "워크스테이션의 RAT 트래픽을 조사하면서 SMB2 작업을 해당 공유에 연결합니다.",
+    macSyncHttpCaseTitle: "MacSync Stealer · HTTP 업로드 근거 확인",
+    macSyncHttpCaseSummary: "서로 다른 목적지에서 같은 HTTP Host를 추적하고 캡처된 업로드 길이를 확인합니다.",
     snakeSmtpCaseTitle: "Snake KeyLogger · SMTP 메시지 수락과 거부 구분",
     snakeSmtpCaseSummary: "외부 메일 제출 두 건을 최종 SMTP 응답으로 구분합니다.",
     netSupportRecurrenceCaseTitle: "NetSupport RAT · 단발 POST와 반복 트래픽 구분",
