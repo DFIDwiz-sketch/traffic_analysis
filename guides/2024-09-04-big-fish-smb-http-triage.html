@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Big Fish in a Little Pond · investigate shares and external POSTs · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="bigFishSmbCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="bigFishSmbCaseTitle">Big Fish in a Little Pond · investigate shares and external POSTs</h1>
+      <p class="guide-meta">
+        <time datetime="2024-09-04">2024-09-04</time>
+        <span aria-hidden="true">·</span><span>SMB / HTTP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">What connects the share activity and the external POSTs?</a></li>
+<li><a href="#baseline">1 · Baseline the workstation</a></li>
+<li><a href="#evidence">2 · Verify SMB actions and scope the external requests</a></li>
+<li><a href="#arkime">3 · Cross-check both directions in Arkime</a></li>
+<li><a href="#tshark">4 · Confirm the Storage replies offline if needed</a></li>
+<li><a href="#incident-note">5 · Write the SOC ticket</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">공유 접근과 외부 POST 사이에 어떤 근거가 있나</a></li>
+<li><a href="#baseline">1단계 · 워크스테이션 베이스라인 확인</a></li>
+<li><a href="#evidence">2단계 · SMB 작업과 외부 요청의 범위 확인</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 두 방향 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 Storage 응답을 오프라인으로 확인</a></li>
+<li><a href="#incident-note">5단계 · SOC 티켓 작성</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>What connects the share activity and the external POSTs?</h2>
+<p>The publisher’s exercise asks for an incident report in an Active Directory lab. The original PCAP shows <code>172.17.0.99</code> using the DC at <code>172.17.0.17</code>. It opens a named pipe on <code>IPC$</code>, connects separately to <code>Storage</code>, and later sends recurring HTTP POSTs to an external address. Investigate each flow and compare the time windows before assigning cause.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2024-09-04-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2024-09-04 17:32:31.318 – 2024-09-04 18:32:07.478</li>
+<li>Packets · 5,091</li>
+<li>SHA-256 · <code>8fee06d0b1686faab4364f5b7a741e736ad7e713d5ca9299ff9161a4b4d4862e</code></li>
+</ul>
+
+<p>The DC role comes from the publisher. The operations, reply codes, addresses and times below were checked on the original PCAP. The Splunk, Arkime and TShark examples are for your own ingest.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>공유 접근과 외부 POST 사이에 어떤 근거가 있나</h2>
+<p>공개 실습은 Active Directory 환경의 사고 보고서 작성을 요청합니다. 원본 PCAP에서 <code>172.17.0.99</code>는 DC <code>172.17.0.17</code>의 <code>IPC$</code> 파이프를 열고, 별도 연결에서 <code>Storage</code> 공유에 접속했습니다. 이후 외부 주소로 HTTP POST를 반복했습니다. 각 흐름의 결과와 시각부터 비교한 뒤 원인을 조사합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2024-09-04-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2024-09-04 17:32:31.318 – 2024-09-04 18:32:07.478</li>
+<li>패킷 · 5,091</li>
+<li>SHA-256 · <code>8fee06d0b1686faab4364f5b7a741e736ad7e713d5ca9299ff9161a4b4d4862e</code></li>
+</ul>
+
+<p>DC 역할은 공개 원문에 근거합니다. 아래 작업, 응답 코드, 주소와 시각은 원본 PCAP에서 직접 확인했습니다. Splunk, Arkime, TShark는 실습 환경에서 검증할 검색입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline the workstation</h2>
+<p>Use the import tag for <code>&lt;CASE&gt;</code>, display UTC and include the capture interval in Splunk. Widen the picker if <code>_time</code> stores ingestion time and use numeric Zeek <code>ts</code> for event ordering. The examples use flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Check which connection, SMB, RPC and HTTP sourcetypes arrived before interpreting gaps.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=172.17.0.99 proto=tcp
+| stats count as connections values(service) as services values(conn_state) as states
+    sum(orig_bytes) as client_bytes by id_resp_h id_resp_p
+| sort 0 - connections</code></pre>
+</div>
+<p>Group the workstation’s connections by responder and port. Ports and byte totals tell you where to look first. This capture contains 313 bilateral TCP/445 packets for workstation-initiated flows to the DC, including acknowledgements and control traffic. That packet count and the Splunk connection count measure different things.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · 워크스테이션 베이스라인 확인</h2>
+<p><code>&lt;CASE&gt;</code>에 수집 태그를 넣고 Splunk 시간을 UTC로 표시합니다. 캡처 구간을 포함합니다. <code>_time</code>이 수집 시각이라면 시간 범위를 넓히고 사건 순서는 숫자형 Zeek <code>ts</code>로 확인합니다. 예제는 평탄화된 필드를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결, SMB, RPC와 HTTP sourcetype의 수집 여부를 먼저 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=172.17.0.99 proto=tcp
+| stats count as connections values(service) as services values(conn_state) as states
+    sum(orig_bytes) as client_bytes by id_resp_h id_resp_p
+| sort 0 - connections</code></pre>
+</div>
+<p>응답자 주소와 포트로 워크스테이션의 연결을 묶습니다. 포트와 바이트 집계로 확인할 대상을 고릅니다. 원본에서 워크스테이션이 시작한 DC 방향 TCP/445에는 ACK와 제어 패킷을 포함해 양방향 313개 패킷이 있었습니다. 패킷 수와 Splunk의 연결 행 수는 단위가 다릅니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Verify SMB actions and scope the external requests</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_orig_h=172.17.0.99 id_resp_h=172.17.0.17
+    id_resp_p=445 id_orig_p IN (49778,49785)
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p path name action endpoint operation</code></pre>
+</div>
+<p>Use the <code>uid</code> from each connection row to associate the share and application rows from the <strong>same Zeek processing run</strong>. The two client ports identify distinct TCP connections. Read the share path and use packet-level message IDs and the direction to check the result of each operation.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=172.17.0.99
+    id_resp_h=79.124.78.197 id_resp_p=80
+| eval request_path=mvindex(split(uri,"?"),0)
+| stats count as requests dc(uid) as connections values(status_code) as status
+    min(ts) as first max(ts) as last by method request_path
+| sort 0 first</code></pre>
+</div>
+<p>Compare method, request path and available status for the external endpoint. <code>dc(uid)</code> counts connections while <code>count</code> counts HTTP rows. Join HTTP and connection logs for a specific HTTP UID within the same Zeek run. To compare the HTTP and SMB activity, use the workstation, time and endpoint process evidence where available.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Verify SMB actions and scope the external requests"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 4 September</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>17:34:35.490–17:34:35.491</td>
+<td>392, 393, 395, 398, 402, 403</td>
+<td>Successful <code>IPC$</code> connection, <code>samr</code> pipe open and successful write reply on client port 49778</td>
+</tr>
+<tr class="even">
+<td>17:34:35.577</td>
+<td>493, 494</td>
+<td>Successful connection to the DC’s <code>Storage</code> share on client port 49785</td>
+</tr>
+<tr class="odd">
+<td>17:34:36.714–17:34:36.716</td>
+<td>608–611</td>
+<td>File-open requests for <code>Desktop.ini</code> and <code>AutoRun.inf</code>, each with <code>0xc0000034</code> (object name not found)</td>
+</tr>
+<tr class="even">
+<td>17:35:07.211–17:35:07.856</td>
+<td>1668, 1670</td>
+<td>First observed POST to <code>79.124.78.197:80</code>, client port 49813, then HTTP 200</td>
+</tr>
+<tr class="odd">
+<td>18:31:53.072</td>
+<td>5077</td>
+<td>Last observed packet-start POST to the same endpoint</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A packet-header count excluding repeated sequence positions found 48 POSTs to the recurring path across 43 source ports. Zeek’s count can differ with stream parsing. The pipe write shows IPC data exchange. Routine file browsing or domain operations could explain the SMB events. The PCAP supplies the order and the operation outcomes. Attribution to one process, DC modification and the meaning of the POST data require separate evidence.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · SMB 작업과 외부 요청의 범위 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_orig_h=172.17.0.99 id_resp_h=172.17.0.17
+    id_resp_p=445 id_orig_p IN (49778,49785)
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p path name action endpoint operation</code></pre>
+</div>
+<p>연결 행의 <code>uid</code>로 <strong>같은 Zeek 처리 실행</strong>의 공유 및 응용 프로토콜 행을 연결합니다. 두 출발지 포트는 별도 TCP 연결입니다. 공유 경로를 읽고 패킷의 메시지 ID와 방향으로 각 작업의 결과를 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=172.17.0.99
+    id_resp_h=79.124.78.197 id_resp_p=80
+| eval request_path=mvindex(split(uri,"?"),0)
+| stats count as requests dc(uid) as connections values(status_code) as status
+    min(ts) as first max(ts) as last by method request_path
+| sort 0 first</code></pre>
+</div>
+<p>외부 목적지의 메서드, 요청 경로와 수집된 응답 상태를 비교합니다. <code>dc(uid)</code>는 연결 수, <code>count</code>는 HTTP 행 수를 집계합니다. 특정 HTTP UID의 연결과 HTTP 기록은 같은 Zeek 실행에서 대조합니다. SMB와 HTTP를 비교할 때는 워크스테이션 IP, 시각과 확보 가능한 프로세스 증거를 사용합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · SMB 작업과 외부 요청의 범위 확인"><table>
+<thead>
+<tr class="header">
+<th scope="col">9월 4일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>17:34:35.490–17:34:35.491</td>
+<td>392, 393, 395, 398, 402, 403</td>
+<td>출발지 포트 49778에서 <code>IPC$</code> 연결, <code>samr</code> 파이프 열기 및 쓰기 응답 성공</td>
+</tr>
+<tr class="even">
+<td>17:34:35.577</td>
+<td>493, 494</td>
+<td>출발지 포트 49785에서 DC의 <code>Storage</code> 공유 연결 성공</td>
+</tr>
+<tr class="odd">
+<td>17:34:36.714–17:34:36.716</td>
+<td>608–611</td>
+<td><code>Desktop.ini</code>와 <code>AutoRun.inf</code> 열기 요청 모두 <code>0xc0000034</code> 응답. 두 이름을 찾지 못함.</td>
+</tr>
+<tr class="even">
+<td>17:35:07.211–17:35:07.856</td>
+<td>1668, 1670</td>
+<td>출발지 포트 49813에서 <code>79.124.78.197:80</code>으로 보낸 첫 관찰 POST와 HTTP 200</td>
+</tr>
+<tr class="odd">
+<td>18:31:53.072</td>
+<td>5077</td>
+<td>같은 목적지로 향한 마지막 관찰 POST 헤더</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>같은 TCP 시퀀스 위치를 한 번만 세었을 때 반복 경로의 POST는 서로 다른 출발지 포트 43개에서 48건이었습니다. Zeek의 집계는 스트림 파싱 방식에 따라 달라질 수 있습니다. 파이프 쓰기 성공은 프로세스 간 데이터 교환의 근거입니다. 정상적인 공유 탐색이나 도메인 작업도 이런 SMB 활동을 보일 수 있습니다. PCAP은 작업 순서와 결과를 보여 줍니다. 실행 프로세스, DC 변경과 POST 내용의 의미는 별도 증거가 필요합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check both directions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.17.0.99 &amp;&amp; ip.dst == 172.17.0.17 &amp;&amp; port.dst == 445 &amp;&amp; (port.src == 49778 || port.src == 49785)</code></pre>
+</div>
+<p>Apply the import tag and compare the two source ports around 17:34:35 UTC. Find the successful tree responses and the selected file-open failures. Keep the transport tuple with the packet times.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.17.0.99 &amp;&amp; ip.dst == 79.124.78.197 &amp;&amp; port.dst == 80</code></pre>
+</div>
+<p>Check the separate outbound exchange around 17:35:07 UTC. Verify request and response direction and compare the time and port with later requests.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 두 방향 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.17.0.99 &amp;&amp; ip.dst == 172.17.0.17 &amp;&amp; port.dst == 445 &amp;&amp; (port.src == 49778 || port.src == 49785)</code></pre>
+</div>
+<p>수집 태그를 적용하고 17:34:35 UTC 전후 두 출발지 포트를 비교합니다. 성공한 공유 연결 응답과 파일 열기 실패를 찾아 주소·포트와 시각을 남깁니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.17.0.99 &amp;&amp; ip.dst == 79.124.78.197 &amp;&amp; port.dst == 80</code></pre>
+</div>
+<p>17:35:07 UTC 전후의 별도 외부 교환을 엽니다. 요청과 응답 방향을 확인하고 후속 요청의 시각·포트를 비교합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Confirm the Storage replies offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2024-09-04-traffic-analysis-exercise.pcap" \
+  -Y 'frame.number == 493 || frame.number == 494 || frame.number == 608 || frame.number == 609 || frame.number == 610 || frame.number == 611' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e tcp.stream \
+  -e smb2.msg_id -e smb2.cmd -e smb2.nt_status</code></pre>
+</div>
+<p>If Arkime leaves the two file statuses unclear, read the selected SMB2 frames from the original file. Match request and reply by TCP stream, message ID and direction. The status of a successful tree connect and the statuses of later file-open requests describe separate operations.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 Storage 응답을 오프라인으로 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2024-09-04-traffic-analysis-exercise.pcap" \
+  -Y 'frame.number == 493 || frame.number == 494 || frame.number == 608 || frame.number == 609 || frame.number == 610 || frame.number == 611' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e tcp.stream \
+  -e smb2.msg_id -e smb2.cmd -e smb2.nt_status</code></pre>
+</div>
+<p>Arkime에서 파일 상태가 분명하지 않으면 원본의 선택한 SMB2 프레임을 읽습니다. TCP 스트림, 메시지 ID와 방향으로 요청과 응답을 짝짓습니다. 공유 연결 성공과 이후 파일 열기는 별도 작업으로 확인합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Write the SOC ticket</h2>
+<p>Record the PCAP hash, workstation and DC, confirmed share activity, file-open outcomes and external HTTP timing. Check the share owner, workstation process-network events, DC share and RPC logs, and proxy records. Compare with approved administration and record any unresolved file access or data exposure.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2024/09/04/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2024/09/04/2024-09-04-traffic-analysis-exercise.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.malware-traffic-analysis.net/2024/09/04/page2.html">Exercise answers</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb2.html">Wireshark SMB2 fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · SOC 티켓 작성</h2>
+<p>PCAP 해시, 워크스테이션과 DC, 확인한 공유 작업, 파일 열기 결과와 외부 HTTP 시각을 기록합니다. 공유 소유자, 워크스테이션의 프로세스 네트워크 이벤트, DC 공유·RPC 로그와 프록시 기록을 확인합니다. 승인된 관리 활동과 비교하고 파일 접근과 데이터 노출 중 확인이 남은 부분을 기록합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2024/09/04/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2024/09/04/2024-09-04-traffic-analysis-exercise.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.malware-traffic-analysis.net/2024/09/04/page2.html">Exercise answers</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb2.html">Wireshark SMB2 fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

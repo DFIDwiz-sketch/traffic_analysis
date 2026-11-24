@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    bigFishSmbCaseTitle: "Big Fish in a Little Pond · investigate shares and external POSTs",
+    bigFishSmbCaseSummary: "Separate observed DC share activity from the workstation’s recurring outbound HTTP.",
+    androidWebSocketCaseTitle: "Android malware · verify WebSocket upgrades",
+    androidWebSocketCaseSummary: "Distinguish confirmed HTTP protocol switches from TCP sessions that time out.",
     dirtyRatSmbCaseTitle: "You Dirty Rat · distinguish policy reads from named-pipe activity",
     dirtyRatSmbCaseSummary: "Attribute SMB2 operations to active share mappings while investigating a workstation's RAT traffic.",
     macSyncHttpCaseTitle: "MacSync Stealer · verify HTTP upload evidence",
@@ -71,6 +75,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    bigFishSmbCaseTitle: "Big Fish in a Little Pond · SMB 공유 접근과 외부 POST 조사",
+    bigFishSmbCaseSummary: "DC 공유에서 확인한 동작과 워크스테이션의 반복 외부 HTTP를 구분합니다.",
+    androidWebSocketCaseTitle: "Android 악성코드 · WebSocket 전환 확인",
+    androidWebSocketCaseSummary: "HTTP 프로토콜 전환이 성공한 연결과 시간이 초과된 TCP 연결을 구분합니다.",
     dirtyRatSmbCaseTitle: "You Dirty Rat · 정책 파일 읽기와 명명된 파이프 쓰기 구분",
     dirtyRatSmbCaseSummary: "워크스테이션의 RAT 트래픽을 조사하면서 SMB2 작업을 해당 공유에 연결합니다.",
     macSyncHttpCaseTitle: "MacSync Stealer · HTTP 업로드 근거 확인",

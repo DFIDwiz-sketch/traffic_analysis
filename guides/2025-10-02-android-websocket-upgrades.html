@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Android malware · verify WebSocket upgrades · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="androidWebSocketCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="androidWebSocketCaseTitle">Android malware · verify WebSocket upgrades</h1>
+      <p class="guide-meta">
+        <time datetime="2025-10-02">2025-10-02</time>
+        <span aria-hidden="true">·</span><span>HTTP / WebSocket</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Which connections actually upgraded to WebSocket?</a></li>
+<li><a href="#baseline">1 · Baseline the mobile host in Splunk</a></li>
+<li><a href="#evidence">2 · Match the upgrade request to its reply</a></li>
+<li><a href="#arkime">3 · Cross-check the successful and timed-out sessions in Arkime</a></li>
+<li><a href="#tshark">4 · Read selected HTTP headers offline if needed</a></li>
+<li><a href="#incident-note">5 · Document the sessions and verify app ownership</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">어느 연결에서 WebSocket으로 전환됐나</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 모바일 호스트 베이스라인 확인</a></li>
+<li><a href="#evidence">2단계 · 전환 요청과 해당 응답 연결</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 성공과 시간 초과 세션 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 선택한 헤더를 오프라인 확인</a></li>
+<li><a href="#incident-note">5단계 · 세션을 기록하고 실행 앱 확인</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Which connections actually upgraded to WebSocket?</h2>
+<p>The publisher describes traffic from an Android malware infection, including an app-generated WebSocket session. In the PCAP, <code>10.10.2.101</code> sends HTTP requests with <code>Upgrade: websocket</code> and receives <code>101 Switching Protocols</code> on matching TCP connections. Another TCP connection to one of the same servers receives HTTP <code>408</code>. The connection tuple and the request-reply pair determine which outcome applies.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2025-10-02-traffic-from-infected-Android-phone.pcap</code></li>
+<li>UTC · 2025-10-02 22:51:33.450 – 2025-10-02 23:00:49.957</li>
+<li>Packets · 29,125</li>
+<li>SHA-256 · <code>07668ef68cc6103d97c3f93f5ba5f5cf2322ff0fcaad33d10dfd1f0668a9a5d6</code></li>
+</ul>
+
+<p>The infection context and app attribution come from the publisher. The TCP tuples, HTTP headers and timestamps were checked in the original PCAP. The tool searches are examples for your case ingest.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>어느 연결에서 WebSocket으로 전환됐나</h2>
+<p>공개 원문은 Android 악성코드 감염과 앱이 생성한 WebSocket 트래픽을 설명합니다. 원본 PCAP에서 <code>10.10.2.101</code>은 <code>Upgrade: websocket</code> 요청을 보내고 같은 TCP 연결에서 <code>101 Switching Protocols</code>를 받았습니다. 같은 서버의 다른 TCP 연결에서는 HTTP <code>408</code>이 돌아왔습니다. 각 결과는 연결의 주소·포트와 요청·응답 쌍으로 확인합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2025-10-02-traffic-from-infected-Android-phone.pcap</code></li>
+<li>UTC · 2025-10-02 22:51:33.450 – 2025-10-02 23:00:49.957</li>
+<li>패킷 · 29,125</li>
+<li>SHA-256 · <code>07668ef68cc6103d97c3f93f5ba5f5cf2322ff0fcaad33d10dfd1f0668a9a5d6</code></li>
+</ul>
+
+<p>감염 맥락과 앱 관련 설명은 공개 원문에 근거합니다. 연결의 주소·포트와 HTTP 헤더, 시각은 원본 PCAP에서 확인했습니다. 검색 예제는 각자의 실습 환경에서 검증합니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline the mobile host in Splunk</h2>
+<p>Set the display timezone to UTC, include the capture interval and use the import tag for <code>&lt;CASE&gt;</code>. If <code>_time</code> is ingestion time, widen the time picker and use numeric Zeek <code>ts</code> for the timeline. The examples use flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Confirm the presence of connection and HTTP records. An incomplete or unrecognized HTTP exchange can lack an application row.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.10.2.101 proto=tcp id_resp_p=8080
+| stats count as connections values(conn_state) as states sum(orig_pkts) as outbound_packets
+    sum(resp_pkts) as inbound_packets by id_resp_h
+| sort 0 - connections</code></pre>
+</div>
+<p>Compare TCP/8080 destinations, packet direction and connection states. A TCP state confirms transport behavior. Determine protocol changes from the HTTP exchange within the selected flow.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 모바일 호스트 베이스라인 확인</h2>
+<p>UTC로 표시하고 전체 캡처 시간 범위를 포함합니다. <code>&lt;CASE&gt;</code>에 가져올 때 지정한 태그를 넣습니다. Splunk <code>_time</code>이 수집 시각이면 시간 범위를 넓히고 숫자형 Zeek <code>ts</code>로 사건 시각을 읽습니다. 예제는 평탄화된 필드를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결 및 HTTP 로그가 조회되는지 확인합니다. 불완전하거나 분석기가 인식하지 못한 교환은 응용 계층 행이 빠질 수 있습니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.10.2.101 proto=tcp id_resp_p=8080
+| stats count as connections values(conn_state) as states sum(orig_pkts) as outbound_packets
+    sum(resp_pkts) as inbound_packets by id_resp_h
+| sort 0 - connections</code></pre>
+</div>
+<p>TCP/8080의 목적지, 양방향 패킷 수와 연결 상태를 비교합니다. TCP 상태는 전송 계층을 설명합니다. 프로토콜 전환 여부는 각 흐름의 HTTP 교환에서 확인합니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Match the upgrade request to its reply</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.10.2.101 id_resp_p=8080
+    id_resp_h IN ("101.32.207.8","43.159.143.39") status_code IN (101,408)
+| stats count as rows dc(uid) as distinct_connections min(ts) as first max(ts) as last by id_resp_h status_code</code></pre>
+</div>
+<p>Use this search to group logged <code>101</code> or <code>408</code> statuses by responder and count distinct UIDs. A server reply without a visible request may lack a paired HTTP record in Zeek. Inspect the original packets where a row is missing.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;TCP_UID&gt;" sourcetype IN ("zeek:conn","zeek:http")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p service conn_state method status_code trans_depth</code></pre>
+</div>
+<p>Use the UID from the TCP tuple to look up application and connection logs from the <strong>same Zeek processing run</strong>. Limit a re-imported case to one run before using the UID. Read the response code and flow tuple. Check the request and response for the WebSocket upgrade header. The original PCAP shows seven distinct request/101 pairs to <code>101.32.207.8</code> and one to <code>43.159.143.39</code>, identified by source port on TCP/8080.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Match the upgrade request to its reply"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2 October</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>22:53:04.457–22:53:04.907</td>
+<td>18289, 18291</td>
+<td>HTTP POST and 200 response on separate TCP/80 connection to <code>45.207.207.168</code></td>
+</tr>
+<tr class="even">
+<td>22:53:05.857–22:53:06.077</td>
+<td>18303, 18307</td>
+<td>WebSocket upgrade request and 101 on client port 49292 to <code>101.32.207.8:8080</code></td>
+</tr>
+<tr class="odd">
+<td>22:53:10.307 → 22:54:30.065</td>
+<td>18332, 18535</td>
+<td>Another TCP connection starts on port 40136 and receives HTTP 408. The capture shows no client application bytes on that tuple.</td>
+</tr>
+<tr class="even">
+<td>22:55:36.169–22:55:36.398</td>
+<td>18844, 18848</td>
+<td>Later WebSocket upgrade request and 101 to the first server, on client port 58756</td>
+</tr>
+<tr class="odd">
+<td>22:57:04.640–22:57:04.722</td>
+<td>19767, 19769</td>
+<td>Upgrade request and 101 on client port 59140 to <code>43.159.143.39:8080</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A successful upgrade establishes the protocol switch for a connection. Legitimate mobile apps also use WebSockets, and a timeout can follow an idle connection. App ownership, exchanged application data and incident impact need further evidence.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · 전환 요청과 해당 응답 연결</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.10.2.101 id_resp_p=8080
+    id_resp_h IN ("101.32.207.8","43.159.143.39") status_code IN (101,408)
+| stats count as rows dc(uid) as distinct_connections min(ts) as first max(ts) as last by id_resp_h status_code</code></pre>
+</div>
+<p>조회된 <code>101</code>과 <code>408</code>을 목적지별로 묶고 고유 UID 수를 확인합니다. 요청이 관찰되지 않은 서버 응답은 Zeek의 HTTP 행으로 짝지어지지 않을 수 있으므로 원본 패킷을 살핍니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;TCP_UID&gt;" sourcetype IN ("zeek:conn","zeek:http")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p service conn_state method status_code trans_depth</code></pre>
+</div>
+<p>TCP 연결의 UID를 사용해 <strong>같은 Zeek 처리 실행</strong>의 연결 및 응용 계층 행을 찾습니다. 여러 번 가져온 캡처라면 한 처리 실행으로 제한합니다. 응답 코드와 연결 주소·포트를 비교하고 요청과 응답의 WebSocket 전환 헤더를 확인합니다. 원본 TCP/8080에서 출발지 포트별로 <code>101.32.207.8</code>에 요청과 101 쌍 일곱 건, <code>43.159.143.39</code>에 한 건을 확인했습니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · 전환 요청과 해당 응답 연결"><table>
+<thead>
+<tr class="header">
+<th scope="col">10월 2일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>22:53:04.457–22:53:04.907</td>
+<td>18289, 18291</td>
+<td><code>45.207.207.168</code>의 별도 TCP/80 연결에서 HTTP POST와 200 응답</td>
+</tr>
+<tr class="even">
+<td>22:53:05.857–22:53:06.077</td>
+<td>18303, 18307</td>
+<td>출발지 포트 49292에서 <code>101.32.207.8:8080</code>으로 보낸 WebSocket 전환 요청과 101</td>
+</tr>
+<tr class="odd">
+<td>22:53:10.307 → 22:54:30.065</td>
+<td>18332, 18535</td>
+<td>출발지 포트 40136의 별도 연결이 HTTP 408 수신. 이 주소·포트 조합에서는 클라이언트 응용 계층 데이터가 관찰되지 않음.</td>
+</tr>
+<tr class="even">
+<td>22:55:36.169–22:55:36.398</td>
+<td>18844, 18848</td>
+<td>출발지 포트 58756의 첫 서버 대상 후속 전환 요청과 101</td>
+</tr>
+<tr class="odd">
+<td>22:57:04.640–22:57:04.722</td>
+<td>19767, 19769</td>
+<td>출발지 포트 59140에서 <code>43.159.143.39:8080</code>으로 보낸 전환 요청과 101</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>전환에 성공하면 해당 연결의 프로토콜이 바뀌었다는 근거가 됩니다. 정상 모바일 앱도 WebSocket을 사용하며 유휴 연결은 시간이 초과될 수 있습니다. 실행 앱, 응용 계층 데이터와 침해 영향은 별도 근거가 필요합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check the successful and timed-out sessions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.10.2.101 &amp;&amp; ip.dst == 101.32.207.8 &amp;&amp; port.dst == 8080 &amp;&amp; (port.src == 49292 || port.src == 40136)</code></pre>
+</div>
+<p>Apply the case tag and UTC range around 22:53–22:55. Compare client ports 49292 and 40136 in the packet pane. Confirm the request and 101 on one tuple and the 408 on the other.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.10.2.101 &amp;&amp; ip.dst == 43.159.143.39 &amp;&amp; port.src == 59140 &amp;&amp; port.dst == 8080</code></pre>
+</div>
+<p>Check the later request and 101 around 22:57:04 UTC. Use the addresses, ports and timestamps to align with the source frames.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 성공과 시간 초과 세션 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.10.2.101 &amp;&amp; ip.dst == 101.32.207.8 &amp;&amp; port.dst == 8080 &amp;&amp; (port.src == 49292 || port.src == 40136)</code></pre>
+</div>
+<p>케이스 태그와 22:53~22:55 UTC 구간을 적용합니다. 패킷 화면에서 출발지 포트 49292와 40136을 비교해 한 연결의 요청과 101, 별도 연결의 408을 각각 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.10.2.101 &amp;&amp; ip.dst == 43.159.143.39 &amp;&amp; port.src == 59140 &amp;&amp; port.dst == 8080</code></pre>
+</div>
+<p>22:57:04 UTC 전후의 후속 요청과 101을 봅니다. 주소·포트와 시각으로 원본 프레임을 대조합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Read selected HTTP headers offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2025-10-02-traffic-from-infected-Android-phone.pcap" \
+  -Y 'frame.number == 18303 || frame.number == 18307 || frame.number == 18535 || frame.number == 19767 || frame.number == 19769' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.srcport -e tcp.dstport \
+  -e http.request.method -e http.response.code -e http.upgrade</code></pre>
+</div>
+<p>If Arkime leaves the upgrade unclear, compare the original frames for the two upgrades and the one 408. The method, response code and upgrade fields help show which result belongs to each tuple. The example reads header metadata from the saved capture.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 선택한 헤더를 오프라인 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2025-10-02-traffic-from-infected-Android-phone.pcap" \
+  -Y 'frame.number == 18303 || frame.number == 18307 || frame.number == 18535 || frame.number == 19767 || frame.number == 19769' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.srcport -e tcp.dstport \
+  -e http.request.method -e http.response.code -e http.upgrade</code></pre>
+</div>
+<p>Arkime에서 전환 과정이 불분명하면 두 전환과 한 408의 원본 프레임을 읽습니다. 메서드, 응답 코드와 전환 헤더를 각 연결의 주소·포트에 연결합니다. 이 예제는 저장된 캡처의 헤더 메타데이터를 조회합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Document the sessions and verify app ownership</h2>
+<p>Record the capture hash, handset IP and the tuples and frames for confirmed upgrades and the timeout. Note that the POST used a separate connection. Ask for device network and installation logs, app identity and approved mobile-app inventory. Correlate with proxy or firewall records before assigning the traffic to a process or claiming data exposure.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2025/10/02/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2025/10/02/2025-10-02-traffic-from-infected-Android-phone.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 세션을 기록하고 실행 앱 확인</h2>
+<p>캡처 해시, 휴대전화 IP, 전환과 시간 초과의 연결 주소·포트 및 프레임을 남깁니다. POST는 별도 연결로 기록합니다. 단말 네트워크 및 설치 로그, 앱 식별 정보와 승인 앱 목록을 요청합니다. 실행 프로세스나 데이터 노출을 판단하기 전에 프록시 또는 방화벽 기록을 대조합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2025/10/02/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2025/10/02/2025-10-02-traffic-from-infected-Android-phone.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
