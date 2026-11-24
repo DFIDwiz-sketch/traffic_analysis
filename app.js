@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    wannacryCaseTitle: "WannaCry · tracing SMB fan-out",
+    wannacryCaseSummary: "Follow the change from one TCP/445 originator to several lab workstations.",
+    weekTrickbotCaseTitle: "One week of Trickbot · the SMB pivot",
+    weekTrickbotCaseSummary: "Find the workstation-to-DC transfer within a week of network activity.",
     brand: "Traffic Analysis",
     eyebrow: "PCAP / NETWORK TRAFFIC",
     heroIntro: "Practical guides for investigating network traffic, from baselining a capture to decoding unfamiliar data.",
@@ -35,6 +39,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    wannacryCaseTitle: "WannaCry · SMB 연결 확산 추적",
+    wannacryCaseSummary: "한 호스트에서 시작한 TCP/445 연결이 여러 실습 호스트로 이어지는 흐름을 봅니다.",
+    weekTrickbotCaseTitle: "일주일간의 Trickbot · SMB 전송 추적",
+    weekTrickbotCaseSummary: "일주일 치 트래픽에서 워크스테이션과 도메인 컨트롤러 간 파일 전송 근거를 찾습니다.",
     brand: "트래픽 분석",
     eyebrow: "PCAP / 네트워크 트래픽",
     heroIntro: "캡처의 베이스라인을 잡는 단계부터 낯선 데이터를 디코딩하는 방법까지, 네트워크 트래픽 분석을 위한 실습 가이드입니다.",

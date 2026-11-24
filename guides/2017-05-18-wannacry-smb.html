@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>WannaCry · tracing SMB fan-out · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="wannacryCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="wannacryCaseTitle">WannaCry · tracing SMB fan-out</h1>
+      <p class="guide-meta">
+        <time datetime="2017-05-18">2017-05-18</time>
+        <span aria-hidden="true">·</span><span>SMB</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">What the capture shows</a></li>
+<li><a href="#baseline">1 · Establish the capture baseline in Splunk</a></li>
+<li><a href="#smb">2 · Find the change in direction</a></li>
+<li><a href="#arkime">3 · Cross-check sessions in Arkime</a></li>
+<li><a href="#tshark">4 · Verify the handshake offline if flags are unclear</a></li>
+<li><a href="#incident-note">5 · Write the SOC ticket</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">한눈에 보는 결과</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 캡처 범위 확인</a></li>
+<li><a href="#smb">2단계 · 연결 시작 방향이 바뀐 시각 찾기</a></li>
+<li><a href="#arkime">3단계 · Arkime으로 세션 교차 확인</a></li>
+<li><a href="#tshark">4단계 · 플래그가 불명확할 때 TShark로 확인</a></li>
+<li><a href="#incident-note">5단계 · SOC 티켓 작성</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>What the capture shows</h2>
+<p>David Szili’s lab notes identify the Windows 7 host at <code>192.168.116.149</code> as the starting point for WannaCry and report subsequent propagation. A read-only pass over the original capture independently confirmed a burst of TCP/445 attempts from that host, followed by new TCP/445 initiators at <code>192.168.116.138</code> and <code>192.168.116.172</code>. This is a useful scoping pattern for an analyst. The transport metadata by itself does not establish the compromise status of every destination.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2017-05-18-WannaCry-ransomware-using-EnternalBlue-exploit.pcap</code></li>
+<li>UTC · 2017-05-18 08:06:10.905 – 2017-05-18 08:17:46.377</li>
+<li>Packets · 46,654</li>
+<li>SHA-256 · <code>feb8befd8d6891511bd00471d153a2bf8d57d022e1d81e00755941b872fdc355</code></li>
+</ul>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>한눈에 보는 결과</h2>
+<p>David Szili의 실습 기록은 Windows 7 호스트 <code>192.168.116.149</code>에서 WannaCry가 시작돼 다른 호스트로 전파됐다고 설명합니다. 원본 캡처를 읽기 전용으로 확인한 결과, 먼저 이 호스트에서 TCP/445 연결 시도가 집중됐고 이후 <code>192.168.116.138</code>과 <code>192.168.116.172</code>가 새 TCP/445 연결을 시작했습니다. 이 패턴은 조사 범위를 넓힐 단서입니다. 목적지별 감염 여부는 전송 계층 기록만으로 판단할 수 없습니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2017-05-18-WannaCry-ransomware-using-EnternalBlue-exploit.pcap</code></li>
+<li>UTC · 2017-05-18 08:06:10.905 – 2017-05-18 08:17:46.377</li>
+<li>패킷 · 46,654</li>
+<li>SHA-256 · <code>feb8befd8d6891511bd00471d153a2bf8d57d022e1d81e00755941b872fdc355</code></li>
+</ul>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Establish the capture baseline in Splunk</h2>
+<p>Set the display time to UTC and select a time range covering the historical capture. Replace <code>&lt;CASE&gt;</code> with the case tag supplied by your importer. The SPL uses the site’s flattened Zeek field names. It is supplied for execution in your lab. No Splunk or Arkime output counts are asserted below.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Check for <code>zeek:conn</code> and note which SMB logs your import produced. <code>min(ts)</code> and <code>max(ts)</code> here describe each log’s event range. The independently observed first and last packet times above describe the entire file.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+| where cidrmatch("192.168.116.0/24",id_orig_h) AND cidrmatch("192.168.116.0/24",id_resp_h)
+| stats dc(id_resp_h) as unique_targets count as connections
+        min(ts) as first values(conn_state) as states by id_orig_h
+| sort - connections
+| eval first=strftime(first,"%H:%M:%S.%3N %Z")</code></pre>
+</div>
+<p>The first search limits the analysis to connections toward TCP/445. The CIDR checks limit both endpoints to the lab segment. <code>dc(id_resp_h)</code> counts different destinations, while <code>count</code> counts Zeek connection records. Compare the number of destinations and the start times together. A backup server or vulnerability scanner can also have many SMB targets.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 캡처 범위 확인</h2>
+<p>표시 시간을 UTC로 맞추고 과거 캡처가 포함된 시간대를 선택합니다. <code>&lt;CASE&gt;</code>를 수집기가 붙인 케이스 태그로 바꾸세요. SPL은 사이트에서 쓰는 평탄화된 Zeek 필드명을 가정합니다. 아래 쿼리는 실습 환경에서 검증할 예제이며 Splunk와 Arkime의 실제 출력 건수는 측정하지 않았습니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p><code>zeek:conn</code>과 수집된 SMB 로그를 확인합니다. 여기서 <code>min(ts)</code>와 <code>max(ts)</code>는 로그 종류별 이벤트 범위입니다. 위의 첫·마지막 패킷 시각은 PCAP 전체를 기준으로 합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+| where cidrmatch("192.168.116.0/24",id_orig_h) AND cidrmatch("192.168.116.0/24",id_resp_h)
+| stats dc(id_resp_h) as unique_targets count as connections
+        min(ts) as first values(conn_state) as states by id_orig_h
+| sort - connections
+| eval first=strftime(first,"%H:%M:%S.%3N %Z")</code></pre>
+</div>
+<p>먼저 목적지 TCP/445에 해당하는 연결을 선택합니다. CIDR 조건은 양 끝이 실습망인 경우만 남깁니다. <code>dc(id_resp_h)</code>는 서로 다른 목적지 수, <code>count</code>는 Zeek 연결 기록 수입니다. 목적지가 몇 곳인지와 언제 연결을 시작했는지를 함께 보세요. 백업 서버나 취약점 스캐너도 여러 SMB 목적지에 접속할 수 있습니다.</p>
+
+</div>
+</section>
+<section id="smb">
+<div lang="en" data-guide-language>
+<h2>2 · Find the change in direction</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+| where cidrmatch("192.168.116.0/24",id_orig_h) AND cidrmatch("192.168.116.0/24",id_resp_h)
+| eval bucket=floor(ts/5)*5
+| stats count as connections values(id_resp_h) as targets by bucket id_orig_h
+| sort 0 bucket id_orig_h
+| eval time_utc=strftime(bucket,"%H:%M:%S %Z")
+| table time_utc id_orig_h connections targets</code></pre>
+</div>
+<p>A five-second bin makes the burst visible. Read the output in chronological order and note when each workstation begins originating sessions. Expand the relevant window and retrieve an individual connection with <code>uid</code>, <code>ts</code>, both endpoints and both ports. Use that <code>uid</code> only to pivot to corresponding SMB records from the <strong>same Zeek processing run</strong>. A new outbound 445 connection has a new UID. Link it to the previous host by IP and time, preserving both connections as separate evidence.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Find the change in direction"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC, 18 May 2017</th>
+<th scope="col">Frame or scope</th>
+<th scope="col">Directly observed in the capture</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>08:12:07.207–.208</td>
+<td>1110, 1111</td>
+<td>First observed <code>.149 → .138:445</code> SYN and its reverse SYN/ACK on client port 49367</td>
+</tr>
+<tr class="even">
+<td>08:12:07.737</td>
+<td>1146, 1147</td>
+<td><code>.149 → .143:445</code> SYN and SYN/ACK</td>
+</tr>
+<tr class="odd">
+<td>08:12:24.086</td>
+<td>2331</td>
+<td><code>.149 → .254:445</code> SYN, with no reverse SYN/ACK observed for that pair</td>
+</tr>
+<tr class="even">
+<td>08:13:21.145</td>
+<td>11521</td>
+<td><code>.138</code> initiates TCP/445 toward <code>.143</code></td>
+</tr>
+<tr class="odd">
+<td>08:13:55.914</td>
+<td>26533</td>
+<td><code>.172</code> initiates TCP/445 toward <code>.138</code></td>
+</tr>
+<tr class="even">
+<td>Entire file</td>
+<td>Lab segment</td>
+<td><code>.149</code>, <code>.138</code> and <code>.172</code> sent 241, 63 and 17 SYN packets without ACK toward TCP/445 respectively. Each addressed five distinct IPs. Retries can contribute to the SYN count.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · 연결 시작 방향이 바뀐 시각 찾기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+| where cidrmatch("192.168.116.0/24",id_orig_h) AND cidrmatch("192.168.116.0/24",id_resp_h)
+| eval bucket=floor(ts/5)*5
+| stats count as connections values(id_resp_h) as targets by bucket id_orig_h
+| sort 0 bucket id_orig_h
+| eval time_utc=strftime(bucket,"%H:%M:%S %Z")
+| table time_utc id_orig_h connections targets</code></pre>
+</div>
+<p>5초 단위로 묶으면 연결 시도의 집중 구간을 보기 쉽습니다. 어느 호스트가 언제부터 연결을 시작했는지 비교하세요. 구간을 좁힌 뒤 개별 연결의 <code>uid</code>, <code>ts</code>, 양쪽 IP와 포트를 확인합니다. <code>uid</code>는 <strong>같은 Zeek 처리 실행</strong>에서 생성된 해당 연결의 SMB 로그와 연결할 때만 사용합니다. 이후 다른 호스트가 시작한 TCP/445 연결에는 새로운 UID가 부여됩니다. 각각을 별도 근거로 기록하고 IP와 시각으로 흐름을 비교합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · 연결 시작 방향이 바뀐 시각 찾기"><table>
+<thead>
+<tr class="header">
+<th scope="col">2017년 5월 18일 UTC</th>
+<th scope="col">프레임 또는 범위</th>
+<th scope="col">원본에서 직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>08:12:07.207–.208</td>
+<td>1110, 1111</td>
+<td><code>.149 → .138:445</code> 첫 SYN과 클라이언트 포트 49367로 돌아온 SYN/ACK</td>
+</tr>
+<tr class="even">
+<td>08:12:07.737</td>
+<td>1146, 1147</td>
+<td><code>.149 → .143:445</code> SYN과 SYN/ACK</td>
+</tr>
+<tr class="odd">
+<td>08:12:24.086</td>
+<td>2331</td>
+<td><code>.149 → .254:445</code> SYN. 이 호스트 쌍에서 역방향 SYN/ACK는 관찰되지 않음</td>
+</tr>
+<tr class="even">
+<td>08:13:21.145</td>
+<td>11521</td>
+<td><code>.138</code>이 <code>.143</code>의 TCP/445로 연결 시작</td>
+</tr>
+<tr class="odd">
+<td>08:13:55.914</td>
+<td>26533</td>
+<td><code>.172</code>가 <code>.138</code>의 TCP/445로 연결 시작</td>
+</tr>
+<tr class="even">
+<td>전체 캡처</td>
+<td>실습망</td>
+<td><code>.149</code>, <code>.138</code>, <code>.172</code>에서 목적지 TCP/445로 향한 ACK 플래그가 없는 SYN 패킷은 각각 241개, 63개, 17개. 호스트별 서로 다른 목적지는 각각 5개이며 재시도도 SYN 집계에 들어갈 수 있음</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check sessions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; port.dst == 445 &amp;&amp;
+(ip.src == 192.168.116.149 || ip.src == 192.168.116.138 || ip.src == 192.168.116.172)</code></pre>
+</div>
+<p>In Sessions, set the time picker to 08:12–08:15 UTC and select an individual pair. For <code>.149 → .138</code>, expand the session on client port 49367 and look for the SYN and reverse SYN/ACK. Next, check a later session originated by <code>.138</code> or <code>.172</code>. An Arkime session count, a Zeek record count and a packet count have different units.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime으로 세션 교차 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; port.dst == 445 &amp;&amp;
+(ip.src == 192.168.116.149 || ip.src == 192.168.116.138 || ip.src == 192.168.116.172)</code></pre>
+</div>
+<p>Sessions에서 08:12–08:15 UTC로 좁힙니다. <code>.149 → .138</code>의 클라이언트 포트 49367 세션을 열어 SYN과 역방향 SYN/ACK를 확인합니다. 다음으로 <code>.138</code> 또는 <code>.172</code>가 새로 시작한 세션을 엽니다. Arkime 세션 수, Zeek 연결 기록 수, 패킷 수는 서로 집계 단위가 다릅니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Verify the handshake offline if flags are unclear</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2017-05-18-WannaCry-ransomware-using-EnternalBlue-exploit.pcap" \
+  -Y 'ip.addr == 192.168.116.149 &amp;&amp; ip.addr == 192.168.116.138 &amp;&amp; tcp.port == 49367 &amp;&amp; tcp.port == 445 &amp;&amp; tcp.flags.syn == 1' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e ip.dst -e tcp.flags</code></pre>
+</div>
+<p>This narrow check prints TCP flags and frame times from the original PCAP. Use it when the Arkime session view makes packet direction unclear. Frame numbers may change after export. A reply shows that the destination answered the transport attempt. Check the final ACK separately before describing a completed handshake. Neither the SYN/ACK nor a blank SMB log establishes exploitation.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 플래그가 불명확할 때 TShark로 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2017-05-18-WannaCry-ransomware-using-EnternalBlue-exploit.pcap" \
+  -Y 'ip.addr == 192.168.116.149 &amp;&amp; ip.addr == 192.168.116.138 &amp;&amp; tcp.port == 49367 &amp;&amp; tcp.port == 445 &amp;&amp; tcp.flags.syn == 1' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e ip.dst -e tcp.flags</code></pre>
+</div>
+<p>Arkime에서 방향이나 플래그를 보기 어려울 때 원본의 TCP 플래그와 프레임 시각을 확인합니다. 내보낸 파일의 프레임 번호는 달라질 수 있습니다. SYN/ACK는 상대가 응답했다는 근거입니다. 핸드셰이크가 끝났다고 쓰려면 마지막 ACK까지 확인하세요. SYN/ACK만으로 취약점 악용을 입증할 수 없으며 SMB 로그가 비어 있다고 결론을 내릴 수도 없습니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Write the SOC ticket</h2>
+<p>Record the initial source, follow-on sources, first times and capture hash. Treat the domain controller and file server as destinations requiring verification, and attribute any infection claims to the publisher or your endpoint evidence. Ask for endpoint process and file-change records plus approved scanner or backup windows. For a live incident, follow containment policy, check SMBv1 exposure and verify the applicable Windows security updates before restoring connectivity.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2017/05/18/index2.html">Original report and PCAP</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.cisa.gov/sites/default/files/FactSheets/NCCIC%20ICS_FactSheet_WannaCry_Ransomware_S508C.pdf">CISA WannaCry fact sheet</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · SOC 티켓 작성</h2>
+<p>최초 출발지와 후속 출발지, 첫 관측 시각, 캡처 해시를 기록합니다. 도메인 컨트롤러와 파일 서버는 확인할 대상으로 두고, 감염 판정은 공개 원문의 보고 또는 별도로 확인한 엔드포인트 증거에 근거를 둡니다. 프로세스·파일 변경 기록과 승인된 스캐너 또는 백업 작업 시간을 요청하세요. 실제 사고라면 조직의 격리 절차를 따르고, 연결 복구 전에 SMBv1 노출과 관련 Windows 보안 업데이트 적용 여부를 확인합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2017/05/18/index2.html">공개 원문 및 PCAP</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.cisa.gov/sites/default/files/FactSheets/NCCIC%20ICS_FactSheet_WannaCry_Ransomware_S508C.pdf">CISA WannaCry fact sheet</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
