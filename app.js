@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    july19TrickbotCaseTitle: "Trickbot · trace file writes to the C$ share",
+    july19TrickbotCaseSummary: "Connect two successful SMB1 writes to the administrative disk share and distinguish nearby named-pipe traffic.",
+    august17TrickbotCaseTitle: "Emotet and Trickbot · distinguish two DC web requests",
+    august17TrickbotCaseSummary: "Use the request path and packet order to isolate which HTTP request matches earlier TCP/445 data.",
     october04TrickbotCaseTitle: "Trickbot · correlate SMB activity with a DC HTTP request",
     october04TrickbotCaseSummary: "Compare an internal TCP/445 data burst with the DC’s subsequent request for the same URL.",
     march04TrickbotCaseTitle: "Trickbot · narrow a busy SMB pair to two file writes",
@@ -51,6 +55,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    july19TrickbotCaseTitle: "Trickbot · C$ 관리 공유의 파일 쓰기 추적",
+    july19TrickbotCaseSummary: "SMB1 파일 쓰기 성공 응답을 C$ 관리 공유와 연결하고 인접한 명명된 파이프 활동을 구분합니다.",
+    august17TrickbotCaseTitle: "Emotet과 Trickbot · DC의 HTTP 요청 두 건 구분",
+    august17TrickbotCaseSummary: "요청 경로와 패킷 순서로 앞선 TCP/445 데이터와 일치하는 HTTP 요청을 찾습니다.",
     october04TrickbotCaseTitle: "Trickbot · SMB 트래픽과 DC의 HTTP 요청 대조",
     october04TrickbotCaseSummary: "내부 TCP/445 데이터 전송 직후 DC가 같은 URL로 요청을 보냈는지 확인합니다.",
     march04TrickbotCaseTitle: "Trickbot · 여러 SMB 연결에서 성공한 파일 쓰기 찾기",

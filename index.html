@@ -58,6 +58,16 @@
         <h2 id="title-overview" tabindex="-1" data-copy="recentInvestigations">Recent investigations</h2>
         <div class="guide-grid" data-investigation-list>
           <article class="guide-card case-card" data-guide="investigations">
+            <p class="card-tools"><time datetime="2018-08-17">2018-08-17</time> · SMB</p>
+            <h3><a href="./guides/2018-08-17-emotet-trickbot-smb-http-evidence.html" data-copy="august17TrickbotCaseTitle">Emotet and Trickbot · distinguish two DC web requests</a></h3>
+            <p data-copy="august17TrickbotCaseSummary">Use the request path and packet order to isolate which HTTP request matches earlier TCP/445 data.</p>
+          </article>
+          <article class="guide-card case-card" data-guide="investigations">
+            <p class="card-tools"><time datetime="2018-07-19">2018-07-19</time> · SMB</p>
+            <h3><a href="./guides/2018-07-19-trickbot-admin-share.html" data-copy="july19TrickbotCaseTitle">Trickbot · trace file writes to the C$ share</a></h3>
+            <p data-copy="july19TrickbotCaseSummary">Connect two successful SMB1 writes to the administrative disk share and distinguish nearby named-pipe traffic.</p>
+          </article>
+          <article class="guide-card case-card" data-guide="investigations">
             <p class="card-tools"><time datetime="2020-03-04">2020-03-04</time> · SMB</p>
             <h3><a href="./guides/2020-03-04-trickbot-smb-write-baseline.html" data-copy="march04TrickbotCaseTitle">Trickbot · narrow a busy SMB pair to two file writes</a></h3>
             <p data-copy="march04TrickbotCaseSummary">Rank two hosts’ TCP/445 sessions, then verify which file writes the DC acknowledged.</p>
