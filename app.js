@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    october04TrickbotCaseTitle: "Trickbot · correlate SMB activity with a DC HTTP request",
+    october04TrickbotCaseSummary: "Compare an internal TCP/445 data burst with the DC’s subsequent request for the same URL.",
+    march04TrickbotCaseTitle: "Trickbot · narrow a busy SMB pair to two file writes",
+    march04TrickbotCaseSummary: "Rank two hosts’ TCP/445 sessions, then verify which file writes the DC acknowledged.",
     april30TrickbotCaseTitle: "Trickbot · trace SMB writes and named pipes",
     april30TrickbotCaseSummary: "Follow confirmed file writes to a domain controller and assess the adjacent named-pipe traffic.",
     may24TrickbotCaseTitle: "Trickbot · distinguish SMB transfer from reverse probes",
@@ -47,6 +51,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    october04TrickbotCaseTitle: "Trickbot · SMB 트래픽과 DC의 HTTP 요청 대조",
+    october04TrickbotCaseSummary: "내부 TCP/445 데이터 전송 직후 DC가 같은 URL로 요청을 보냈는지 확인합니다.",
+    march04TrickbotCaseTitle: "Trickbot · 여러 SMB 연결에서 성공한 파일 쓰기 찾기",
+    march04TrickbotCaseSummary: "두 호스트의 TCP/445 연결을 비교하고 DC가 수락한 파일 쓰기를 확인합니다.",
     april30TrickbotCaseTitle: "Trickbot · SMB 파일 쓰기와 명명된 파이프",
     april30TrickbotCaseSummary: "도메인 컨트롤러로 전송된 파일 쓰기와 전후의 명명된 파이프 통신을 추적합니다.",
     may24TrickbotCaseTitle: "Trickbot · SMB 파일 전송과 역방향 탐색 구분",
