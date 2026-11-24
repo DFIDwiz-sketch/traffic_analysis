@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    april30TrickbotCaseTitle: "Trickbot · trace SMB writes and named pipes",
+    april30TrickbotCaseSummary: "Follow confirmed file writes to a domain controller and assess the adjacent named-pipe traffic.",
+    may24TrickbotCaseTitle: "Trickbot · distinguish SMB transfer from reverse probes",
+    may24TrickbotCaseSummary: "Use the Active Directory capture to tell workstation-to-DC writes apart from later TCP probes in the opposite direction.",
     june29TrickbotCaseTitle: "Trickbot · separate SMB transfer from HTTP egress",
     june29TrickbotCaseSummary: "Trace a domain-controller write session, then scope the workstation’s separate HTTP POST.",
     august07TrickbotCaseTitle: "Trickbot · isolate the SMB file-write session",
@@ -43,6 +47,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    april30TrickbotCaseTitle: "Trickbot · SMB 파일 쓰기와 명명된 파이프",
+    april30TrickbotCaseSummary: "도메인 컨트롤러로 전송된 파일 쓰기와 전후의 명명된 파이프 통신을 추적합니다.",
+    may24TrickbotCaseTitle: "Trickbot · SMB 파일 전송과 역방향 탐색 구분",
+    may24TrickbotCaseSummary: "Active Directory 캡처에서 워크스테이션의 DC 파일 쓰기와 이후 역방향 TCP 연결 시도를 구분합니다.",
     june29TrickbotCaseTitle: "Trickbot · 내부 SMB 전송과 외부 HTTP 통신",
     june29TrickbotCaseSummary: "DC 파일 쓰기와 워크스테이션의 외부 HTTP POST를 각각 추적합니다.",
     august07TrickbotCaseTitle: "Trickbot · SMB 파일 쓰기 세션 찾기",
