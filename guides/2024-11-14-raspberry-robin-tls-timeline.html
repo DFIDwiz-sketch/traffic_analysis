@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Raspberry Robin · scope encrypted traffic after a reported WebDAV download · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="raspberryRobinTlsCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="raspberryRobinTlsCaseTitle">Raspberry Robin · scope encrypted traffic after a reported WebDAV download</h1>
+      <p class="guide-meta">
+        <time datetime="2024-11-14">2024-11-14</time>
+        <span aria-hidden="true">·</span><span>TLS</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">What can the encrypted capture establish?</a></li>
+<li><a href="#baseline">1 · Baseline connections by minute in Splunk</a></li>
+<li><a href="#evidence">2 · Isolate the TLS phases and keep the evidence at connection level</a></li>
+<li><a href="#arkime">3 · Cross-check an early and a later flow in Arkime</a></li>
+<li><a href="#tshark">4 · Read two original ClientHello frames if needed</a></li>
+<li><a href="#incident-note">5 · Record the timeline and collect the application evidence</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">암호화된 캡처에서 어디까지 확인할 수 있나</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 분 단위 연결 베이스라인 확인</a></li>
+<li><a href="#evidence">2단계 · TLS 시기별 흐름을 찾고 연결 근거 확인</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 초기와 이후 세션 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 원본 ClientHello 두 건 확인</a></li>
+<li><a href="#incident-note">5단계 · 타임라인을 기록하고 응용 계층 증거 요청</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>What can the encrypted capture establish?</h2>
+<p>The publisher attributes the case to Raspberry Robin and describes a WebDAV download using evidence from a separate Fiddler capture. The original PCAP analyzed here shows TLS ClientHello messages from <code>10.0.0.101</code>. An early group requests the same visible server name over TCP/443, while later ClientHello messages reach additional hosts and ports. Use this timeline to decide which connection details are confirmed and which claims require the separate application or endpoint records.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2024-11-14-Raspberry-Robin-infection-traffic.pcap</code></li>
+<li>UTC · 2024-11-14 21:13:45.961 – 2024-11-14 23:59:52.452</li>
+<li>Packets · 91,481</li>
+<li>SHA-256 · <code>b72197ddcfb0914aa6cff0fe2e43d1222401f39b4f8d978ef96a862e11b47add</code></li>
+</ul>
+
+<p>The WebDAV description and malware attribution come from the source. The TLS observations below were measured in the original PCAP. Splunk, Arkime and TShark are searches to validate in your lab.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>암호화된 캡처에서 어디까지 확인할 수 있나</h2>
+<p>공개 원문은 Raspberry Robin 사례를 소개하고 별도의 Fiddler 캡처를 근거로 WebDAV 다운로드를 설명합니다. 여기서 분석한 원본 PCAP에는 <code>10.0.0.101</code>이 보낸 TLS ClientHello가 있습니다. 초기에는 TCP/443 연결 여러 개에서 같은 서버 이름을 요청했고, 이후 다른 호스트와 포트에서도 ClientHello가 관찰됩니다. 타임라인으로 확인된 연결 근거와 별도 응용 계층 또는 엔드포인트 기록이 필요한 항목을 정리합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2024-11-14-Raspberry-Robin-infection-traffic.pcap</code></li>
+<li>UTC · 2024-11-14 21:13:45.961 – 2024-11-14 23:59:52.452</li>
+<li>패킷 · 91,481</li>
+<li>SHA-256 · <code>b72197ddcfb0914aa6cff0fe2e43d1222401f39b4f8d978ef96a862e11b47add</code></li>
+</ul>
+
+<p>WebDAV 설명과 악성코드 식별은 공개 원문에 근거합니다. 아래 TLS 관찰은 원본 PCAP에서 확인했습니다. Splunk, Arkime, TShark는 실습 환경에서 검증하는 검색입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline connections by minute in Splunk</h2>
+<p>Use the case label assigned at import for <code>&lt;CASE&gt;</code>. Display UTC and search the full capture interval. If <code>_time</code> is set from ingest time, widen the picker and use numeric Zeek <code>ts</code> for the timeline. The examples use flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Confirm that Zeek connection and TLS logs arrived. Zeek's TLS log is commonly imported as <code>zeek:ssl</code>. Check the field mapping and analyzer coverage before interpreting sparse results.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.0.0.101 proto=tcp
+| bin ts span=1m
+| stats count as connections dc(id_resp_h) as destinations values(id_resp_p) as responder_ports
+        values(service) as services by ts
+| sort 0 ts</code></pre>
+</div>
+<p>Read each minute's destination count and responder ports. Compare the early traffic around 21:13–21:16 UTC with the new addresses and ports around 21:28–21:34 UTC. Use the Zeek service label as a starting point, then validate selected connections in packets. Standard port assignments are only one clue to the protocol observed.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 분 단위 연결 베이스라인 확인</h2>
+<p><code>&lt;CASE&gt;</code>에 가져올 때 지정한 케이스 값을 넣습니다. UTC로 표시하고 전체 캡처 구간을 선택합니다. <code>_time</code>이 수집 시각이면 검색 범위를 넓히고 숫자형 Zeek <code>ts</code>로 사건 시각을 읽습니다. 예제는 평탄화된 필드를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Zeek 연결과 TLS 로그가 수집됐는지 확인합니다. Zeek TLS 로그의 sourcetype은 보통 <code>zeek:ssl</code>입니다. 결과가 적으면 필드 매핑과 분석기 범위를 점검합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.0.0.101 proto=tcp
+| bin ts span=1m
+| stats count as connections dc(id_resp_h) as destinations values(id_resp_p) as responder_ports
+        values(service) as services by ts
+| sort 0 ts</code></pre>
+</div>
+<p>분마다 목적지 수와 응답자 포트를 봅니다. 21:13~21:16 UTC의 초기 연결과 21:28~21:34 UTC 전후에 나타난 새 주소 및 포트를 비교합니다. Zeek 서비스 분류로 후보를 좁힌 뒤 선택한 연결을 패킷에서 확인합니다. 포트는 프로토콜을 판단하는 단서 중 하나입니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Isolate the TLS phases and keep the evidence at connection level</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:ssl pcap_case="&lt;CASE&gt;" id_orig_h=10.0.0.101
+| eval visible_name=coalesce(server_name,"&lt;absent in log&gt;")
+| stats dc(uid) as connections min(ts) as first max(ts) as last
+    by id_resp_h id_resp_p visible_name
+| sort 0 first</code></pre>
+</div>
+<p>Read responder IP, port, visible server name and time span together. In the original capture 19 distinct client ports carried ClientHello messages to <code>194.165.16.82:443</code> with the same SNI, between the first one at 21:13:51.409 and the last one at 21:16:04.119 UTC. A missing server name can reflect the handshake or parser coverage. Check selected packets before interpreting it.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;TLS_UID&gt;" sourcetype IN ("zeek:ssl","zeek:conn")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p server_name established conn_state orig_bytes resp_bytes missed_bytes</code></pre>
+</div>
+<p>Copy one TLS <code>uid</code> and use it for the corresponding connection record from the <strong>same Zeek processing run</strong>. If the case was imported twice, select one run first. A different TCP connection has its own UID even when the workstation and SNI recur.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Isolate the TLS phases and keep the evidence at connection level"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 14 November</th>
+<th scope="col">Original frame</th>
+<th scope="col">Directly observed ClientHello</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>21:13:46.341</td>
+<td>6</td>
+<td><code>172.67.153.95:443</code>, client port 56381</td>
+</tr>
+<tr class="even">
+<td>21:13:51.409</td>
+<td>7167</td>
+<td>First observed to <code>194.165.16.82:443</code>, SNI <code>2z.si</code>, client port 56383</td>
+</tr>
+<tr class="odd">
+<td>21:16:04.119</td>
+<td>10581</td>
+<td>Last observed to that same endpoint with the same SNI</td>
+</tr>
+<tr class="even">
+<td>21:29:08.936</td>
+<td>25723</td>
+<td><code>139.99.134.168:80</code>, client port 56512</td>
+</tr>
+<tr class="odd">
+<td>21:33:07.394</td>
+<td>57882</td>
+<td><code>37.114.55.122:9001</code>, client port 56526, SNI present</td>
+</tr>
+<tr class="even">
+<td>21:33:07.422</td>
+<td>57883</td>
+<td>Another TLS attempt to <code>193.219.97.25:9001</code>, client port 56525, SNI present</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Temporal proximity helps scope endpoint follow-up. A browser, updater or proxy can also use repeated connections and multiple destinations. A ClientHello establishes a TLS negotiation attempt. The visible metadata leaves HTTP methods, downloaded file identity and execution unverified.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · TLS 시기별 흐름을 찾고 연결 근거 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:ssl pcap_case="&lt;CASE&gt;" id_orig_h=10.0.0.101
+| eval visible_name=coalesce(server_name,"&lt;absent in log&gt;")
+| stats dc(uid) as connections min(ts) as first max(ts) as last
+    by id_resp_h id_resp_p visible_name
+| sort 0 first</code></pre>
+</div>
+<p>응답자 IP, 포트, 관찰 가능한 서버 이름과 시간 범위를 함께 읽습니다. 원본에서 21:13:51.409부터 21:16:04.119 UTC까지 <code>194.165.16.82:443</code>을 향해 서로 다른 클라이언트 포트 19개에서 같은 SNI의 ClientHello가 관찰됐습니다. 서버 이름이 비어 있다면 실제 핸드셰이크와 수집 범위를 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;TLS_UID&gt;" sourcetype IN ("zeek:ssl","zeek:conn")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p server_name established conn_state orig_bytes resp_bytes missed_bytes</code></pre>
+</div>
+<p>TLS <code>uid</code> 하나를 가져와 <strong>같은 Zeek 처리 실행</strong>의 연결 기록을 찾습니다. 캡처를 여러 번 가져왔으면 먼저 한 실행으로 범위를 좁힙니다. 워크스테이션과 SNI가 같아도 TCP 연결마다 UID가 다릅니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · TLS 시기별 흐름을 찾고 연결 근거 확인"><table>
+<thead>
+<tr class="header">
+<th scope="col">11월 14일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 ClientHello</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>21:13:46.341</td>
+<td>6</td>
+<td><code>172.67.153.95:443</code>, 출발지 포트 56381</td>
+</tr>
+<tr class="even">
+<td>21:13:51.409</td>
+<td>7167</td>
+<td><code>194.165.16.82:443</code>으로 향한 첫 관찰, SNI <code>2z.si</code>, 출발지 포트 56383</td>
+</tr>
+<tr class="odd">
+<td>21:16:04.119</td>
+<td>10581</td>
+<td>같은 목적지에서 같은 SNI를 가진 마지막 관찰</td>
+</tr>
+<tr class="even">
+<td>21:29:08.936</td>
+<td>25723</td>
+<td><code>139.99.134.168:80</code>, 출발지 포트 56512</td>
+</tr>
+<tr class="odd">
+<td>21:33:07.394</td>
+<td>57882</td>
+<td><code>37.114.55.122:9001</code>, 출발지 포트 56526, SNI 관찰</td>
+</tr>
+<tr class="even">
+<td>21:33:07.422</td>
+<td>57883</td>
+<td><code>193.219.97.25:9001</code>을 향한 별도 TLS 시도, 출발지 포트 56525, SNI 관찰</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>시각이 가까운 흐름은 호스트에서 추가 확인할 범위를 좁혀 줍니다. 브라우저나 업데이트 도구, 프록시도 연결을 반복하거나 여러 목적지를 사용할 수 있습니다. ClientHello는 TLS 협상 시도를 보여줍니다. HTTP 메서드, 다운로드 파일의 정체와 실행 여부는 별도 근거가 필요합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check an early and a later flow in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.0.101 &amp;&amp; ip.dst == 194.165.16.82 &amp;&amp; port.src == 56383 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>Use the case tag and time around 21:13:51 UTC. Open the session and compare the first ClientHello's visible server name with Zeek. Keep the source port and timestamp when citing the frame.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.0.101 &amp;&amp; ip.dst == 37.114.55.122 &amp;&amp; port.src == 56526 &amp;&amp; port.dst == 9001</code></pre>
+</div>
+<p>Open the later session around 21:33:07 UTC. Check the ClientHello in the packet pane and record the unusual responder port. If your view lacks a protocol label, use the original capture for the narrow check below.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 초기와 이후 세션 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.0.101 &amp;&amp; ip.dst == 194.165.16.82 &amp;&amp; port.src == 56383 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>케이스 태그와 21:13:51 UTC 전후 시간을 적용합니다. 첫 ClientHello의 서버 이름을 패킷 화면에서 찾아 Zeek 결과와 대조합니다. 프레임을 인용할 때는 출발지 포트와 시각을 함께 기록합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.0.101 &amp;&amp; ip.dst == 37.114.55.122 &amp;&amp; port.src == 56526 &amp;&amp; port.dst == 9001</code></pre>
+</div>
+<p>21:33:07 UTC 전후의 별도 세션에서 ClientHello와 응답자 포트를 확인합니다. 프로토콜 분류가 조회되지 않으면 아래 방법으로 원본 캡처를 좁게 읽습니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Read two original ClientHello frames if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2024-11-14-Raspberry-Robin-infection-traffic.pcap" -d tcp.port==9001,tls \
+  -Y '(frame.number == 7167 || frame.number == 57882)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.dst -e tcp.dstport \
+  -e tls.handshake.type -e tls.handshake.extensions_server_name</code></pre>
+</div>
+<p>Use this metadata-only check if Arkime leaves the handshake on TCP/9001 unresolved. The decode hint tells the offline analyzer to try TLS on that port. Compare handshake type and server name for the two known frames and verify their tuples. The hint applies to the local read of the existing capture.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 원본 ClientHello 두 건 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2024-11-14-Raspberry-Robin-infection-traffic.pcap" -d tcp.port==9001,tls \
+  -Y '(frame.number == 7167 || frame.number == 57882)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.dst -e tcp.dstport \
+  -e tls.handshake.type -e tls.handshake.extensions_server_name</code></pre>
+</div>
+<p>Arkime에서 TCP/9001의 핸드셰이크가 분명하지 않으면 메타데이터만 확인합니다. 디코드 옵션은 해당 포트를 TLS로 분석하도록 지정합니다. 원본 프레임 두 개에서 핸드셰이크 유형, 서버 이름, 주소·포트를 비교합니다. 이 옵션은 기존 캡처의 오프라인 조회에 적용됩니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record the timeline and collect the application evidence</h2>
+<p>Record the capture hash, workstation, early TLS destination and time span, and later destinations with the supporting frames. Keep the publisher's WebDAV characterization linked to its separate Fiddler evidence. Request proxy or WebDAV logs and endpoint process-network, file-creation and execution telemetry. Verify approved browser, updater or proxy behavior before assigning impact to any destination in a production incident.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2024/11/14/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2024/11/14/2024-11-14-Raspberry-Robin-infection-traffic.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/ssl.html">Zeek TLS logs</a> · <a href="https://www.wireshark.org/docs/dfref/t/tls.html">Wireshark TLS fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 타임라인을 기록하고 응용 계층 증거 요청</h2>
+<p>캡처 해시, 워크스테이션, 초기 TLS의 목적지와 시각 범위, 후속 목적지와 근거 프레임을 기록합니다. 원문의 WebDAV 설명은 별도 Fiddler 근거에 연결합니다. 프록시 또는 WebDAV 로그와 엔드포인트의 프로세스 네트워크·파일 생성·실행 기록을 요청합니다. 운영 환경에서는 승인된 브라우저, 업데이트 또는 프록시 사용과 일치하는지 확인한 뒤 영향을 판단합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2024/11/14/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2024/11/14/2024-11-14-Raspberry-Robin-infection-traffic.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/ssl.html">Zeek TLS logs</a> · <a href="https://www.wireshark.org/docs/dfref/t/tls.html">Wireshark TLS fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    raspberryRobinTlsCaseTitle: "Raspberry Robin · scope encrypted traffic after a reported WebDAV download",
+    raspberryRobinTlsCaseSummary: "Use visible TLS handshake metadata to track early and later connections.",
+    agentTeslaFtpCaseTitle: "AgentTesla · verify uploads across FTP control and data channels",
+    agentTeslaFtpCaseSummary: "Match server-advertised passive ports to observed data connections and completion replies.",
     july02PandaCaseTitle: "Emotet and Zeus Panda · distinguish HTTP and TLS on TCP/443",
     july02PandaCaseSummary: "Compare plaintext HTTP with a TLS ClientHello on the same destination port.",
     feb26TrickbotCaseTitle: "Trickbot · investigate a TCP/445 burst before DC egress",
@@ -59,6 +63,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    raspberryRobinTlsCaseTitle: "Raspberry Robin · WebDAV 다운로드 보고와 TLS 타임라인",
+    raspberryRobinTlsCaseSummary: "TLS 핸드셰이크에서 보이는 메타데이터로 초기와 후속 연결을 추적합니다.",
+    agentTeslaFtpCaseTitle: "AgentTesla · FTP 제어·데이터 채널로 업로드 확인",
+    agentTeslaFtpCaseSummary: "서버가 알린 수동 모드 포트를 실제 데이터 연결 및 완료 응답과 대조합니다.",
     july02PandaCaseTitle: "Emotet과 Zeus Panda · TCP/443에서 HTTP와 TLS 구분",
     july02PandaCaseSummary: "같은 목적지 포트에서 평문 HTTP와 TLS ClientHello를 대조합니다.",
     feb26TrickbotCaseTitle: "Trickbot · DC 외부 요청 직전의 TCP/445 급증 조사",
