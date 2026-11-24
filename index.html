@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>Traffic Analysis</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="hero">
+      <div class="hero-heading">
+        <p class="eyebrow" data-copy="eyebrow">PCAP / NETWORK TRAFFIC</p>
+        <h1><span data-copy="heroFirst">Traffic</span> <span data-copy="heroSecond">Analysis</span></h1>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="radar"><i></i><i></i><i></i></div>
+        <div class="packet packet-back"><i></i><i></i><i></i></div>
+        <div class="packet packet-middle"><i></i><i></i><i></i></div>
+        <div class="packet packet-front"><i></i><i></i><i></i></div>
+        <div class="trace trace-top"></div>
+        <div class="trace trace-bottom"></div>
+        <div class="node node-top"></div>
+        <div class="node node-bottom"></div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+        <h2 id="nav-title" data-copy="sections">Sections</h2>
+        <nav aria-labelledby="nav-title">
+          <a href="#overview" data-section="overview" aria-current="page">
+            <span class="icon icon-grid" aria-hidden="true"></span>
+            <span data-copy="overview">Overview</span>
+          </a>
+          <a href="#pcap" data-section="pcap">
+            <span class="icon icon-packet" aria-hidden="true"></span>
+            <span data-copy="pcap">PCAP</span>
+          </a>
+          <a href="#analysis" data-section="analysis">
+            <span class="icon icon-chart" aria-hidden="true"></span>
+            <span data-copy="analysis">Traffic Analysis</span>
+          </a>
+          <a href="#resources" data-section="resources">
+            <span class="icon icon-book" aria-hidden="true"></span>
+            <span data-copy="resources">Resources</span>
+          </a>
+        </nav>
+      </aside>
+
+      <div class="panels">
+        <section class="panel" id="panel-overview" aria-labelledby="title-overview">
+          <h2 id="title-overview" tabindex="-1" data-copy="overview">Overview</h2>
+          <div class="section-body"></div>
+        </section>
+        <section class="panel" id="panel-pcap" aria-labelledby="title-pcap" hidden>
+          <h2 id="title-pcap" tabindex="-1" data-copy="pcap">PCAP</h2>
+          <div class="section-body"></div>
+        </section>
+        <section class="panel" id="panel-analysis" aria-labelledby="title-analysis" hidden>
+          <h2 id="title-analysis" tabindex="-1" data-copy="analysis">Traffic Analysis</h2>
+          <div class="section-body"></div>
+        </section>
+        <section class="panel" id="panel-resources" aria-labelledby="title-resources" hidden>
+          <h2 id="title-resources" tabindex="-1" data-copy="resources">Resources</h2>
+          <div class="section-body"></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
