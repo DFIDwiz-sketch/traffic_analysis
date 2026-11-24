@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    june29TrickbotCaseTitle: "Trickbot · separate SMB transfer from HTTP egress",
+    june29TrickbotCaseSummary: "Trace a domain-controller write session, then scope the workstation’s separate HTTP POST.",
+    august07TrickbotCaseTitle: "Trickbot · isolate the SMB file-write session",
+    august07TrickbotCaseSummary: "Separate the first TCP/445 attempt from the session with successful file writes.",
     wannacryCaseTitle: "WannaCry · tracing SMB fan-out",
     wannacryCaseSummary: "Follow the change from one TCP/445 originator to several lab workstations.",
     weekTrickbotCaseTitle: "One week of Trickbot · the SMB pivot",
@@ -39,6 +43,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    june29TrickbotCaseTitle: "Trickbot · 내부 SMB 전송과 외부 HTTP 통신",
+    june29TrickbotCaseSummary: "DC 파일 쓰기와 워크스테이션의 외부 HTTP POST를 각각 추적합니다.",
+    august07TrickbotCaseTitle: "Trickbot · SMB 파일 쓰기 세션 찾기",
+    august07TrickbotCaseSummary: "최초 TCP/445 연결 시도와 파일 쓰기가 성공한 세션을 구분합니다.",
     wannacryCaseTitle: "WannaCry · SMB 연결 확산 추적",
     wannacryCaseSummary: "한 호스트에서 시작한 TCP/445 연결이 여러 실습 호스트로 이어지는 흐름을 봅니다.",
     weekTrickbotCaseTitle: "일주일간의 Trickbot · SMB 전송 추적",
