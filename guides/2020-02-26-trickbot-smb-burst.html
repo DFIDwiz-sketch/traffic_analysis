@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Trickbot · investigate a TCP/445 burst before DC egress · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="feb26TrickbotCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="feb26TrickbotCaseTitle">Trickbot · investigate a TCP/445 burst before DC egress</h1>
+      <p class="guide-meta">
+        <time datetime="2020-02-26">2020-02-26</time>
+        <span aria-hidden="true">·</span><span>SMB</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">What makes this SMB window stand out?</a></li>
+<li><a href="#baseline">1 · Compare a burst with the host pair&#x27;s capture baseline</a></li>
+<li><a href="#smb">2 · Compare the SMB share exchange and subsequent GET</a></li>
+<li><a href="#arkime">3 · Cross-check the connection directions in Arkime</a></li>
+<li><a href="#tshark">4 · Check the clock and share reply offline if needed</a></li>
+<li><a href="#incident-note">5 · Prepare the incident ticket</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">이 SMB 구간에서 무엇이 눈에 띄나</a></li>
+<li><a href="#baseline">1단계 · 두 호스트의 베이스라인과 연결 집중 구간 비교</a></li>
+<li><a href="#smb">2단계 · SMB 공유 연결과 직후의 GET 비교</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 두 연결의 방향 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 시각과 공유 응답을 오프라인 확인</a></li>
+<li><a href="#incident-note">5단계 · 사고 티켓 작성</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>What makes this SMB window stand out?</h2>
+<p>The 26 February 2020 source post describes Trickbot spreading from a workstation to a domain controller (DC). In the PCAP, <code>10.20.30.101</code> initiates a burst toward <code>10.20.30.2</code> on TCP/445. One of those sessions includes a successful SMB1 connection to <code>IPC$</code>. The DC makes an external HTTP GET immediately afterward. This guide scopes the host pair and tests which conclusions the short interval supports.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2020-02-26-Trickbot-spreads-from-infected-client-to-DC.pcap</code></li>
+<li>UTC · 2020-02-26 19:34:25.060 – 2020-02-26 21:14:01.896</li>
+<li>Packets · 26,316</li>
+<li>SHA-256 · <code>38457be0d71deea2a398b902f6181fd7c29f51254f290a5bb692b2299ccaab8f</code></li>
+</ul>
+
+<p>Host roles and the Trickbot attribution come from the publisher. The packet counts, share exchange and timestamps below were checked in the original PCAP. The search examples are for your lab ingest.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>이 SMB 구간에서 무엇이 눈에 띄나</h2>
+<p>2020년 2월 26일자 공개 원문은 Trickbot이 워크스테이션에서 도메인 컨트롤러(DC)로 확산된 사례를 소개합니다. 원본 PCAP에서 <code>10.20.30.101</code>은 <code>10.20.30.2</code>의 TCP/445로 짧은 시간 동안 연결을 집중적으로 시도했습니다. 그중 하나는 SMB1의 <code>IPC$</code> 공유에 연결됐고, 직후 DC에서 외부 HTTP GET이 관찰됐습니다. 두 호스트와 해당 시간으로 범위를 좁혀 각 근거가 뒷받침하는 내용을 살핍니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2020-02-26-Trickbot-spreads-from-infected-client-to-DC.pcap</code></li>
+<li>UTC · 2020-02-26 19:34:25.060 – 2020-02-26 21:14:01.896</li>
+<li>패킷 · 26,316</li>
+<li>SHA-256 · <code>38457be0d71deea2a398b902f6181fd7c29f51254f290a5bb692b2299ccaab8f</code></li>
+</ul>
+
+<p>호스트 역할과 Trickbot 식별은 공개 원문에 근거합니다. 아래 패킷 수, 공유 요청·응답과 시각은 원본 PCAP에서 확인했습니다. 검색 예제는 실습 환경에서 검증합니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Compare a burst with the host pair&#x27;s capture baseline</h2>
+<p>Use the case value assigned during import for <code>&lt;CASE&gt;</code>. Set the Splunk timezone to UTC and search the capture interval. If the time picker uses ingestion time, widen it and use numeric Zeek <code>ts</code> for event time. The field names assume flattened Zeek records.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Verify that connection and HTTP records arrived. Check for share and RPC sourcetypes and note any gaps in analyzer coverage.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445 id_orig_h=10.20.30.101 id_resp_h=10.20.30.2
+| bin ts span=1s
+| stats count as sessions dc(id_orig_p) as source_ports values(conn_state) as states by ts
+| eval log_time=strftime(ts,"%Y-%m-%d %H:%M:%S %Z")
+| sort 0 - source_ports</code></pre>
+</div>
+<p>Rank one-second bins by distinct workstation source ports for the DC pair. Check their connection-state values before interpreting the burst. In the original PCAP, 21 distinct client ports had a SYN without ACK in the 20:09:09 UTC second. The full pair has 648 packets in both directions, including control traffic. Zeek can collapse retransmissions into one row, and a connection straddling a bin boundary can change the comparison. This baseline represents only the capture window.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · 두 호스트의 베이스라인과 연결 집중 구간 비교</h2>
+<p><code>&lt;CASE&gt;</code>를 가져올 때 지정한 케이스 값으로 바꿉니다. Splunk 시간대를 UTC로 설정하고 캡처 구간을 선택합니다. 시간 선택기가 수집 시각을 사용하면 범위를 넓히고, 사건 시각에는 숫자형 Zeek <code>ts</code>를 사용합니다. 예제는 평탄화된 Zeek 필드를 기준으로 합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결과 HTTP 기록이 조회되는지 확인합니다. 공유 및 RPC sourcetype도 확인하고 분석기가 기록하지 못한 범위가 있으면 남깁니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445 id_orig_h=10.20.30.101 id_resp_h=10.20.30.2
+| bin ts span=1s
+| stats count as sessions dc(id_orig_p) as source_ports values(conn_state) as states by ts
+| eval log_time=strftime(ts,"%Y-%m-%d %H:%M:%S %Z")
+| sort 0 - source_ports</code></pre>
+</div>
+<p>워크스테이션→DC에서 1초마다 서로 다른 출발지 포트가 몇 개였는지 비교하고 연결 상태도 함께 봅니다. 원본의 20:09:09 UTC 1초 동안 출발지 포트 21개에서 ACK가 없는 SYN이 관찰됐습니다. 이 두 호스트의 해당 방향 TCP/445 흐름에는 제어 트래픽을 포함해 총 양방향 패킷 648개가 있었습니다. Zeek는 재전송을 연결 하나로 묶을 수 있으며 집계 구간의 경계에 따라 수치가 달라질 수 있습니다. 베이스라인의 범위는 이 캡처 구간입니다.</p>
+
+</div>
+</section>
+<section id="smb">
+<div lang="en" data-guide-language>
+<h2>2 · Compare the SMB share exchange and subsequent GET</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.20.30.101 id_resp_h=10.20.30.2 id_resp_p=445 id_orig_p=49298
+| table ts uid id_orig_h id_orig_p id_resp_h id_resp_p duration conn_state missed_bytes</code></pre>
+</div>
+<p>Keep the connection UID for client port 49298. For a re-imported capture, filter to the <strong>same Zeek processing run</strong> before using the UID.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SMB_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc","zeek:ntlm")
+| sort 0 ts
+| table ts sourcetype uid path name action endpoint operation</code></pre>
+</div>
+<p>Read <code>path</code> from available share mappings. Look at file and RPC records, then check the share request and reply in packets. A successful connection to <code>IPC$</code> establishes access to the share for that SMB session. It does not determine what ran on the DC.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.20.30.2
+    id_resp_h=104.237.194.147 id_resp_p=80 method=GET
+| sort 0 ts
+| table ts uid id_orig_p host uri status_code</code></pre>
+</div>
+<p>The DC's two GETs to the selected address use separate connections. Read their source ports and timestamps. The SMB and HTTP connections also have distinct UIDs. Use each HTTP UID to locate its own conn record in the same run. Compare the protocols by DC IP and packet time, and keep the causal question open.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Compare the SMB share exchange and subsequent GET"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 26 February</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>19:36:10.799</td>
+<td>95</td>
+<td>First captured workstation-to-DC SYN, source port 49235</td>
+</tr>
+<tr class="even">
+<td>20:09:09.289</td>
+<td>11469</td>
+<td>SYN in the burst, source port 49298</td>
+</tr>
+<tr class="odd">
+<td>20:09:09.289</td>
+<td>11476, 11477</td>
+<td>SMB1 request for <code>IPC$</code> and successful server reply on that connection</td>
+</tr>
+<tr class="even">
+<td>20:09:09.468–20:09:09.622</td>
+<td>11808, 11814</td>
+<td>DC source port 58824 sends GET to <code>104.237.194.147:80</code> and receives HTTP 200</td>
+</tr>
+<tr class="odd">
+<td>20:19:40.025–20:19:40.181</td>
+<td>14949, 14951</td>
+<td>Later DC GET and HTTP 200 on source port 58913 to the same destination</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The unusually tight timing supports investigation of a possible relationship. Ordinary domain administration can use <code>IPC$</code>, and scheduled activity can explain a separate web connection. The observed share response and HTTP 200 leave the initiating process, any file writes and endpoint impact unresolved.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · SMB 공유 연결과 직후의 GET 비교</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.20.30.101 id_resp_h=10.20.30.2 id_resp_p=445 id_orig_p=49298
+| table ts uid id_orig_h id_orig_p id_resp_h id_resp_p duration conn_state missed_bytes</code></pre>
+</div>
+<p>출발지 포트 49298에 해당하는 연결 UID를 가져옵니다. 케이스를 여러 번 가져왔다면 UID를 사용하기 전에 <strong>같은 Zeek 처리 실행</strong>으로 제한합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SMB_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc","zeek:ntlm")
+| sort 0 ts
+| table ts sourcetype uid path name action endpoint operation</code></pre>
+</div>
+<p>공유 매핑이 있으면 <code>path</code>를 읽습니다. 파일·RPC 기록을 살피고 공유 요청과 응답은 패킷으로 확인합니다. <code>IPC$</code> 연결에 성공했다는 것은 그 SMB 세션에서 공유에 접근했다는 뜻입니다. DC에서 무엇이 실행됐는지는 호스트 증거가 필요합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.20.30.2
+    id_resp_h=104.237.194.147 id_resp_p=80 method=GET
+| sort 0 ts
+| table ts uid id_orig_p host uri status_code</code></pre>
+</div>
+<p>선택한 주소로 향한 DC의 GET 두 건은 별도 연결입니다. 출발지 포트와 시각을 확인합니다. SMB와 HTTP 연결의 UID도 각각 다릅니다. 같은 Zeek 실행에서 각 HTTP UID로 자신의 conn 기록을 찾고, 프로토콜 간 관계는 DC IP와 시각을 통해 조사합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · SMB 공유 연결과 직후의 GET 비교"><table>
+<thead>
+<tr class="header">
+<th scope="col">2월 26일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>19:36:10.799</td>
+<td>95</td>
+<td>워크스테이션→DC 방향의 첫 관찰 SYN, 출발지 포트 49235</td>
+</tr>
+<tr class="even">
+<td>20:09:09.289</td>
+<td>11469</td>
+<td>연결이 몰린 구간의 SYN, 출발지 포트 49298</td>
+</tr>
+<tr class="odd">
+<td>20:09:09.289</td>
+<td>11476, 11477</td>
+<td>같은 연결에서 SMB1 <code>IPC$</code> 공유 요청과 서버의 성공 응답</td>
+</tr>
+<tr class="even">
+<td>20:09:09.468–20:09:09.622</td>
+<td>11808, 11814</td>
+<td>DC 출발지 포트 58824에서 <code>104.237.194.147:80</code>으로 GET을 보내고 HTTP 200 수신</td>
+</tr>
+<tr class="odd">
+<td>20:19:40.025–20:19:40.181</td>
+<td>14949, 14951</td>
+<td>DC 출발지 포트 58913에서 같은 목적지로 별도 GET을 보내고 HTTP 200 수신</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>시각이 매우 가깝다는 점은 두 활동의 관계를 추가 조사할 이유가 됩니다. 정상적인 도메인 관리도 <code>IPC$</code>를 이용할 수 있고, 예약 작업으로 별도 웹 요청이 생길 수 있습니다. 공유 응답과 HTTP 200으로는 요청을 생성한 프로세스, 파일 쓰기 여부와 호스트 영향을 확인하기 어렵습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check the connection directions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.20.30.101 &amp;&amp; ip.dst == 10.20.30.2 &amp;&amp; port.src == 49298 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Set the tag and time around 20:09:09 UTC. Find the selected workstation-to-DC session and inspect its share request and success reply.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.20.30.2 &amp;&amp; ip.dst == 104.237.194.147 &amp;&amp; port.src == 58824 &amp;&amp; port.dst == 80</code></pre>
+</div>
+<p>Open the separate DC-originated HTTP session and compare its request time with the SMB reply. Record the ports and times if packet numbers differ after export.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 두 연결의 방향 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.20.30.101 &amp;&amp; ip.dst == 10.20.30.2 &amp;&amp; port.src == 49298 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>태그와 20:09:09 UTC 전후로 좁힙니다. 선택한 워크스테이션→DC 세션의 공유 요청과 성공 응답을 패킷 화면에서 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.20.30.2 &amp;&amp; ip.dst == 104.237.194.147 &amp;&amp; port.src == 58824 &amp;&amp; port.dst == 80</code></pre>
+</div>
+<p>DC가 시작한 별도 HTTP 세션에서 요청 시각을 SMB 응답 시각과 비교합니다. 일부 패킷을 내보내 프레임 번호가 달라졌다면 포트와 시각을 함께 기록합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Check the clock and share reply offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2020-02-26-Trickbot-spreads-from-infected-client-to-DC.pcap" \
+  -Y 'frame.number == 11476 || frame.number == 11477 || frame.number == 11808' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e ip.dst \
+  -e tcp.srcport -e tcp.dstport -e smb.tid -e smb.nt_status -e http.request.method</code></pre>
+</div>
+<p>This filter reads three original frames. Use the direction to identify the SMB response, then read the tree ID and status from that response. Check the timestamp of the GET in the separate TCP flow. Blank protocol-specific columns are expected on frames from the other flow.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 시각과 공유 응답을 오프라인 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2020-02-26-Trickbot-spreads-from-infected-client-to-DC.pcap" \
+  -Y 'frame.number == 11476 || frame.number == 11477 || frame.number == 11808' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e ip.dst \
+  -e tcp.srcport -e tcp.dstport -e smb.tid -e smb.nt_status -e http.request.method</code></pre>
+</div>
+<p>이 필터는 원본 프레임 세 개의 메타데이터를 읽습니다. 방향을 보고 SMB 응답을 찾은 뒤 트리 ID와 상태를 확인합니다. 별도 TCP 흐름의 GET 시각을 비교합니다. 해당 프레임에 없는 프로토콜의 필드가 비어 있을 수 있습니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Prepare the incident ticket</h2>
+<p>Record the capture hash, host roles, one-second burst, successful share access and subsequent DC request. Assign confidence to each observation separately. Ask for workstation and DC endpoint events, proxy records and approved maintenance activity in the same window. Investigate which process originated the HTTP connection and check DC execution or file evidence before deciding the impact.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2020/02/26/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2020/02/26/2020-02-26-Trickbot-spreads-from-infected-client-to-DC.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb.html">Wireshark SMB fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 사고 티켓 작성</h2>
+<p>PCAP 해시, 호스트 역할, 1초간 집중된 연결 시도, 공유 접근 성공과 후속 DC 요청을 기록합니다. 각 관찰에 별도로 신뢰도를 부여합니다. 같은 시간대의 워크스테이션과 DC 엔드포인트 이벤트, 프록시 기록, 승인된 유지보수 작업을 확인합니다. HTTP 연결을 시작한 프로세스와 DC의 실행·파일 증거를 확인한 뒤 영향을 판단합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2020/02/26/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2020/02/26/2020-02-26-Trickbot-spreads-from-infected-client-to-DC.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb.html">Wireshark SMB fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    july02PandaCaseTitle: "Emotet and Zeus Panda · distinguish HTTP and TLS on TCP/443",
+    july02PandaCaseSummary: "Compare plaintext HTTP with a TLS ClientHello on the same destination port.",
+    feb26TrickbotCaseTitle: "Trickbot · investigate a TCP/445 burst before DC egress",
+    feb26TrickbotCaseSummary: "Compare the host pair’s baseline, a successful SMB1 share connect, and the DC’s nearby web request.",
     july19TrickbotCaseTitle: "Trickbot · trace file writes to the C$ share",
     july19TrickbotCaseSummary: "Connect two successful SMB1 writes to the administrative disk share and distinguish nearby named-pipe traffic.",
     august17TrickbotCaseTitle: "Emotet and Trickbot · distinguish two DC web requests",
@@ -55,6 +59,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    july02PandaCaseTitle: "Emotet과 Zeus Panda · TCP/443에서 HTTP와 TLS 구분",
+    july02PandaCaseSummary: "같은 목적지 포트에서 평문 HTTP와 TLS ClientHello를 대조합니다.",
+    feb26TrickbotCaseTitle: "Trickbot · DC 외부 요청 직전의 TCP/445 급증 조사",
+    feb26TrickbotCaseSummary: "두 호스트의 평소 연결, SMB1 공유 연결 성공, 인접한 DC 웹 요청을 비교합니다.",
     july19TrickbotCaseTitle: "Trickbot · C$ 관리 공유의 파일 쓰기 추적",
     july19TrickbotCaseSummary: "SMB1 파일 쓰기 성공 응답을 C$ 관리 공유와 연결하고 인접한 명명된 파이프 활동을 구분합니다.",
     august17TrickbotCaseTitle: "Emotet과 Trickbot · DC의 HTTP 요청 두 건 구분",

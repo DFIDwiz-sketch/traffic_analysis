@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Emotet and Zeus Panda · distinguish HTTP and TLS on TCP/443 · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="july02PandaCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="july02PandaCaseTitle">Emotet and Zeus Panda · distinguish HTTP and TLS on TCP/443</h1>
+      <p class="guide-meta">
+        <time datetime="2018-07-02">2018-07-02</time>
+        <span aria-hidden="true">·</span><span>HTTP / TLS</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">What protocol actually reached TCP/443?</a></li>
+<li><a href="#baseline">1 · Baseline the workstation in Splunk</a></li>
+<li><a href="#smb">2 · Verify HTTP and TLS before assigning meaning</a></li>
+<li><a href="#arkime">3 · Cross-check the two port 443 sessions in Arkime</a></li>
+<li><a href="#tshark">4 · Compare just the protocol metadata offline if needed</a></li>
+<li><a href="#incident-note">5 · Record the flows and ask for endpoint confirmation</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">TCP/443에서 어떤 프로토콜이 관찰됐나</a></li>
+<li><a href="#baseline">1단계 · Splunk에서 워크스테이션 베이스라인 확인</a></li>
+<li><a href="#smb">2단계 · HTTP와 TLS를 확인한 뒤 해석</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 두 TCP/443 세션 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 오프라인에서 프로토콜 메타데이터만 비교</a></li>
+<li><a href="#incident-note">5단계 · 두 흐름을 기록하고 엔드포인트 확인 요청</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>What protocol actually reached TCP/443?</h2>
+<p>The publisher describes a workstation infection with Emotet followed by Zeus Panda Banker. In the original capture, workstation <code>10.7.2.101</code> sends plaintext HTTP to one TCP/443 destination and later sends a TLS ClientHello to another TCP/443 destination. This guide checks what the network evidence says about each flow and what a SOC ticket still needs from the endpoint.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2018-07-02-Emotet-infection-with-Zeus-Panda-Banker.pcap</code></li>
+<li>UTC · 2018-07-02 14:35:35.790 – 2018-07-02 15:41:46.615</li>
+<li>Packets · 8,424</li>
+<li>SHA-256 · <code>2b3809adaabb14c9dc705ba870488e864736fe9c0a1b084f64169428a9dd2b9a</code></li>
+</ul>
+
+<p>The family names and infection sequence come from the publisher. Packet times, ports, HTTP headers and the TLS server name below were checked directly in the capture. The searches are examples for your local ingest.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>TCP/443에서 어떤 프로토콜이 관찰됐나</h2>
+<p>공개 원문은 워크스테이션에서 Emotet에 이어 Zeus Panda Banker가 관찰됐다고 보고합니다. 원본 캡처에서 <code>10.7.2.101</code>은 한 TCP/443 목적지에 평문 HTTP를 보냈고, 이후 다른 TCP/443 목적지로 TLS ClientHello를 보냈습니다. 각 연결을 네트워크 근거로 확인하고 SOC 티켓에 필요한 엔드포인트 후속 항목을 정리합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2018-07-02-Emotet-infection-with-Zeus-Panda-Banker.pcap</code></li>
+<li>UTC · 2018-07-02 14:35:35.790 – 2018-07-02 15:41:46.615</li>
+<li>패킷 · 8,424</li>
+<li>SHA-256 · <code>2b3809adaabb14c9dc705ba870488e864736fe9c0a1b084f64169428a9dd2b9a</code></li>
+</ul>
+
+<p>악성코드 계열과 감염 순서는 공개 원문에 근거합니다. 아래 패킷 시각, 포트, HTTP 헤더 및 TLS 서버 이름은 원본 캡처에서 직접 확인했습니다. 검색은 실습 환경의 수집 결과에서 검증할 예제입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline the workstation in Splunk</h2>
+<p>Use the case value assigned during import for <code>&lt;CASE&gt;</code>, set the display timezone to UTC, and include the full capture interval. Enlarge the time range if Splunk uses ingestion time for <code>_time</code>. Use the Zeek <code>ts</code> field to order the traffic. The examples assume flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Check for <code>zeek:conn</code>, <code>zeek:http</code> and TLS records, typically imported as <code>zeek:ssl</code>. Adjust the sourcetypes if your input uses different names.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.7.2.101 proto=tcp
+| eval service_label=coalesce(mvjoin(service,","),"unidentified")
+| stats count as connections dc(id_resp_h) as destinations values(conn_state) as states
+    by id_resp_p service_label
+| sort 0 - connections</code></pre>
+</div>
+<p>Group the workstation’s TCP connections by responder port and Zeek service. A service label reflects protocol recognition. An unidentified entry is a cue to inspect its packets. Compare the port 443 rows and use responder IPs to narrow the two flows. The capture includes other activity from the lab host, so the baseline is scoped to this file.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · Splunk에서 워크스테이션 베이스라인 확인</h2>
+<p><code>&lt;CASE&gt;</code>에 가져올 때 지정한 케이스 값을 넣고 표시 시간대를 UTC로 설정합니다. 전체 캡처 구간을 포함합니다. Splunk <code>_time</code>이 수집 시각이면 범위를 넓히고 트래픽 순서는 Zeek <code>ts</code>로 읽습니다. 예제는 평탄화된 필드를 기준으로 합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p><code>zeek:conn</code>, <code>zeek:http</code>와 일반적으로 <code>zeek:ssl</code>로 수집하는 TLS 로그를 확인합니다. 수집 설정에 따라 sourcetype 이름을 조정합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.7.2.101 proto=tcp
+| eval service_label=coalesce(mvjoin(service,","),"unidentified")
+| stats count as connections dc(id_resp_h) as destinations values(conn_state) as states
+    by id_resp_p service_label
+| sort 0 - connections</code></pre>
+</div>
+<p>워크스테이션의 TCP 연결을 응답자 포트와 Zeek가 식별한 서비스별로 묶습니다. 서비스가 식별되지 않은 행은 원본 패킷을 확인합니다. 포트 443의 행을 비교한 뒤 응답자 IP를 기준으로 두 흐름을 좁힙니다. 다른 실습 트래픽도 함께 기록됐으므로 베이스라인은 이 캡처 파일의 범위로 해석합니다.</p>
+
+</div>
+</section>
+<section id="smb">
+<div lang="en" data-guide-language>
+<h2>2 · Verify HTTP and TLS before assigning meaning</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_orig_h=10.7.2.101 id_resp_p=443
+    id_resp_h IN ("24.173.127.246","185.45.193.240")
+    sourcetype IN ("zeek:conn","zeek:http","zeek:ssl")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h service trans_depth method status_code server_name established</code></pre>
+</div>
+<p>Read the connection row first, then compare <code>method</code> and <code>status_code</code> from HTTP with <code>server_name</code> and <code>established</code> from TLS where those fields exist. Use each connection’s <code>uid</code> with its application records from the <strong>same Zeek processing run</strong>. If the capture was imported twice, isolate one run. Use client IP and time to compare flows with different UIDs.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Verify HTTP and TLS before assigning meaning"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2 July</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>14:38:24.663–14:38:24.817</td>
+<td>975, 977</td>
+<td>HTTP GET to <code>94.141.21.54:80</code>, followed by HTTP 200 with declared <code>application/octet-stream</code></td>
+</tr>
+<tr class="even">
+<td>14:38:53.085–14:38:53.770</td>
+<td>1231, 1233</td>
+<td>Plaintext HTTP POST and 200 response on <code>24.173.127.246:443</code>, client port 49205</td>
+</tr>
+<tr class="odd">
+<td>14:42:01.243</td>
+<td>1786</td>
+<td>TLS ClientHello to <code>185.45.193.240:443</code>, client port 49207, with SNI <code>canariasmotor.top</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A nonstandard plaintext HTTP service, a proxy or test software can account for some traffic on port 443. SNI identifies the server name requested in the TLS handshake. It leaves the encrypted contents and process ownership unresolved. Likewise, a declared binary content type does not establish file identity or execution.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · HTTP와 TLS를 확인한 뒤 해석</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_orig_h=10.7.2.101 id_resp_p=443
+    id_resp_h IN ("24.173.127.246","185.45.193.240")
+    sourcetype IN ("zeek:conn","zeek:http","zeek:ssl")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h service trans_depth method status_code server_name established</code></pre>
+</div>
+<p>연결 행을 먼저 읽고 HTTP의 <code>method</code>와 <code>status_code</code>, TLS의 <code>server_name</code>과 <code>established</code>를 수집된 범위에서 비교합니다. 연결의 <code>uid</code>로 <strong>같은 Zeek 처리 실행</strong>의 응용 계층 기록을 찾습니다. 캡처를 두 번 가져왔다면 한 실행으로 제한합니다. UID가 다른 흐름을 비교할 때는 클라이언트 IP와 시각을 사용합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · HTTP와 TLS를 확인한 뒤 해석"><table>
+<thead>
+<tr class="header">
+<th scope="col">7월 2일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>14:38:24.663–14:38:24.817</td>
+<td>975, 977</td>
+<td><code>94.141.21.54:80</code>으로 HTTP GET, 이후 <code>application/octet-stream</code>을 선언한 HTTP 200 응답</td>
+</tr>
+<tr class="even">
+<td>14:38:53.085–14:38:53.770</td>
+<td>1231, 1233</td>
+<td><code>24.173.127.246:443</code>의 평문 HTTP POST와 200 응답, 출발지 포트 49205</td>
+</tr>
+<tr class="odd">
+<td>14:42:01.243</td>
+<td>1786</td>
+<td><code>185.45.193.240:443</code>으로 보낸 TLS ClientHello, 출발지 포트 49207, SNI는 <code>canariasmotor.top</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>비표준 평문 HTTP 서비스, 프록시나 테스트 프로그램도 포트 443을 사용할 수 있습니다. SNI는 TLS 핸드셰이크에서 요청한 서버 이름입니다. 암호화된 내용이나 요청 프로세스에는 별도 근거가 필요합니다. 서버가 선언한 바이너리 콘텐츠 유형으로는 파일의 정체나 실행 여부를 확인할 수 없습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check the two port 443 sessions in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.2.101 &amp;&amp; ip.dst == 24.173.127.246 &amp;&amp; port.src == 49205 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>Open the session around 14:38:53 UTC and check the readable HTTP request line and reply in the packet pane.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.2.101 &amp;&amp; ip.dst == 185.45.193.240 &amp;&amp; port.src == 49207 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>Open the separate session around 14:42:01 UTC and find the ClientHello and SNI. Use the tag assigned during import for both searches. Keep source ports and timestamps in the evidence notes so the frames can be located again after export.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 두 TCP/443 세션 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.2.101 &amp;&amp; ip.dst == 24.173.127.246 &amp;&amp; port.src == 49205 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>14:38:53 UTC 전후 세션을 열고 패킷 화면에서 평문 HTTP 요청과 응답을 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.2.101 &amp;&amp; ip.dst == 185.45.193.240 &amp;&amp; port.src == 49207 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>14:42:01 UTC 전후의 별도 세션에서 ClientHello와 SNI를 찾습니다. 두 검색 모두 가져올 때 지정한 태그를 씁니다. 일부 패킷을 내보낸 뒤에도 다시 찾을 수 있도록 출발지 포트와 시각을 근거에 남깁니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Compare just the protocol metadata offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2018-07-02-Emotet-infection-with-Zeus-Panda-Banker.pcap" \
+  -Y '(frame.number == 1231 || frame.number == 1233 || frame.number == 1786)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.dstport \
+  -e http.request.method -e http.response.code -e tls.handshake.type -e tls.handshake.extensions_server_name</code></pre>
+</div>
+<p>If Arkime leaves protocol labels uncertain, compare these three frames in the original capture. HTTP method and response code should belong to the first flow, while handshake type and SNI belong to the second. A blank field can reflect decoder selection on a nonstandard port. Check the original packet view and TCP tuple before interpreting it.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 오프라인에서 프로토콜 메타데이터만 비교</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2018-07-02-Emotet-infection-with-Zeus-Panda-Banker.pcap" \
+  -Y '(frame.number == 1231 || frame.number == 1233 || frame.number == 1786)' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.dstport \
+  -e http.request.method -e http.response.code -e tls.handshake.type -e tls.handshake.extensions_server_name</code></pre>
+</div>
+<p>Arkime에서 프로토콜이 분명하지 않으면 원본 프레임 세 개를 대조합니다. HTTP 메서드와 상태는 첫 흐름에, 핸드셰이크 유형과 SNI는 두 번째 흐름에 해당합니다. 비표준 포트의 분석기 선택 때문에 필드가 비어 있을 수 있으므로 원본 패킷과 연결 주소·포트를 함께 확인합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record the flows and ask for endpoint confirmation</h2>
+<p>Record the workstation, PCAP hash, three destinations, protocol evidence, time range and original frame numbers. Check for an authorized client or proxy that could account for unusual port use. Request process-network telemetry and file-creation or execution events. Keep family attribution tied to the publisher until endpoint or file evidence supports it in the incident under review.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/07/02/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2018/07/02/2018-07-02-Emotet-infection-with-Zeus-Panda-Banker.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/ssl.html">Zeek TLS logs</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 두 흐름을 기록하고 엔드포인트 확인 요청</h2>
+<p>워크스테이션, PCAP 해시, 목적지 세 곳, 프로토콜 근거, 시각과 원본 프레임 번호를 기록합니다. 승인된 클라이언트나 프록시가 특이한 포트 사용을 설명하는지 확인합니다. 프로세스 네트워크 로그와 파일 생성·실행 이벤트를 요청합니다. 조사 중인 사건에서 별도 엔드포인트나 파일 근거가 확인되기 전까지 악성코드 계열 식별은 공개 원문에 근거한 것으로 표시합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/07/02/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2018/07/02/2018-07-02-Emotet-infection-with-Zeus-Panda-Banker.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/ssl.html">Zeek TLS logs</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
