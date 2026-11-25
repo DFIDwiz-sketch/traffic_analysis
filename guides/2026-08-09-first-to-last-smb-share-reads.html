@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>First to Last · distinguish policy reads from shared document access · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="firstToLastSmbCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="firstToLastSmbCaseTitle">First to Last · distinguish policy reads from shared document access</h1>
+      <p class="guide-meta">
+        <time datetime="2026-08-09">2026-08-09</time>
+        <span aria-hidden="true">·</span><span>SMB / HTTP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Which workstation read documents from the shared drive?</a></li>
+<li><a href="#baseline">1 · Baseline both clients before filtering the server</a></li>
+<li><a href="#evidence">2 · Trace reads from the share and compare outbound HTTP</a></li>
+<li><a href="#arkime">3 · Compare document access and routine policy reads in Arkime</a></li>
+<li><a href="#tshark">4 · Check the two read lengths offline if needed</a></li>
+<li><a href="#incident-note">5 · Document the address discrepancy and follow up</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">어느 워크스테이션이 공유 문서를 읽었나</a></li>
+<li><a href="#baseline">1단계 · 서버를 필터링하기 전에 두 클라이언트 비교</a></li>
+<li><a href="#evidence">2단계 · 공유 문서 읽기와 외부 HTTP 확인</a></li>
+<li><a href="#arkime">3단계 · Arkime에서 문서 읽기와 정책 읽기 대조</a></li>
+<li><a href="#tshark">4단계 · 필요한 경우 읽기 길이 두 건을 오프라인 확인</a></li>
+<li><a href="#incident-note">5단계 · 주소 차이를 기록하고 후속 증거 요청</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Which workstation read documents from the shared drive?</h2>
+<p>The publisher’s “First to Last” exercise asks the analyst to identify an infected workstation and scope its traffic. The setup page lists the DC as <code>172.16.8.2</code>. In the original PCAP, SMB2 requests naming <code>FIRSTTOLAST-DC</code> receive replies from <code>172.16.8.8</code>. Both investigated workstations read policy files from that server. The PCAP also records <code>172.16.8.49</code> reading two spreadsheets from its <code>Shared</code> share and sending HTTP POSTs to an external address.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2026-08-09-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2026-08-09 02:07:32.442 – 2026-08-09 02:21:32.567</li>
+<li>Packets · 22,473</li>
+<li>SHA-256 · <code>0ea6b597732a9ce6af9a7e3adff4512c9a91b4bce27184c8fdeb746f05cce170</code></li>
+</ul>
+
+<p>The lab scenario and listed DC address come from the publisher. The responder address, actions, status codes and frame times below are packet observations. The searches are examples to validate in your lab.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>어느 워크스테이션이 공유 문서를 읽었나</h2>
+<p>공개 실습 ‘First to Last’는 감염된 워크스테이션을 식별하고 트래픽 범위를 확인하는 과제입니다. 원문 환경 설명의 DC는 <code>172.16.8.2</code>입니다. 원본에서는 <code>FIRSTTOLAST-DC</code>를 대상으로 한 SMB2 요청에 <code>172.16.8.8</code>이 응답했습니다. 조사한 두 워크스테이션은 이 서버에서 정책 파일을 읽었습니다. 캡처에는 <code>172.16.8.49</code>의 <code>Shared</code> 문서 두 개 읽기와 외부 HTTP POST도 있습니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2026-08-09-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2026-08-09 02:07:32.442 – 2026-08-09 02:21:32.567</li>
+<li>패킷 · 22,473</li>
+<li>SHA-256 · <code>0ea6b597732a9ce6af9a7e3adff4512c9a91b4bce27184c8fdeb746f05cce170</code></li>
+</ul>
+
+<p>실습 시나리오와 문서의 DC 주소는 공개 원문에 근거합니다. 아래 응답자 주소, 작업, 상태 코드와 시각은 원본 패킷에서 확인했습니다. 검색 예제는 실습 환경에서 검증합니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline both clients before filtering the server</h2>
+<p>Use the case tag for <code>&lt;CASE&gt;</code>. Select the full capture interval and set Splunk to UTC. If the picker uses ingest time, widen it and read numeric Zeek <code>ts</code> for the actual timeline. The examples use flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Verify the available connection, SMB and HTTP sourcetypes. SMB log coverage can vary by analyzer and ingest settings.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+    id_orig_h IN ("172.16.8.49","172.16.8.53")
+| stats dc(uid) as connections values(id_orig_p) as client_ports values(conn_state) as states
+    sum(orig_pkts) as client_packets sum(resp_pkts) as server_packets by id_orig_h id_resp_h
+| sort 0 id_orig_h</code></pre>
+</div>
+<p>Compare both client addresses and group by observed responder. Starting with the responder field open lets the capture resolve the address discrepancy. The original PCAP shows 593 bilateral TCP/445 packets for <code>.49</code> and 319 for <code>.53</code> to <code>.8</code>, including acknowledgement and control frames. Those packet totals differ in scope from Zeek’s connection count.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1단계 · 서버를 필터링하기 전에 두 클라이언트 비교</h2>
+<p><code>&lt;CASE&gt;</code>에 수집 태그를 넣고 전체 캡처 구간을 포함합니다. Splunk는 UTC로 표시합니다. 시간 선택기가 수집 시각을 사용하면 범위를 넓히고 실제 사건 순서를 숫자형 Zeek <code>ts</code>로 확인합니다. 예제는 평탄화된 필드를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결, SMB와 HTTP sourcetype 수집 여부를 확인합니다. SMB 로그의 가시성은 분석기와 수집 방식에 따라 다를 수 있습니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+    id_orig_h IN ("172.16.8.49","172.16.8.53")
+| stats dc(uid) as connections values(id_orig_p) as client_ports values(conn_state) as states
+    sum(orig_pkts) as client_packets sum(resp_pkts) as server_packets by id_orig_h id_resp_h
+| sort 0 id_orig_h</code></pre>
+</div>
+<p>두 클라이언트를 실제 응답자 주소별로 비교합니다. 응답자를 먼저 제한하지 않으면 주소가 다른 이유를 원본에서 살필 수 있습니다. 원본 TCP/445에서 <code>.8</code>로 향한 연결에는 양방향 패킷이 <code>.49</code>에서 593개, <code>.53</code>에서 319개였습니다. ACK와 제어 패킷도 포함되며 Zeek의 연결 수와는 단위가 다릅니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Trace reads from the share and compare outbound HTTP</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_resp_h=172.16.8.8 id_resp_p=445
+    id_orig_h IN ("172.16.8.49","172.16.8.53") id_orig_p IN (49670,49671,49728)
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_h id_orig_p path name action endpoint operation</code></pre>
+</div>
+<p>Take the UID from each TCP session and associate the SMB share and file records from the <strong>same Zeek processing run</strong>. If a case was imported repeatedly, select one run first. Use the successful tree mapping and file handle to link a read to its share and file in packets. A file-read row may be missing in Zeek, so check SMB2 replies before concluding about a specific file.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h IN ("172.16.8.49","172.16.8.53") method=POST
+| search NOT id_resp_h="172.16.8.*"
+| stats count as requests dc(uid) as connections min(ts) as first max(ts) as last
+    values(status_code) as responses by id_orig_h id_resp_h</code></pre>
+</div>
+<p>Use the external POST comparison to choose flows for follow-up. The HTTP rows have their own UIDs for joining to <code>zeek:conn</code> in the same run. Compare HTTP and SMB using the workstation, timestamps and endpoint telemetry when available.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Trace reads from the share and compare outbound HTTP"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 9 August</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>02:07:35.580–02:07:35.596</td>
+<td>606, 607, 616, 617</td>
+<td><code>.53</code> connects to <code>SYSVOL</code> and reads <code>gpt.ini</code> on port 49671</td>
+</tr>
+<tr class="even">
+<td>02:08:15.602–02:08:15.607</td>
+<td>2328, 2329, 2336, 2337</td>
+<td><code>.49</code> connects to <code>SYSVOL</code> and reads <code>gpt.ini</code> on port 49670</td>
+</tr>
+<tr class="odd">
+<td>02:08:27.820–02:08:27.821</td>
+<td>3008, 3009</td>
+<td><code>.49</code> connects to <code>Shared</code> on port 49728, with a success reply from <code>.8</code></td>
+</tr>
+<tr class="even">
+<td>02:12:20.302</td>
+<td>10607, 10608</td>
+<td>Successful first observed read of the contact-list spreadsheet, with 4,096 bytes reported</td>
+</tr>
+<tr class="odd">
+<td>02:14:07.182–02:14:07.344</td>
+<td>11227, 11229</td>
+<td><code>.49</code> sends HTTP POST to <code>146.59.71.167:80</code> and receives HTTP 404</td>
+</tr>
+<tr class="even">
+<td>02:14:21.975</td>
+<td>11566, 11567</td>
+<td>Successful first observed read of the quarterly sales spreadsheet, with 4,096 bytes reported</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The two reads represent separate requests on the selected share connection. Ordinary policy activity and authorized spreadsheet access are plausible explanations. Packet timing supports comparing the events. The captured HTTP status and SMB read replies leave process ownership, authorization and any outbound transfer of the documents unresolved.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2단계 · 공유 문서 읽기와 외부 HTTP 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" id_resp_h=172.16.8.8 id_resp_p=445
+    id_orig_h IN ("172.16.8.49","172.16.8.53") id_orig_p IN (49670,49671,49728)
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_h id_orig_p path name action endpoint operation</code></pre>
+</div>
+<p>각 TCP 연결의 UID로 <strong>같은 Zeek 처리 실행</strong>의 SMB 공유 및 파일 기록을 연결합니다. 여러 번 가져온 케이스는 한 실행을 선택합니다. 패킷에서 성공한 트리 매핑과 파일 핸들로 작업을 해당 공유 및 파일에 연결합니다. Zeek에 읽기 행이 없으면 SMB2 응답을 패킷으로 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h IN ("172.16.8.49","172.16.8.53") method=POST
+| search NOT id_resp_h="172.16.8.*"
+| stats count as requests dc(uid) as connections min(ts) as first max(ts) as last
+    values(status_code) as responses by id_orig_h id_resp_h</code></pre>
+</div>
+<p>외부 POST 검색으로 추가 조사할 흐름을 고릅니다. HTTP 행의 각 UID는 같은 Zeek 실행의 <code>zeek:conn</code>과 대조합니다. HTTP와 SMB는 워크스테이션 IP, 시각, 확보 가능한 프로세스 기록으로 비교합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2단계 · 공유 문서 읽기와 외부 HTTP 확인"><table>
+<thead>
+<tr class="header">
+<th scope="col">8월 9일 UTC</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 확인한 근거</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>02:07:35.580–02:07:35.596</td>
+<td>606, 607, 616, 617</td>
+<td><code>.53</code>이 출발지 포트 49671에서 <code>SYSVOL</code> 연결 및 <code>gpt.ini</code> 읽기</td>
+</tr>
+<tr class="even">
+<td>02:08:15.602–02:08:15.607</td>
+<td>2328, 2329, 2336, 2337</td>
+<td><code>.49</code>가 출발지 포트 49670에서 <code>SYSVOL</code> 연결 및 <code>gpt.ini</code> 읽기</td>
+</tr>
+<tr class="odd">
+<td>02:08:27.820–02:08:27.821</td>
+<td>3008, 3009</td>
+<td><code>.49</code>가 출발지 포트 49728에서 <code>Shared</code> 연결. <code>.8</code>이 성공 응답.</td>
+</tr>
+<tr class="even">
+<td>02:12:20.302</td>
+<td>10607, 10608</td>
+<td>연락처 목록 스프레드시트의 첫 관찰 읽기 성공. 응답은 4,096바이트.</td>
+</tr>
+<tr class="odd">
+<td>02:14:07.182–02:14:07.344</td>
+<td>11227, 11229</td>
+<td><code>.49</code>가 <code>146.59.71.167:80</code>으로 POST를 보내고 HTTP 404 수신</td>
+</tr>
+<tr class="even">
+<td>02:14:21.975</td>
+<td>11566, 11567</td>
+<td>분기 매출 스프레드시트의 첫 관찰 읽기 성공. 응답은 4,096바이트.</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>표의 두 읽기는 선택한 공유 연결에서 별개의 요청입니다. 정상 정책 처리나 승인된 문서 접근도 가능한 설명입니다. 패킷 시각으로 사건을 비교할 수 있습니다. 프로세스, 접근 권한과 문서가 외부로 전송됐는지는 HTTP 상태와 SMB 읽기 응답만으로 확인하기 어렵습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Compare document access and routine policy reads in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.16.8.49 &amp;&amp; ip.dst == 172.16.8.8 &amp;&amp; port.src == 49728 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Use the case tag and open the <code>.49</code> share session. Find the documented read requests and server replies using the recorded times. Keep the tuple when exporting because frame numbering can change.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.16.8.53 &amp;&amp; ip.dst == 172.16.8.8 &amp;&amp; port.src == 49671 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Open the <code>.53</code> policy session for comparison. Check the share path and successful <code>gpt.ini</code> read at 02:07:35 UTC. Identify the server by the response address and tree mapping.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3단계 · Arkime에서 문서 읽기와 정책 읽기 대조</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.16.8.49 &amp;&amp; ip.dst == 172.16.8.8 &amp;&amp; port.src == 49728 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>케이스 태그를 적용해 <code>.49</code>의 공유 세션을 엽니다. 기록한 시각의 읽기 요청과 서버 응답을 확인합니다. 일부 패킷을 내보내면 프레임 번호가 달라질 수 있으므로 연결 주소·포트를 남깁니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 172.16.8.53 &amp;&amp; ip.dst == 172.16.8.8 &amp;&amp; port.src == 49671 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>비교용으로 <code>.53</code>의 정책 세션을 엽니다. 02:07:35 UTC의 공유 경로와 <code>gpt.ini</code> 읽기 성공을 확인합니다. 응답자 IP와 트리 매핑으로 서버를 식별합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Check the two read lengths offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2026-08-09-traffic-analysis-exercise.pcap" \
+  -Y 'frame.number == 10607 || frame.number == 10608 || frame.number == 11566 || frame.number == 11567' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e tcp.stream \
+  -e smb2.msg_id -e smb2.read_length -e smb2.nt_status</code></pre>
+</div>
+<p>If Arkime leaves a selected read unclear, compare the four original frames. Use the TCP stream, message ID and direction to pair each request and reply. Read the response status and length. This reports metadata for individual operations.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4단계 · 필요한 경우 읽기 길이 두 건을 오프라인 확인</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2026-08-09-traffic-analysis-exercise.pcap" \
+  -Y 'frame.number == 10607 || frame.number == 10608 || frame.number == 11566 || frame.number == 11567' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src -e tcp.stream \
+  -e smb2.msg_id -e smb2.read_length -e smb2.nt_status</code></pre>
+</div>
+<p>Arkime에서 선택한 읽기가 분명하지 않으면 원본 프레임 네 개를 대조합니다. TCP 스트림, 메시지 ID와 방향으로 요청과 응답을 연결하고 각 응답의 상태와 길이를 확인합니다. 출력은 선택한 작업의 메타데이터입니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Document the address discrepancy and follow up</h2>
+<p>Record the capture hash, observed and documented DC addresses, both client addresses, the confirmed read frames and the external POST. Verify the DC address against site inventory and check approved share access, process-network events, file access logs and proxy logs. Confirm process ownership or file transfer before attributing the document reads to the infection.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2026/08/09/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2026/08/09/2026-08-09-traffic-analysis-exercise.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb2.html">Wireshark SMB2 fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5단계 · 주소 차이를 기록하고 후속 증거 요청</h2>
+<p>티켓에 해시, 문서 및 원본에서 확인한 DC 주소, 두 클라이언트, 읽기 프레임과 외부 POST를 남깁니다. DC 주소는 환경 인벤토리와 대조합니다. 승인된 공유 접근, 프로세스 네트워크 기록, 파일 접근 및 프록시 로그를 확인합니다. 문서 읽기를 감염과 연결하기 전에 실행 프로세스와 외부 전송 근거를 확보합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2026/08/09/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2026/08/09/2026-08-09-traffic-analysis-exercise.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb2.html">Wireshark SMB2 fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    empireProtocolCaseTitle: "Trickbot and PowerShell Empire · identify the protocol from packets",
+    empireProtocolCaseSummary: "Compare an earlier TCP/80 exchange with plaintext HTTP on TCP/443.",
+    firstToLastSmbCaseTitle: "First to Last · distinguish policy reads from shared document access",
+    firstToLastSmbCaseSummary: "Check the DC address and compare two workstations before attributing share activity.",
     macAdTrafficCaseTitle: "macOS malware · distinguish large uploads from polling",
     macAdTrafficCaseSummary: "Compare the POST body coverage with the later GET cadence and reply metadata.",
     kongTukeSmbCaseTitle: "KongTuke Rebuke · trace domain-share and RPC activity",
@@ -79,6 +83,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    empireProtocolCaseTitle: "Trickbot과 PowerShell Empire · 패킷으로 프로토콜 식별",
+    empireProtocolCaseSummary: "앞선 TCP/80 교환과 TCP/443의 평문 HTTP를 대조합니다.",
+    firstToLastSmbCaseTitle: "First to Last · 정책 읽기와 공유 문서 접근 구분",
+    firstToLastSmbCaseSummary: "DC 주소를 확인하고 두 워크스테이션의 공유 활동을 비교합니다.",
     macAdTrafficCaseTitle: "macOS 악성코드 · 대용량 업로드와 폴링 구분",
     macAdTrafficCaseSummary: "POST 본문의 캡처 범위와 이후 GET의 반복 간격 및 응답을 비교합니다.",
     kongTukeSmbCaseTitle: "KongTuke Rebuke · 도메인 공유와 RPC 활동 추적",

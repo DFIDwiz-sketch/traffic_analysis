@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Trickbot and PowerShell Empire · identify the protocol from packets · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="empireProtocolCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="empireProtocolCaseTitle">Trickbot and PowerShell Empire · identify the protocol from packets</h1>
+      <p class="guide-meta">
+        <time datetime="2018-07-21">2018-07-21</time>
+        <span aria-hidden="true">·</span><span>TCP / HTTP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">What was really running on ports 80 and 443?</a></li>
+<li><a href="#baseline">1 · Baseline the client across the capture</a></li>
+<li><a href="#evidence">2 · Correlate candidate sessions and build the timeline</a></li>
+<li><a href="#arkime">3 · Cross-check the exchanges in Arkime</a></li>
+<li><a href="#tshark">4 · Confirm only the four HTTP headers offline if needed</a></li>
+<li><a href="#incident-note">5 · Record protocol findings and follow up</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">80번과 443번 포트에서 실제로 어떤 프로토콜을 썼는가?</a></li>
+<li><a href="#baseline">1 · 전체 캡처 구간에서 클라이언트 베이스라인 만들기</a></li>
+<li><a href="#evidence">2 · 후보 세션을 연결하고 타임라인 만들기</a></li>
+<li><a href="#arkime">3 · Arkime에서 두 교환을 교차 확인하기</a></li>
+<li><a href="#tshark">4 · 필요할 때만 HTTP 헤더 네 개를 오프라인에서 확인하기</a></li>
+<li><a href="#incident-note">5 · 프로토콜 분석 결과를 기록하고 후속 조사하기</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>What was really running on ports 80 and 443?</h2>
+<p>The publisher describes an overnight Trickbot infection followed by PowerShell Empire activity. On the client <code>10.7.21.101</code>, the original capture shows an early HTTP GET on TCP/80, a later exchange on TCP/80 whose selected packets lack recognizable HTTP headers, and plaintext HTTP requests and responses on TCP/443. Use the comparisons to determine the protocol from what each session contains.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2018-07-21-Trickbot-infection-with-PowerShell-Empire.pcap</code></li>
+<li>UTC · 2018-07-21 03:02:19.912 – 2018-07-21 11:05:34.175</li>
+<li>Packets · 21,256</li>
+<li>SHA-256 · <code>5f1dd1416c515e1a5afe65b9514127bf54edb84321105823fe009a78a2987694</code></li>
+</ul>
+
+<p>The malware labels and the characterization of the 07:12 traffic as non-HTTP come from the publisher. The frame metadata and visible HTTP headers below were directly inspected. The searches are examples to run against your own Zeek import.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>80번과 443번 포트에서 실제로 어떤 프로토콜을 썼는가?</h2>
+<p>원문은 밤사이 Trickbot 감염이 발생하고 이후 PowerShell Empire 활동이 이어졌다고 설명합니다. 원본 캡처에서 클라이언트 <code>10.7.21.101</code>은 먼저 TCP/80으로 HTTP GET을 보냅니다. 이후 다른 TCP/80 연결의 조사 대상 패킷에서는 식별 가능한 HTTP 헤더가 보이지 않습니다. 더 늦은 TCP/443 연결에서는 평문 HTTP 요청과 응답이 확인됩니다. 각 세션에 담긴 근거로 프로토콜을 판단합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2018-07-21-Trickbot-infection-with-PowerShell-Empire.pcap</code></li>
+<li>UTC · 2018-07-21 03:02:19.912 – 2018-07-21 11:05:34.175</li>
+<li>패킷 · 21,256</li>
+<li>SHA-256 · <code>5f1dd1416c515e1a5afe65b9514127bf54edb84321105823fe009a78a2987694</code></li>
+</ul>
+
+<p>악성코드 이름과 07:12 통신이 비HTTP라는 분류는 원문에 근거합니다. 아래 프레임 메타데이터와 HTTP 헤더는 원본 PCAP에서 직접 확인했습니다. 검색은 각자의 Zeek 수집 환경에서 검증할 예시입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline the client across the capture</h2>
+<p>Use the capture’s case tag for <code>&lt;CASE&gt;</code>. Cover the full UTC interval in Splunk, and check whether the time picker uses capture time or ingest time. Use Zeek <code>ts</code> for correlation and display the times in UTC. The examples use flattened field names.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Read the inventory first. Check that the connection and HTTP logs are present, and note whether the import produced SSL logs. Analyze SSL log coverage alongside the packet evidence.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.7.21.101 proto=tcp
+| eval hour=floor(ts/3600)*3600, service_label=coalesce(mvjoin(service,","),"unidentified")
+| stats count as connections dc(id_resp_h) as destinations
+    sum(orig_bytes) as client_payload_bytes by hour id_resp_p service_label
+| sort 0 hour</code></pre>
+</div>
+<p>Compare hourly connection counts, destination counts and client payload bytes for each port and Zeek service label. Look near 03:02, 07:12 and 10:42 UTC. A missing service label can reflect parser coverage or an incomplete stream. The baseline describes this one client during the capture.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1 · 전체 캡처 구간에서 클라이언트 베이스라인 만들기</h2>
+<p><code>&lt;CASE&gt;</code>에 캡처의 사례 태그를 입력합니다. Splunk에서 전체 UTC 캡처 구간을 포함하고 시간 선택기가 캡처 시각과 수집 시각 중 무엇을 쓰는지 확인합니다. 상관분석에는 Zeek <code>ts</code>를 쓰고 UTC로 표시합니다. 예시는 평탄화된 필드명을 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>먼저 로그 종류를 확인합니다. 연결 및 HTTP 로그가 있는지 확인하고 SSL 로그 생성 여부를 기록합니다. SSL 로그의 수집 범위는 패킷 근거와 함께 검토합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.7.21.101 proto=tcp
+| eval hour=floor(ts/3600)*3600, service_label=coalesce(mvjoin(service,","),"unidentified")
+| stats count as connections dc(id_resp_h) as destinations
+    sum(orig_bytes) as client_payload_bytes by hour id_resp_p service_label
+| sort 0 hour</code></pre>
+</div>
+<p>포트와 Zeek 서비스별로 시간대별 연결 수, 목적지 수, 클라이언트 페이로드 바이트를 비교합니다. 03:02, 07:12, 10:42 UTC 전후를 살펴봅니다. 서비스 값이 비어 있으면 파서의 처리 범위나 스트림 누락을 확인합니다. 이 베이스라인은 캡처 구간의 해당 클라이언트를 설명합니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Correlate candidate sessions and build the timeline</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.7.21.101
+    ((id_resp_h=109.234.39.56 id_resp_p=80) OR (id_resp_h=162.244.32.142 id_resp_p=443))
+| sort 0 ts
+| table ts uid id_orig_p id_resp_h id_resp_p service conn_state orig_bytes resp_bytes</code></pre>
+</div>
+<p>For TCP/80, start with the row for client port 49392. For TCP/443, use client ports 49493 and 49494 to find the documented GET and POST. Check the originator and responder byte counts, then copy one row’s UID at a time.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;TCP_UID&gt;" sourcetype IN ("zeek:conn","zeek:http","zeek:ssl")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p trans_depth method status_code server_name</code></pre>
+</div>
+<p>Use the same case and <strong>the same Zeek processing run</strong> when matching the connection to HTTP or SSL logs by <code>uid</code>. Choose one run first if the capture was ingested more than once. An HTTP connection may have multiple transactions. Use <code>trans_depth</code> and <code>ts</code> to keep them distinct. Missing HTTP records on an unexpected port warrant packet review.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Correlate candidate sessions and build the timeline"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 21 July 2018</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>03:02:20.540–03:02:21.056</td>
+<td>6, 8</td>
+<td>GET from port 49194 to <code>27.254.55.15:80</code> and HTTP 200 response</td>
+</tr>
+<tr class="even">
+<td>07:12:22.601–07:12:22.689</td>
+<td>17385, 17387</td>
+<td>TCP/80 exchange with <code>109.234.39.56</code> on client port 49392. Client and server payloads were 74 and 79 bytes in these frames.</td>
+</tr>
+<tr class="odd">
+<td>10:42:11.812–10:42:12.385</td>
+<td>20358, 20360</td>
+<td>Plaintext HTTP GET to <code>162.244.32.142:443</code> from port 49493, followed by HTTP 200</td>
+</tr>
+<tr class="even">
+<td>10:42:13.313–10:42:13.526</td>
+<td>20372, 20376</td>
+<td>Plaintext HTTP POST to the same TCP/443 endpoint from port 49494, followed by HTTP 200</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The selected 07:12 packets establish a bidirectional data exchange. The payload starts checked for that endpoint did not expose a recognized HTTP request line. The exact application protocol still needs corroboration. The published sequence suggests the later traffic is related to the infection. Approved software can also use atypical ports, and temporal proximity leaves process attribution open.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2 · 후보 세션을 연결하고 타임라인 만들기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" id_orig_h=10.7.21.101
+    ((id_resp_h=109.234.39.56 id_resp_p=80) OR (id_resp_h=162.244.32.142 id_resp_p=443))
+| sort 0 ts
+| table ts uid id_orig_p id_resp_h id_resp_p service conn_state orig_bytes resp_bytes</code></pre>
+</div>
+<p>TCP/80은 클라이언트 포트 49392의 행부터 살펴봅니다. TCP/443은 49493과 49494에서 각각 아래 GET과 POST를 찾습니다. 송신 측과 응답 측 바이트 수를 확인하고 행별 UID를 복사합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;TCP_UID&gt;" sourcetype IN ("zeek:conn","zeek:http","zeek:ssl")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p trans_depth method status_code server_name</code></pre>
+</div>
+<p>사례가 같고 <strong>동일한 Zeek 처리 실행</strong>에 속한 연결, HTTP, SSL 로그를 <code>uid</code>로 연결합니다. 캡처를 여러 번 수집했다면 먼저 실행 한 건을 선택합니다. HTTP 연결 하나에 트랜잭션이 여러 개일 수 있으므로 <code>trans_depth</code>와 <code>ts</code>로 구분합니다. 비표준 포트에서 HTTP 기록이 비어 있으면 패킷으로 확인합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · 후보 세션을 연결하고 타임라인 만들기"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2018년 7월 21일</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 관찰한 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>03:02:20.540–03:02:21.056</td>
+<td>6, 8</td>
+<td>클라이언트 포트 49194에서 <code>27.254.55.15:80</code>으로 GET을 보내고 HTTP 200 응답을 받음</td>
+</tr>
+<tr class="even">
+<td>07:12:22.601–07:12:22.689</td>
+<td>17385, 17387</td>
+<td>클라이언트 포트 49392와 <code>109.234.39.56:80</code> 간 양방향 데이터 교환. 두 프레임의 페이로드는 각각 74바이트와 79바이트</td>
+</tr>
+<tr class="odd">
+<td>10:42:11.812–10:42:12.385</td>
+<td>20358, 20360</td>
+<td>클라이언트 포트 49493에서 <code>162.244.32.142:443</code>으로 평문 HTTP GET을 보내고 HTTP 200 응답을 받음</td>
+</tr>
+<tr class="even">
+<td>10:42:13.313–10:42:13.526</td>
+<td>20372, 20376</td>
+<td>클라이언트 포트 49494에서 같은 TCP/443 목적지로 평문 HTTP POST를 보내고 HTTP 200 응답을 받음</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>07:12의 선택 프레임에서 양방향 데이터 교환이 확인됩니다. 이 목적지로 향한 조사 대상 페이로드의 시작 부분에서는 식별 가능한 HTTP 요청 줄을 찾지 못했습니다. 정확한 애플리케이션 프로토콜은 추가 확인이 필요합니다. 원문은 이후 통신이 감염과 관련 있다고 설명합니다. 승인된 소프트웨어도 비표준 포트를 사용할 수 있으므로 시각이 가까운 세션들의 실행 프로세스는 별도 근거로 확인합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Cross-check the exchanges in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.21.101 &amp;&amp; ip.dst == 109.234.39.56 &amp;&amp; port.src == 49392 &amp;&amp; port.dst == 80</code></pre>
+</div>
+<p>Find the session at 07:12 UTC and verify the TCP tuple and both directions of payload. Use the visible packet headers to compare this exchange with the early GET on TCP/80. Record the observation using the session time and tuple, since exported packets can have different frame numbers.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.21.101 &amp;&amp; ip.dst == 162.244.32.142 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>Look at the sessions with client ports 49493 and 49494. In the packet view, locate the GET and POST request lines and the server’s HTTP status lines. Inspect that evidence independently of the protocol label shown in the session list.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3 · Arkime에서 두 교환을 교차 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.21.101 &amp;&amp; ip.dst == 109.234.39.56 &amp;&amp; port.src == 49392 &amp;&amp; port.dst == 80</code></pre>
+</div>
+<p>07:12 UTC 세션을 찾고 TCP 연결의 주소와 포트, 양방향 페이로드를 확인합니다. 패킷에 보이는 헤더를 초반 TCP/80의 GET과 대조합니다. 내보내기 후 프레임 번호가 달라질 수 있으므로 세션 시각과 주소·포트도 기록합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.7.21.101 &amp;&amp; ip.dst == 162.244.32.142 &amp;&amp; port.dst == 443</code></pre>
+</div>
+<p>클라이언트 포트가 49493, 49494인 세션을 엽니다. 패킷 보기에서 GET, POST 요청 줄과 서버의 HTTP 응답 상태 줄을 찾아 세션 목록의 프로토콜 표시와 대조합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Confirm only the four HTTP headers offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2018-07-21-Trickbot-infection-with-PowerShell-Empire.pcap" -d tcp.port==49493,http -d tcp.port==49494,http \
+  -Y 'frame.number == 20358 || frame.number == 20360 || frame.number == 20372 || frame.number == 20376' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream -e tcp.srcport \
+  -e tcp.dstport -e http.request.method -e http.response.code</code></pre>
+</div>
+<p>If the Arkime view leaves the request or response unclear, use the original capture. Decode HTTP on the two observed client ports and display only four frames. Match each method and response via <code>tcp.stream</code>. The decode hint addresses the nonstandard server port, and the decoded HTTP fields let you check the specific headers without returning bodies.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4 · 필요할 때만 HTTP 헤더 네 개를 오프라인에서 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2018-07-21-Trickbot-infection-with-PowerShell-Empire.pcap" -d tcp.port==49493,http -d tcp.port==49494,http \
+  -Y 'frame.number == 20358 || frame.number == 20360 || frame.number == 20372 || frame.number == 20376' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream -e tcp.srcport \
+  -e tcp.dstport -e http.request.method -e http.response.code</code></pre>
+</div>
+<p>Arkime에서 요청이나 응답을 판단하기 어려우면 원본 캡처의 네 프레임만 확인합니다. 관찰한 클라이언트 포트 두 개에 HTTP 디코딩을 적용하고 <code>tcp.stream</code>으로 요청 메서드와 응답 코드를 짝짓습니다. 이 디코딩 지정은 서버가 비표준 포트를 사용하는 경우에 적용하며, 선택한 헤더 필드만 출력합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record protocol findings and follow up</h2>
+<p>Put the capture hash, UTC observations, full tuples and frame numbers in the SOC ticket. Record the use of plaintext HTTP on TCP/443 as a packet finding and use proxy and endpoint network logs to identify the originating process. Review approved software and egress controls. Link any independently corroborated process evidence to the original observations before attributing both exchanges to the same activity.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/07/21/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2018/07/21/2018-07-21-Trickbot-infection-with-PowerShell-Empire.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5 · 프로토콜 분석 결과를 기록하고 후속 조사하기</h2>
+<p>SOC 티켓에 캡처 해시, UTC 관찰 시각, 전체 주소·포트와 프레임 번호를 기록합니다. TCP/443 평문 HTTP를 패킷 근거로 남기고 프록시 로그와 엔드포인트 네트워크 기록으로 송신 프로세스를 확인합니다. 승인된 소프트웨어와 외부 통신 정책을 확인하고, 두 교환을 같은 활동으로 분류하기 전에 확인된 프로세스 근거를 각 관찰 사항에 연결합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/07/21/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2018/07/21/2018-07-21-Trickbot-infection-with-PowerShell-Empire.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/http.html">Zeek HTTP logs</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
