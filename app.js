@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    trickbotDcEgressCaseTitle: "Trickbot · trace DC-originated HTTP after an SMB burst",
+    trickbotDcEgressCaseSummary: "Use traffic direction to separate the workstation’s session from the DC’s external request.",
+    lummaIpcCaseTitle: "Lumma exercise · separate disk-share and IPC activity",
+    lummaIpcCaseSummary: "Use the SMB tree ID to investigate thousands of pipe writes on one TCP connection.",
     emotetMethodCaseTitle: "Emotet · trace the change from GET to POST",
     emotetMethodCaseSummary: "Compare plaintext HTTP methods before and after 21:43 UTC, including on TCP/443.",
     badbundtPipeCaseTitle: "Badbundt · investigate a burst of SMB named-pipe writes",
@@ -91,6 +95,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    trickbotDcEgressCaseTitle: "Trickbot · SMB 급증 뒤 DC가 보낸 HTTP 추적",
+    trickbotDcEgressCaseSummary: "패킷 방향으로 워크스테이션 세션과 DC의 외부 요청을 구분합니다.",
+    lummaIpcCaseTitle: "Lumma 실습 · 디스크 공유와 IPC 활동 구분",
+    lummaIpcCaseSummary: "SMB 트리 ID로 TCP 연결 하나에서 발생한 수천 건의 파이프 쓰기를 조사합니다.",
     emotetMethodCaseTitle: "Emotet · GET에서 POST로 바뀐 시점 추적",
     emotetMethodCaseSummary: "TCP/443을 포함해 21:43 UTC 전후 평문 HTTP 요청을 비교합니다.",
     badbundtPipeCaseTitle: "Badbundt · SMB 네임드 파이프 쓰기 급증 조사",
