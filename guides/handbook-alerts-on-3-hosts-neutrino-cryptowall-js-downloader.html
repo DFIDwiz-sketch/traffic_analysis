@@ -1,0 +1,1354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Alerts on 3 different hosts — EK drive-by to CryptoWall, a malspam JS downloader and a harmless redirect · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase13Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase13Title">Alerts on 3 different hosts — EK drive-by to CryptoWall, a malspam JS downloader and a harmless redirect</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-prep">Step 0 — Load the PCAP and check the case</a></li>
+<li><a href="#en-baseline">Step 1 — Baselining: what is normal in this capture</a></li>
+<li><a href="#en-triage">Step 2 — What each PC visited: remove the normal</a></li>
+<li><a href="#en-pc-b">Step 4 — PC B: 192.168.122.130 FULL-METAL-JACK</a></li>
+<li><a href="#en-snort">Step 6 — Simple Snort rules and a test</a></li>
+<li><a href="#en-timeline">Timeline (2016-01-07, UTC)</a></li>
+<li><a href="#en-iocs">Indicators</a></li>
+<li><a href="#en-query-sheet">Copy-ready queries</a></li>
+<li><a href="#en-lessons">Lessons</a></li>
+<li><a href="#en-references">References</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-prep">0단계 — PCAP 넣고 케이스 확인</a></li>
+<li><a href="#ko-baseline">1단계 — 베이스라이닝: 이 캡처의 평소 모습</a></li>
+<li><a href="#ko-triage">2단계 — PC마다 어디를 갔나: 정상 지우기</a></li>
+<li><a href="#ko-pc-b">4단계 — PC B: 192.168.122.130 FULL-METAL-JACK</a></li>
+<li><a href="#ko-snort">6단계 — 간단한 Snort 룰과 시험</a></li>
+<li><a href="#ko-timeline">타임라인 (2016-01-07, UTC)</a></li>
+<li><a href="#ko-iocs">지표</a></li>
+<li><a href="#ko-query-sheet">복사해서 쓰는 쿼리</a></li>
+<li><a href="#ko-lessons">배운 점</a></li>
+<li><a href="#ko-references">참고 자료</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>Apply the same baseline to all three hosts. The handbook records a CryptoWall sequence, a separate script-downloader sequence, and a redirected client with no subsequent infection evidence in the capture. Scope each conclusion to the host’s own timeline.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/alerts-on-3-hosts-neutrino-cryptowall-js-downloader/">DFIR Handbook original</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td><code>2016-01-07-traffic-analysis-exercise.pcap</code> — 2016-01-07 22:05:47 – 22:17:18 UTC (about 11.5 min)</td>
+</tr>
+<tr>
+<td><strong>Source</strong></td>
+<td><a href="https://malware-traffic-analysis.net/2016/01/07/index.html">malware-traffic-analysis.net 2016-01-07 "Alerts on 3 different hosts"</a></td>
+</tr>
+<tr>
+<td><strong>Given</strong></td>
+<td>Nothing about the LAN. You find the range, gateway and PCs yourself</td>
+</tr>
+<tr>
+<td><strong>Questions</strong></td>
+<td>Time range · IP, MAC and host name of each of the 3 PCs · what happened on each PC and whether it was infected · follow-up recommendations</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Closed network. pcapbox VM: Splunk (<code>index=zeek</code>, case field <code>pcap_case</code>), Arkime (tag = case name), Snort 2.9.20. <strong>No Wireshark.</strong></td>
+</tr>
+<tr>
+<td><strong>Case name</strong></td>
+<td><code>20160107_ALERTS_ON_3_DIFFERENT_HOSTS</code></td>
+</tr>
+<tr>
+<td><strong>Related pages</strong></td>
+<td><a href="handbook-socgholish-fake-chrome-update-wscript-c2.html">Sorting through the alerts (same method, one PC)</a> · <a href="handbook-phishing-red-herring-ek-driveby-ursnif-c2.html">Phishing red herring to EK drive-by</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/splunk/spl-cheatsheet/">SPL cheat sheet</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/">Zeek logs</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-prep">Step 0 — Load the PCAP and check the case</h2>
+<p><strong>Goal:</strong> give the PCAP a case name so its logs never mix with other exercises, and set every tool to <strong>UTC</strong>.</p>
+<ol>
+<li>Rename the file to <strong><code>20160107_ALERTS_ON_3_DIFFERENT_HOSTS.pcap</code></strong> and copy it to <code>\\10.50.10.60\incoming</code>.</li>
+<li>On pcapbox, wait for <code>DONE case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS</code> in <code>tail -f /data/logs/ingest.log</code>. <strong>Load it once only</strong> — loading it again puts every log in twice.</li>
+<li>Splunk <strong>Preferences → Time zone = UTC</strong>; Arkime <strong>Settings → Timezone = UTC</strong>, time range <strong>All</strong>.</li>
+</ol>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn
+| stats count by pcap_case
+</code></pre></div></div>
+<ul>
+<li><code>index=zeek</code> — the index (Splunk's "drawer") that holds the Zeek logs.</li>
+<li><code>sourcetype=zeek:conn</code> — the connection log: one line per connection.</li>
+<li><code>|</code> — pass the results on to the next command.</li>
+<li><code>stats count by pcap_case</code> — count lines for each case name. Your new case must be in the list.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Time: use <code>ts</code></p>
+<p>Zeek's own event time is <strong><code>ts</code></strong> (epoch seconds). The queries sort and print with <code>ts</code>; <code>eval t=strftime(ts,"%H:%M:%S")</code> makes it readable.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-baseline">Step 1 — Baselining: what is normal in this capture</h2>
+<p>Baselining = learning what is <strong>normal</strong> first: time range, log types, which PCs exist, who they are and how they normally browse. Only then do "odd" things stand out.</p>
+<h3 id="en-log-types">1-1. Which logs exist</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| stats count by sourcetype
+| sort - count
+</code></pre></div></div>
+<ul>
+<li>No <code>sourcetype</code> → every log type of this case. <code>sort - count</code> = largest first.</li>
+</ul>
+<p><strong>What you should see (order, not exact counts):</strong> <code>zeek:conn</code>, <code>zeek:dns</code>, <code>zeek:http</code> (about 325 lines), <code>zeek:ssl</code>, <code>zeek:files</code>, <code>zeek:x509</code>, <code>zeek:dhcp</code>, <code>zeek:software</code>, possibly <code>zeek:weird</code>, <code>zeek:pe</code>.</p>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><strong><code>zeek:dhcp</code> is there</strong> — the PCs asked for their IP addresses during the capture, so DHCP gives name, MAC and IP directly (1-4).</li>
+<li><strong>No <code>kerberos</code>, <code>ldap</code>, <code>smb_*</code></strong> — no Active Directory domain. These are stand-alone PCs; there is no user name to find.</li>
+<li><strong><code>zeek:http</code> is large</strong> — lots of clear-text web traffic you can read in full. Good news for this case.</li>
+<li><strong><code>zeek:pe</code></strong> (if you have it) means Zeek saw a <strong>Windows program (EXE/DLL) inside the traffic</strong>. In a normal office capture that is rare. Note it.</li>
+</ul>
+<h3 id="en-window">1-2. Capture window</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| stats min(ts) as first max(ts) as last count as sessions
+| eval duration_min=round((last-first)/60,1)
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")
+</code></pre></div></div>
+<ul>
+<li>Line 2: one summary row — earliest and latest connection start, number of connections. <code>as</code> names the result.</li>
+<li>Line 3: minutes, one decimal. <strong>Must come before line 4</strong> — after line 4 <code>first</code>/<code>last</code> are text and cannot be subtracted.</li>
+<li>Line 4: epoch → readable date.</li>
+</ul>
+<p><strong>What you should see:</strong> <code>first</code> <strong>2016-01-07 22:05:47</strong>, <code>last</code> about <strong>22:17</strong> (the last connection <strong>start</strong>; the last packet is 22:17:18), about <strong>11.5 minutes</strong>, roughly 470 connections.</p>
+<h3 id="en-internal-hosts">1-3. Which internal IPs start connections</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.0.0/16
+| stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first by id_orig_h
+| eval first=strftime(first,"%H:%M:%S")
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>id_orig_h</code> = the IP that <strong>started</strong> the connection (<code>orig</code> = originator, <code>resp</code> = responder, <code>_h</code> = host, <code>_p</code> = port).</li>
+<li><code>id_orig_h=192.168.0.0/16</code> — Splunk understands an IP range (CIDR) on IP fields: only private 192.168.x.x senders.</li>
+<li><code>dc()</code> = distinct count. <code>orig_bytes</code> / <code>resp_bytes</code> = payload bytes each side sent.</li>
+</ul>
+<p><strong>What you should see (counts approximate):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h         sessions  destinations  first
+192.168.122.130   ~130      ~30           22:05:51
+192.168.122.52    ~220      ~25           22:06:06
+192.168.122.132   ~120      ~25           22:06:25
+(192.168.122.1 may add a line or two for DHCP replies, or not appear at all)
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><strong>LAN = 192.168.122.0/24.</strong> Three PCs: <strong>.130, .52, .132</strong>.</li>
+<li><strong>192.168.122.1</strong> starts almost nothing. It is the <strong>gateway, DHCP server and DNS server</strong> (confirmed in 1-4 and 1-6).</li>
+<li>The three PCs start one after another (22:05:51, 22:06:06, 22:06:25) — they were switched on at the start of the capture.</li>
+</ul>
+<h3 id="en-dhcp">1-4. Who is who — DHCP</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| eval t=strftime(ts,"%H:%M:%S")
+| table t client_addr assigned_addr mac host_name msg_types server_addr
+| sort t
+</code></pre></div></div>
+<ul>
+<li><code>zeek:dhcp</code> = one line per DHCP exchange. <code>assigned_addr</code> = the IP the server gave; <code>mac</code> = the PC's network card; <code>host_name</code> = the name the PC sent (DHCP option 12).</li>
+<li><code>msg_types</code>: <strong>REQUEST/ACK</strong> = "may I use this IP?" / "yes"; <strong>INFORM/ACK</strong> = "I already have an IP, give me settings".</li>
+</ul>
+<p><strong>What you should see:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         client_addr      assigned_addr    mac                 host_name         msg_types
+22:05:47                   192.168.122.130  00:22:19:e2:4b:86   FULL-METAL-JACK   REQUEST ACK
+22:05:54  192.168.122.130                   00:22:19:e2:4b:86   FULL-METAL-JACK   INFORM ACK
+22:06:02                   192.168.122.52   00:26:55:32:a9:17   Jennifer-PC       REQUEST ACK
+22:06:10  192.168.122.52                    00:26:55:32:a9:17   Jennifer-PC       INFORM ACK
+22:06:21                   192.168.122.132  48:5b:39:c1:f2:48   Hokaydoo-PC       REQUEST ACK
+22:06:29  192.168.122.132                   48:5b:39:c1:f2:48   Hokaydoo-PC       INFORM ACK
+...       (a second INFORM from .132 at 22:10:45 and from .130 at 22:11:53)
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong> three names, three MACs, three IPs. <code>server_addr</code> is <strong>192.168.122.1</strong>. These answer question 2 of the exercise.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">IP</th>
+<th scope="col">MAC</th>
+<th scope="col">Host name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>192.168.122.130</td>
+<td>00:22:19:e2:4b:86</td>
+<td>FULL-METAL-JACK</td>
+</tr>
+<tr>
+<td>192.168.122.52</td>
+<td>00:26:55:32:a9:17</td>
+<td>Jennifer-PC</td>
+</tr>
+<tr>
+<td>192.168.122.132</td>
+<td>48:5b:39:c1:f2:48</td>
+<td>Hokaydoo-PC</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition question">
+<p class="admonition-title">Question: why did .132 and .130 send a second DHCP INFORM later?</p>
+<p>Windows sends INFORM when something asks for network settings again — a new network check or a program starting. On its own it means nothing. Note the times (22:10:45 and 22:11:53) and see whether anything else happens around them. (Spoiler-free hint: both are within seconds of something interesting in Step 3 and Step 4.)</p>
+</div>
+<h3 id="en-user-agents">1-5. What each PC runs — User-Agents</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| eval host=mvdedup(host)
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count dc(host) as sites by id_orig_h user_agent
+| sort id_orig_h first
+</code></pre></div></div>
+<ul>
+<li><code>user_agent</code> = the name a program gives itself in each HTTP request. A browser has one; other programs have their own.</li>
+<li><code>eval host=mvdedup(host)</code> — keeps one copy of <code>host</code> (the pcapbox Splunk once stored it twice; the habit does no harm).</li>
+<li><code>stats … by id_orig_h user_agent</code> = one row per <strong>PC + program</strong> pair.</li>
+</ul>
+<p><strong>What you should see:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h        user_agent                                                                  first     count  sites
+192.168.122.130  Microsoft NCSI                                                              22:05:58  1      1
+192.168.122.130  Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)            22:07:00  1      1
+192.168.122.130  Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Trident/6.0; SLCC2; ...)  22:11:53  9      3
+192.168.122.132  Microsoft NCSI                                                              22:06:33  1      1
+192.168.122.132  Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko        22:10:08  81     9
+192.168.122.132  Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; SLCC2; .NET CLR ...; rv:11.0) like Gecko  22:10:26  1  1
+192.168.122.132  Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/7.0; ...)  22:10:47  4      2
+192.168.122.52   Microsoft NCSI                                                              22:06:13  1      1
+192.168.122.52   Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)             22:08:49  ~190   ~15
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><code>Windows NT 6.1</code> = <strong>Windows 7</strong> on all three. <code>Microsoft NCSI</code> = Windows checking "am I online?" at start-up — normal.</li>
+<li>Browsers: .130 <strong>IE 10</strong>, .52 <strong>IE 9</strong>, .132 <strong>IE 11</strong> (<code>Trident/7.0; rv:11.0</code>, 64-bit Windows: <code>WOW64</code>).</li>
+<li><strong>Two PCs later show "MSIE 7.0"</strong> (.130 at 22:11:53, .132 at 22:10:47). IE 7 is from 2006. On Windows 7 this string is the default User-Agent of <strong>Windows' own HTTP objects used by scripts and programs</strong> (WScript, many malware families) — <strong>not the user's browser</strong>. Candidate.</li>
+<li><strong>.132 has a third User-Agent used once</strong> (22:10:26): IE 11 with extra <code>.NET CLR</code> parts. A different program made that one request. Candidate.</li>
+</ul>
+<h3 id="en-dns-servers">1-6. DNS servers</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_resp_p=53
+| stats count by id_orig_h id_resp_h
+</code></pre></div></div>
+<p><strong>What you should see:</strong> .130 and .52 ask <strong>192.168.122.1</strong>; <strong>.132 asks 8.8.8.8 and 8.8.4.4</strong> (Google). [data] Someone set .132's DNS by hand. Not malicious by itself, but it means a DNS log on the gateway would <strong>miss</strong> .132's lookups — worth one line in the report.</p>
+<p><strong>Baseline notes — candidates, no conclusions yet:</strong></p>
+<ol>
+<li>22:10:26 — .132, a one-time IE 11 variant User-Agent</li>
+<li>22:10:47 — .132, <code>MSIE 7.0</code></li>
+<li>22:11:53 — .130, <code>MSIE 7.0</code></li>
+</ol>
+<hr>
+</section>
+<section>
+<h2 id="en-triage">Step 2 — What each PC visited: remove the normal</h2>
+<h3 id="en-http-per-pc">2-1. HTTP sites per PC, in time order</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| eval host=mvdedup(host)
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count values(method) as methods sum(response_body_len) as received by id_orig_h host
+| sort id_orig_h first
+</code></pre></div></div>
+<ul>
+<li><code>host</code> = the HTTP Host header (the site name). <code>method</code>: <strong>GET</strong> fetch, <strong>POST</strong> send.</li>
+<li><code>response_body_len</code> = bytes the server returned (after unzipping).</li>
+</ul>
+<p><strong>What you should see (key rows):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h        host                                     first     count  methods    received
+192.168.122.130  www.msftncsi.com                         22:05:58  1      GET
+192.168.122.130  mail.yahoo.com                           22:07:00  1      GET
+192.168.122.130  ma-wt.com.sa                             22:11:53  3      GET        375301
+192.168.122.130  dariostoka.com                           22:11:55  3      GET        375301
+192.168.122.130  freshanointingministries-sc.org          22:11:57  3      GET        406541
+192.168.122.132  www.msftncsi.com                         22:06:33  1      GET
+192.168.122.132  www.google.com.au                        22:10:08  1      GET
+192.168.122.132  www.koeppl.com                           22:10:10  55     GET
+192.168.122.132  translate.google.com / pbs.twimg.com / stats.g.doubleclick.net / joomla-gtranslate.googlecode.com   (1 each)
+192.168.122.132  uacltr.securetopc.top                    22:10:15  3      GET        84264
+192.168.122.132  gbesbsdsb.securetopc.top                 22:10:23  2      GET        421888
+192.168.122.132  bizsouls.com                             22:10:47  3      POST       123682
+192.168.122.132  estudiobarco.com.ar                      22:12:14  1      POST       6
+192.168.122.132  3wzn5p2yiumh7akj.waytopaytosystem.com    22:16:46  17     GET POST
+192.168.122.52   www.msftncsi.com                         22:06:13  1      GET
+192.168.122.52   au.search.yahoo.com / l.yimg.com / ri.search.yahoo.com   22:08:49   (Yahoo search)
+192.168.122.52   planetside.co.uk                         22:09:12  ~80    GET POST
+192.168.122.52   st.domandvilma.com                       22:09:24  1      GET        26
+192.168.122.52   ajax.googleapis.com / ajax.aspnetcdn.com / www.google-analytics.com   (site resources)
+192.168.122.52   www.outdoorsamoa.com / www.tripadvisor.com / fonts.* / static.tacdn.com   22:15:29 …
+</code></pre></div></div>
+<p><strong>How to remove the normal:</strong></p>
+<ol>
+<li>Windows itself: <code>msftncsi.com</code>.</li>
+<li>Big known services and their parts: Google (<code>google.*</code>, <code>gstatic</code>, <code>googleapis</code>, <code>google-analytics</code>, <code>doubleclick</code>), Yahoo (<code>yahoo.com</code>, <code>yimg.com</code>), Twitter (<code>twimg.com</code>), Microsoft CDN (<code>aspnetcdn.com</code>), TripAdvisor (<code>tripadvisor.*</code>, <code>tacdn.com</code>, <code>jscache.com</code>).</li>
+<li>A site the user clearly chose (search result, typed address) and the resources it loads under its own name.</li>
+</ol>
+<p><strong>[data] What is left:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">PC</th>
+<th scope="col">Left over</th>
+<th scope="col">Why it is odd</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.132</td>
+<td><code>uacltr.securetopc.top</code>, <code>gbesbsdsb.securetopc.top</code></td>
+<td>Random sub-domains on a <code>.top</code> domain, seconds after a normal site</td>
+</tr>
+<tr>
+<td>.132</td>
+<td><code>bizsouls.com</code>, <code>estudiobarco.com.ar</code></td>
+<td><strong>POST only</strong>, by the <code>MSIE 7.0</code> program (candidate 2)</td>
+</tr>
+<tr>
+<td>.132</td>
+<td><code>3wzn5p2yiumh7akj.waytopaytosystem.com</code></td>
+<td>16 random characters + "way to pay to system"</td>
+</tr>
+<tr>
+<td>.130</td>
+<td><code>ma-wt.com.sa</code>, <code>dariostoka.com</code>, <code>freshanointingministries-sc.org</code></td>
+<td>Three unrelated sites, same 3-request pattern, ~375–406 KB each, by <code>MSIE 7.0</code> (candidate 3)</td>
+</tr>
+<tr>
+<td>.52</td>
+<td><code>st.domandvilma.com</code></td>
+<td>Not part of the site the user opened; only <strong>26 bytes</strong> returned</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="en-no-dns">2-2. Destinations with no DNS lookup — and why nothing shows here</h3>
+<p>In the previous case this query found the C2. Try it — knowing <strong>when a method finds nothing</strong> is part of the skill.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.0/24 proto=tcp NOT id_resp_h=192.168.0.0/16
+    NOT [search index=zeek sourcetype=zeek:dns pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS | mvexpand answers | rename answers as id_resp_h | dedup id_resp_h | fields id_resp_h]
+| stats count by id_orig_h id_resp_h id_resp_p
+</code></pre></div></div>
+<ul>
+<li>The <code>[ … ]</code> <strong>subsearch</strong> runs first and collects every IP seen in DNS answers (<code>mvexpand</code> = one row per value; <code>rename</code> = match the conn field name). <code>NOT</code> keeps only TCP destinations <strong>never</strong> looked up.</li>
+</ul>
+<p><strong>What you should see:</strong> <strong>No results.</strong> [data] Every external TCP destination was reached by name. All malicious activity in this capture uses <strong>domains</strong>, so HTTP and DNS (Step 2-1) are the right place to look — not "hard-coded IP" hunting.</p>
+<p><strong>Plan:</strong> one PC at a time, most serious first: <strong>.132</strong> (three kinds of odd traffic) → <strong>.130</strong> → <strong>.52</strong>.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-pc-b">Step 4 — PC B: 192.168.122.130 FULL-METAL-JACK</h2>
+<h3 id="en-pc-b-timeline">4-1. Webmail, then a script</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.130 (sourcetype=zeek:ssl OR sourcetype=zeek:http) ts&gt;=1452204300
+| eval name=coalesce(server_name, mvdedup(host))
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first max(t) as last count by sourcetype name
+| sort first
+</code></pre></div></div>
+<ul>
+<li>Two log types at once: <code>(sourcetype=zeek:ssl OR sourcetype=zeek:http)</code>. <code>ts&gt;=1452204300</code> = from 22:05:00.</li>
+<li><code>coalesce(a,b)</code> = take <code>a</code>, or <code>b</code> if <code>a</code> is empty. HTTPS rows have <code>server_name</code> (the <strong>SNI</strong>, the site name sent before encryption); HTTP rows have <code>host</code>.</li>
+</ul>
+<p><strong>What you should see (key rows):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>sourcetype  name                              first     last
+zeek:ssl    www.bing.com                      22:06:35  22:06:59
+zeek:http   mail.yahoo.com                    22:07:00  22:07:00
+zeek:ssl    login.yahoo.com                   22:07:05  22:07:33
+zeek:ssl    us-mg5.mail.yahoo.com             22:07:00  22:11:47
+zeek:ssl    prodxobni.mail.yahoo.com / ws-contacts / comet.yahoo.com ...
+zeek:http   ma-wt.com.sa                      22:11:53  22:12:30
+zeek:http   dariostoka.com                    22:11:55  22:12:34
+zeek:http   freshanointingministries-sc.org   22:11:57  22:12:47
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li>22:06–22:07: Bing, then the user <strong>logs in to Yahoo Mail</strong> (<code>login.yahoo.com</code>) and uses it (<code>us-mg5.mail.yahoo.com</code>). Webmail is HTTPS — <strong>you cannot see the emails or attachments</strong>.</li>
+<li><strong>22:11:45–47</strong> last webmail connections → <strong>22:11:53</strong>, 6 s later, the <code>MSIE 7.0</code> program starts (candidate 3). The DHCP INFORM from 1-4 is at 22:11:53 too.</li>
+<li><strong>[inference]</strong> The user opened something from an email (an attachment) and a <strong>script</strong> ran. The <code>MSIE 7.0</code> User-Agent with no Referer fits Windows Script Host (<code>.js</code> file).</li>
+</ul>
+<h3 id="en-pc-b-downloads">4-2. The downloads: "GIF" files that are programs</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.130 uri="/counter/*"
+| eval host=mvdedup(host)
+| rex field=uri "rnd=(?&lt;rnd&gt;\d+)"
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_resp_h host rnd status_code resp_filenames resp_mime_types response_body_len
+</code></pre></div></div>
+<ul>
+<li><code>uri="/counter/*"</code> — only these requests.</li>
+<li><code>rex field=uri "rnd=(?&lt;rnd&gt;\d+)"</code> — cut the number after <code>rnd=</code> into a new field <code>rnd</code> (<code>\d+</code> = one or more digits).</li>
+<li><code>resp_filenames</code> = the file name the server suggested (<code>Content-Disposition: attachment; filename=…</code>). <code>resp_mime_types</code> = what Zeek found <strong>inside</strong>.</li>
+</ul>
+<p><strong>What you should see:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         id_resp_h       host                              rnd      status  resp_filenames        resp_mime_types         response_body_len
+22:11:53  216.158.85.7    ma-wt.com.sa                      8742951  200                                                   0
+22:11:55  174.36.186.235  dariostoka.com                    8742951  200     775d4.gif                                     0
+22:11:57  184.168.173.1   freshanointingministries-sc.org   8742951  200                                                   0
+22:11:58  216.158.85.7    ma-wt.com.sa                      8742952  200     66b32.gif             application/x-dosexec   260613
+22:12:04  174.36.186.235  dariostoka.com                    8742952  200     174125.gif            application/x-dosexec   260613
+22:12:21  184.168.173.1   freshanointingministries-sc.org   8742952  200     c9a63078fe7d3741.gif  application/x-dosexec   260619
+22:12:30  216.158.85.7    ma-wt.com.sa                      8742953  200     250acae.gif           application/x-dosexec   114688
+22:12:34  174.36.186.235  dariostoka.com                    8742953  200     d50f729942631.gif     application/x-dosexec   114688
+22:12:47  184.168.173.1   freshanointingministries-sc.org   8742953  200     2487ff63fb4e79.gif    application/x-dosexec   145922
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><strong>The same long <code>id=</code> on every request</strong> — one victim ID — and <code>rnd</code> counting <strong>…51, …52, …53</strong>: three rounds, each round asking <strong>all three sites</strong>. A script working through a list.</li>
+<li>Round 1 got nothing. Rounds 2 and 3 got <strong>six files</strong>.</li>
+<li>The server says <strong><code>image/gif</code></strong> and names them <code>.gif</code>. Zeek looked inside: <strong><code>application/x-dosexec</code> = a Windows program</strong> (starts with <code>MZ</code>). A disguise to get past filters that only read the label.</li>
+<li>No Referer, <code>MSIE 7.0</code> — not the browser.</li>
+</ul>
+<h3 id="en-pc-b-hashes">4-3. Hashes (Splunk)</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:files pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS rx_hosts="192.168.122.130" mime_type="application/x-dosexec"
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count values(tx_hosts) as from by md5 seen_bytes
+</code></pre></div></div>
+<ul>
+<li><code>stats … by md5 seen_bytes</code> groups identical files: how many times each was downloaded and from where.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>md5                                 seen_bytes  first     count  from
+9f756e72eacc6b805481a49ce51c4a79    260613      22:11:58  2      216.158.85.7 174.36.186.235
+d411bf37de7f72e98a62fc82917f50f7    260619      22:12:21  1      184.168.173.1
+e851eb249d2c38d56d1b496a3112cebc    114688      22:12:30  2      216.158.85.7 174.36.186.235
+92a4d0aeede3ce110b4121342df48496    145922      22:12:47  1      184.168.173.1
+</code></pre></div></div>
+<p><strong>[data]</strong> 6 downloads, <strong>4 different EXEs</strong>. If you have <code>zeek:pe</code>, <code>index=zeek sourcetype=zeek:pe pcap_case=… | table ts id os compile_ts is_exe</code> shows they are Windows executables. These MD5s are of the <strong>real programs</strong> (not encrypted) — the host team can search for them on disk.</p>
+<p>SHA256 (for the host team and for malware databases):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>95a9c8fccbe0e49dc132cf59d7ebf73e692da9f35491e0bfcac40b92c9022f5c  (260,613 B)
+220a2e4f93d85f16dd74ed56247644e126b8d2d262374c4f09ec2be49cbcd0f3  (260,619 B)
+306ab541cf4ace30c0f905ded4c26b40458c4dda28d9c5f00abd679ada6cf27d  (114,688 B)
+227193160a2448dfa8bbbd2cf125afa9cca0d1a718b109a3adae5df8a24cdf6e  (145,922 B)
+</code></pre></div></div>
+<h3 id="en-pc-b-after">4-4. Anything after the downloads?</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.130 ts&gt;=1452204775
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count by id_resp_h id_resp_p service
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>ts&gt;=1452204775</code> = from <strong>22:12:55</strong>, after the last download ended.</li>
+</ul>
+<p><strong>What you should see:</strong> only Yahoo Mail connections (124.108.101.10, 106.10.x) and DNS. <strong>[data] No new destination after the downloads.</strong></p>
+<p><strong>Conclusion for PC B:</strong></p>
+<ul>
+<li><strong>[data]</strong> 6 s after webmail use, a script downloaded 4 different Windows programs (6 downloads) disguised as GIFs from 3 hacked websites.</li>
+<li><strong>[inference]</strong> The source is a <strong>malspam email with a script attachment</strong> (the original exercise confirms zipped <code>.js</code> attachments). The downloaded programs are malware; whether they ran is not visible — no follow-up traffic in the 4 remaining minutes. <strong>Treat the PC as infected.</strong></li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-snort">Step 6 — Simple Snort rules and a test</h2>
+<p>One very simple rule per malicious activity. Snort on pcapbox sees all TCP payload, so a <code>content</code> match on a name in the <code>Host:</code> header is enough.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"EK securetopc.top - Sung"; content:"securetopc.top"; nocase; sid:1000051; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"JS downloader counter id - Sung"; content:"/counter/?id="; nocase; sid:1000052; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"CryptoWall decrypt page waytopaytosystem.com - Sung"; content:"waytopaytosystem.com"; nocase; sid:1000053; rev:1;)
+</code></pre></div></div>
+<ul>
+<li><code>$HOME_NET any -&gt; $EXTERNAL_NET 80</code> — from inside to outside port 80. <code>content</code> + <code>nocase</code> — this text anywhere in the packet, any case. <code>sid</code> 1000000+ = your own rules.</li>
+</ul>
+<p>Add each rule on <strong>one line</strong> to <code>\\10.50.10.60\rules\local.rules</code>, then on pcapbox:</p>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>sudo snort -T -c /etc/snort/snort.conf 2&gt;&amp;1 | tail -5
+snort-test 20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+</code></pre></div></div>
+<p><strong>What you should see (about):</strong> sid 1000051 for the 5 requests to <code>securetopc.top</code>, sid 1000052 for the 9 <code>/counter/?id=</code> requests, sid 1000053 for the requests to the payment site (17). If a count is a little higher, Snort matched the same text in a second packet of one request — open <code>index=snort pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS | stats count by sid dest_ip</code> to check.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-timeline">Timeline (2016-01-07, UTC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Time</th>
+<th scope="col">PC</th>
+<th scope="col">Event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22:05:47</td>
+<td>all</td>
+<td>Capture starts; DHCP for .130, .52 (22:06:02), .132 (22:06:21)</td>
+</tr>
+<tr>
+<td>22:07:00–22:11:47</td>
+<td>B .130</td>
+<td>Yahoo Mail (HTTPS)</td>
+</tr>
+<tr>
+<td>22:08:49</td>
+<td>C .52</td>
+<td>Yahoo search for planetside.co.uk</td>
+</tr>
+<tr>
+<td>22:09:12</td>
+<td>C .52</td>
+<td><code>planetside.co[.]uk</code> (hacked, injected script in <code>mootools-core.js</code>)</td>
+</tr>
+<tr>
+<td>22:09:24</td>
+<td>C .52</td>
+<td>Gate <code>st.domandvilma[.]com</code> → <code>var main_color_handle='';</code> → <strong>nothing follows</strong></td>
+</tr>
+<tr>
+<td>22:10:08–10</td>
+<td>A .132</td>
+<td>Google result → <code>www.koeppl[.]com</code> (hacked, code before <code>&lt;html&gt;</code>)</td>
+</tr>
+<tr>
+<td>22:10:15</td>
+<td>A .132</td>
+<td>EK landing <code>uacltr.securetopc[.]top</code> (89.38.144.75)</td>
+</tr>
+<tr>
+<td>22:10:17</td>
+<td>A .132</td>
+<td>Flash exploit (83 KB)</td>
+</tr>
+<tr>
+<td>22:10:26</td>
+<td>A .132</td>
+<td>Encrypted payload (412 KB) from <code>gbesbsdsb.securetopc[.]top</code></td>
+</tr>
+<tr>
+<td>22:10:47–22:12:14</td>
+<td>A .132</td>
+<td><code>MSIE 7.0</code> POST check-ins to <code>bizsouls[.]com</code>, <code>estudiobarco.com[.]ar</code></td>
+</tr>
+<tr>
+<td>22:11:53</td>
+<td>B .130</td>
+<td>Script starts <code>/counter/?id=</code> requests to 3 hacked sites</td>
+</tr>
+<tr>
+<td>22:11:58–22:12:47</td>
+<td>B .130</td>
+<td>6 EXE downloads named <code>.gif</code> (4 unique)</td>
+</tr>
+<tr>
+<td>22:15:29</td>
+<td>C .52</td>
+<td>Normal browsing (outdoorsamoa, TripAdvisor)</td>
+</tr>
+<tr>
+<td>22:16:46–22:17:05</td>
+<td>A .132</td>
+<td>User opens the <strong>CryptoWall "Decrypt service"</strong> page on <code>3wzn5p2yiumh7akj.waytopaytosystem[.]com</code></td>
+</tr>
+<tr>
+<td>22:17:18</td>
+<td>all</td>
+<td>Capture ends</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-iocs">Indicators</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Indicator</th>
+<th scope="col">Type</th>
+<th scope="col">PC</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>www.koeppl[.]com</code> 92.51.131.150</td>
+<td>domain / IP</td>
+<td>A</td>
+<td>Hacked site (code before <code>&lt;html&gt;</code>)</td>
+</tr>
+<tr>
+<td><code>uacltr.securetopc[.]top</code>, <code>gbesbsdsb.securetopc[.]top</code> 89.38.144.75</td>
+<td>domain / IP</td>
+<td>A</td>
+<td>Exploit kit (landing, Flash, payload)</td>
+</tr>
+<tr>
+<td><code>bizsouls[.]com</code> 188.138.101.154, <code>estudiobarco.com[.]ar</code> 50.22.11.55</td>
+<td>domain / IP</td>
+<td>A</td>
+<td>CryptoWall check-ins (hacked sites)</td>
+</tr>
+<tr>
+<td><code>3wzn5p2yiumh7akj.waytopaytosystem[.]com</code> 95.128.181.144</td>
+<td>domain / IP</td>
+<td>A</td>
+<td>CryptoWall payment page (Tor gateway)</td>
+</tr>
+<tr>
+<td>6631e8c0d5f07004fabff81872f10d5e</td>
+<td>MD5</td>
+<td>A</td>
+<td>Flash exploit</td>
+</tr>
+<tr>
+<td><code>ma-wt.com[.]sa</code> 216.158.85.7, <code>dariostoka[.]com</code> 174.36.186.235, <code>freshanointingministries-sc[.]org</code> 184.168.173.1</td>
+<td>domain / IP</td>
+<td>B</td>
+<td>EXE downloads (<code>/counter/?id=</code>)</td>
+</tr>
+<tr>
+<td>9f756e72…4a79, d411bf37…7f50f7, e851eb24…cebc, 92a4d0ae…8496</td>
+<td>MD5</td>
+<td>B</td>
+<td>Downloaded EXEs (4)</td>
+</tr>
+<tr>
+<td><code>planetside.co[.]uk</code> 67.225.139.108</td>
+<td>domain / IP</td>
+<td>C</td>
+<td>Hacked site (injected script)</td>
+</tr>
+<tr>
+<td><code>st.domandvilma[.]com</code> 192.185.21.183</td>
+<td>domain / IP</td>
+<td>C</td>
+<td>Gate (returned nothing)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-query-sheet">Copy-ready queries</h2>
+<p>Replace <code>&lt;case&gt;</code> with your case name.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek pcap_case=&lt;case&gt; | stats count by sourcetype | sort - count
+index=zeek sourcetype=zeek:conn pcap_case=&lt;case&gt; | stats min(ts) as first max(ts) as last count as sessions | eval duration_min=round((last-first)/60,1) | eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")
+index=zeek sourcetype=zeek:conn pcap_case=&lt;case&gt; id_orig_h=192.168.0.0/16 | stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first by id_orig_h | eval first=strftime(first,"%H:%M:%S") | sort first
+index=zeek sourcetype=zeek:dhcp pcap_case=&lt;case&gt; | eval t=strftime(ts,"%H:%M:%S") | table t client_addr assigned_addr mac host_name msg_types server_addr | sort t
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first count dc(host) as sites by id_orig_h user_agent | sort id_orig_h first
+index=zeek sourcetype=zeek:dns pcap_case=&lt;case&gt; id_resp_p=53 | stats count by id_orig_h id_resp_h
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first count values(method) as methods sum(response_body_len) as received by id_orig_h host | sort id_orig_h first
+index=zeek sourcetype=zeek:conn pcap_case=&lt;case&gt; proto=tcp NOT id_resp_h=192.168.0.0/16 NOT [search index=zeek sourcetype=zeek:dns pcap_case=&lt;case&gt; | mvexpand answers | rename answers as id_resp_h | dedup id_resp_h | fields id_resp_h] | stats count by id_orig_h id_resp_h id_resp_p
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; ts&gt;=&lt;epoch&gt; | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S.%3N") | sort ts | table t host uri referrer status_code resp_mime_types response_body_len
+index=zeek sourcetype=zeek:files pcap_case=&lt;case&gt; tx_hosts="&lt;server ip&gt;" | eval t=strftime(ts,"%H:%M:%S") | table t tx_hosts rx_hosts mime_type seen_bytes md5
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; method=POST | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S") | table t id_resp_h host uri user_agent request_body_len response_body_len
+index=zeek pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; (sourcetype=zeek:ssl OR sourcetype=zeek:http) | eval name=coalesce(server_name, mvdedup(host)) | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first max(t) as last count by sourcetype name | sort first
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; uri="/counter/*" | eval host=mvdedup(host) | rex field=uri "rnd=(?&lt;rnd&gt;\d+)" | eval t=strftime(ts,"%H:%M:%S") | table t id_resp_h host rnd status_code resp_filenames resp_mime_types response_body_len
+index=zeek sourcetype=zeek:files pcap_case=&lt;case&gt; rx_hosts="&lt;pc&gt;" mime_type="application/x-dosexec" | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first count values(tx_hosts) as from by md5 seen_bytes
+index=zeek sourcetype=zeek:files pcap_case=&lt;case&gt; rx_hosts="&lt;pc&gt;" | stats count by mime_type
+</code></pre></div></div>
+<p><strong>Arkime</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tags == &lt;case&gt; &amp;&amp; ip.src == 192.168.122.132 &amp;&amp; host.http == www.koeppl.com &amp;&amp; http.uri == "/"
+tags == &lt;case&gt; &amp;&amp; host.http == 3wzn5p2yiumh7akj.waytopaytosystem.com
+tags == &lt;case&gt; &amp;&amp; ip.src == 192.168.122.52 &amp;&amp; http.uri == /media/system/js/mootools-core.js
+tags == &lt;case&gt; &amp;&amp; host.http == st.domandvilma.com
+tags == &lt;case&gt; &amp;&amp; ip.src == 192.168.122.130 &amp;&amp; http.uri == /counter/*
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="en-lessons">Lessons</h2>
+<ol>
+<li><strong>Three alerts, three different answers.</strong> An alert says "look here", not "infected". Decide per PC from what happened <strong>after</strong> the alert.</li>
+<li><strong>Infected = something new runs.</strong> PC A and B both show a <strong>new User-Agent</strong> (<code>MSIE 7.0</code>) that is not the browser. PC C never does.</li>
+<li><strong>Size tells a lot.</strong> A 26-byte reply cannot be an exploit kit; a 412 KB reply with no file type after a Flash file almost certainly is a payload.</li>
+<li><strong>Labels lie, content does not.</strong> <code>image/gif</code> + <code>.gif</code> names, but Zeek's <code>application/x-dosexec</code> says "program". Always compare <code>resp_filenames</code> with <code>resp_mime_types</code>.</li>
+<li><strong>Read the injected code's logic, not just its address.</strong> <code>if (main_color_handle.length==0) return;</code> explains why nothing happened on PC C.</li>
+<li><strong>Not every method finds something.</strong> The no-DNS subsearch found nothing here — all C2 used names. That is a result too.</li>
+<li><strong>HTTPS hides the start of PC B's story.</strong> Webmail timing (22:11:47 → 22:11:53) is the link; the attachment itself must come from the mailbox or the host.</li>
+<li><strong>The user's own actions matter.</strong> PC A's user opened the ransom payment page — tell the response team before anyone pays.</li>
+</ol>
+</section>
+<section>
+<h2 id="en-references">References</h2>
+<ul>
+<li><a href="handbook-socgholish-fake-chrome-update-wscript-c2.html">Sorting through the alerts — same Splunk-first method</a> · <a href="handbook-phishing-red-herring-ek-driveby-ursnif-c2.html">Phishing red herring to EK drive-by</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/splunk/spl-cheatsheet/">SPL cheat sheet</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/">Zeek logs</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/files-log/">files.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/conn-log/">conn.log</a></li>
+<li>Original exercise: <a href="https://malware-traffic-analysis.net/2016/01/07/index.html">malware-traffic-analysis.net — 2016-01-07 Alerts on 3 different hosts</a> · <a href="https://www.malware-traffic-analysis.net/2016/01/07/page2.html">answers</a></li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>세 호스트에 같은 베이스라인을 적용합니다. 핸드북은 CryptoWall 흐름, 별도 스크립트 다운로더 흐름, 리다이렉트 뒤 추가 감염 근거가 관찰되지 않은 호스트를 구분합니다. 각 판단은 해당 호스트의 타임라인으로 한정합니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/alerts-on-3-hosts-neutrino-cryptowall-js-downloader/">DFIR Handbook 원문</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td><code>2016-01-07-traffic-analysis-exercise.pcap</code> — 2016-01-07 22:05:47 – 22:17:18 UTC (약 11.5분)</td>
+</tr>
+<tr>
+<td><strong>출처</strong></td>
+<td><a href="https://malware-traffic-analysis.net/2016/01/07/index.html">malware-traffic-analysis.net 2016-01-07 "Alerts on 3 different hosts"</a></td>
+</tr>
+<tr>
+<td><strong>주어진 정보</strong></td>
+<td>LAN 정보 없음. 대역, 게이트웨이, PC를 직접 찾아요</td>
+</tr>
+<tr>
+<td><strong>질문</strong></td>
+<td>시간 범위 · PC 세 대의 IP, MAC, 호스트 이름 · PC마다 무슨 일이 있었고 감염됐는지 · 후속 조치 권고</td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>폐쇄망. pcapbox VM: Splunk(<code>index=zeek</code>, 케이스 필드 <code>pcap_case</code>), Arkime(태그 = 케이스 이름), Snort 2.9.20. <strong>Wireshark 사용 안 함.</strong></td>
+</tr>
+<tr>
+<td><strong>케이스 이름</strong></td>
+<td><code>20160107_ALERTS_ON_3_DIFFERENT_HOSTS</code></td>
+</tr>
+<tr>
+<td><strong>관련 페이지</strong></td>
+<td><a href="handbook-socgholish-fake-chrome-update-wscript-c2.html">Sorting through the alerts(같은 방법, PC 한 대)</a> · <a href="handbook-phishing-red-herring-ek-driveby-ursnif-c2.html">피싱 미끼에서 EK 드라이브바이까지</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/splunk/spl-cheatsheet/">SPL 치트시트</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/">Zeek 로그</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-prep">0단계 — PCAP 넣고 케이스 확인</h2>
+<p><strong>목적:</strong> PCAP에 케이스 이름을 붙여서 다른 실습 로그와 절대 섞이지 않게 하고, 모든 도구를 <strong>UTC</strong>로 맞춰요.</p>
+<ol>
+<li>파일 이름을 <strong><code>20160107_ALERTS_ON_3_DIFFERENT_HOSTS.pcap</code></strong>으로 바꾸고 <code>\\10.50.10.60\incoming</code>에 복사해요.</li>
+<li>pcapbox에서 <code>tail -f /data/logs/ingest.log</code>를 보다가 <code>DONE case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS</code>가 나오면 끝이에요. <strong>한 번만 넣어요.</strong> 다시 넣으면 로그가 모두 두 번 들어가요.</li>
+<li>Splunk <strong>Preferences → Time zone = UTC</strong>, Arkime <strong>Settings → Timezone = UTC</strong>, 시간 범위 <strong>All</strong>.</li>
+</ol>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn
+| stats count by pcap_case
+</code></pre></div></div>
+<ul>
+<li><code>index=zeek</code> — Zeek 로그가 든 인덱스(Splunk의 "서랍")만 봐요.</li>
+<li><code>sourcetype=zeek:conn</code> — 연결 로그예요. 연결 하나가 한 줄이에요.</li>
+<li><code>|</code> — 왼쪽 결과를 다음 명령으로 넘겨요.</li>
+<li><code>stats count by pcap_case</code> — 케이스 이름마다 줄 수를 세요. 새 케이스가 목록에 있어야 해요.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">시간은 <code>ts</code></p>
+<p>Zeek의 이벤트 시간은 <strong><code>ts</code></strong>(epoch 초)예요. 쿼리는 모두 <code>ts</code>로 정렬하고 출력해요. <code>eval t=strftime(ts,"%H:%M:%S")</code>로 읽기 쉽게 바꿔요.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-baseline">1단계 — 베이스라이닝: 이 캡처의 평소 모습</h2>
+<p>베이스라이닝 = <strong>평소 모습</strong>을 먼저 아는 거예요. 시간 범위, 로그 종류, 어떤 PC가 있는지, 누구인지, 보통 어떻게 웹을 쓰는지. 그래야 "이상한 것"이 눈에 띄어요.</p>
+<h3 id="ko-log-types">1-1. 어떤 로그가 있나</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| stats count by sourcetype
+| sort - count
+</code></pre></div></div>
+<ul>
+<li><code>sourcetype</code>을 안 적어서 이 케이스의 <strong>모든 로그 종류</strong>를 가져와요. <code>sort - count</code> = 많은 순서.</li>
+</ul>
+<p><strong>보여야 하는 결과(정확한 숫자가 아니라 순서):</strong> <code>zeek:conn</code>, <code>zeek:dns</code>, <code>zeek:http</code>(약 325줄), <code>zeek:ssl</code>, <code>zeek:files</code>, <code>zeek:x509</code>, <code>zeek:dhcp</code>, <code>zeek:software</code>, 있으면 <code>zeek:weird</code>, <code>zeek:pe</code>.</p>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li><strong><code>zeek:dhcp</code>가 있어요.</strong> 캡처 중에 PC들이 IP를 요청했다는 뜻이라, DHCP로 이름, MAC, IP를 바로 알 수 있어요(1-4).</li>
+<li><strong><code>kerberos</code>, <code>ldap</code>, <code>smb_*</code>가 없어요.</strong> AD 도메인이 없어요. 혼자 쓰는 PC들이라 찾을 사용자 이름도 없어요.</li>
+<li><strong><code>zeek:http</code>가 많아요.</strong> 내용을 다 읽을 수 있는 평문 웹 통신이 많다는 뜻이라 이번 사례엔 좋은 소식이에요.</li>
+<li><strong><code>zeek:pe</code></strong>(있다면)는 Zeek가 <strong>통신 안에서 윈도우 프로그램</strong>(EXE/DLL)을 봤다는 뜻이에요. 평범한 사무실 캡처에선 드물어요. 메모해요.</li>
+</ul>
+<h3 id="ko-window">1-2. 캡처 시간 범위</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| stats min(ts) as first max(ts) as last count as sessions
+| eval duration_min=round((last-first)/60,1)
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")
+</code></pre></div></div>
+<ul>
+<li>2줄: 한 줄로 요약해요 — 가장 이른 연결 시작, 가장 늦은 연결 시작, 연결 수. <code>as</code>는 결과에 이름을 붙여요.</li>
+<li>3줄: 분 단위, 소수 한 자리. <strong>4줄보다 먼저</strong> 와야 해요. 4줄을 지나면 <code>first</code>/<code>last</code>가 글자가 돼서 뺄셈을 못 해요.</li>
+<li>4줄: epoch → 읽을 수 있는 날짜.</li>
+</ul>
+<p><strong>보여야 하는 결과:</strong> <code>first</code> <strong>2016-01-07 22:05:47</strong>, <code>last</code> 약 <strong>22:17</strong>(마지막 연결의 <strong>시작</strong> 시각이에요. 마지막 패킷은 22:17:18), 약 <strong>11.5분</strong>, 연결 약 470개.</p>
+<h3 id="ko-internal-hosts">1-3. 어떤 내부 IP가 연결을 시작하나</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.0.0/16
+| stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first by id_orig_h
+| eval first=strftime(first,"%H:%M:%S")
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>id_orig_h</code> = 연결을 <strong>시작한</strong> IP(<code>orig</code> = 시작한 쪽, <code>resp</code> = 받은 쪽, <code>_h</code> = IP, <code>_p</code> = 포트).</li>
+<li><code>id_orig_h=192.168.0.0/16</code> — Splunk는 IP 필드에 대역(CIDR)을 쓰면 알아서 맞춰 봐요. 192.168.x.x 사설 IP만 남겨요.</li>
+<li><code>dc()</code> = 중복 빼고 세기. <code>orig_bytes</code> / <code>resp_bytes</code> = 양쪽이 보낸 데이터 바이트.</li>
+</ul>
+<p><strong>보여야 하는 결과(숫자는 대략):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h         sessions  destinations  first
+192.168.122.130   ~130      ~30           22:05:51
+192.168.122.52    ~220      ~25           22:06:06
+192.168.122.132   ~120      ~25           22:06:25
+(192.168.122.1은 DHCP 응답 때문에 한두 줄 나오거나 안 나올 수 있어요)
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li><strong>LAN = 192.168.122.0/24.</strong> PC 세 대: <strong>.130, .52, .132</strong>.</li>
+<li><strong>192.168.122.1</strong>은 연결을 거의 시작하지 않아요. <strong>게이트웨이, DHCP 서버, DNS 서버</strong>예요(1-4와 1-6에서 확인).</li>
+<li>세 PC가 차례로 시작해요(22:05:51, 22:06:06, 22:06:25). 캡처 시작 무렵에 켜졌어요.</li>
+</ul>
+<h3 id="ko-dhcp">1-4. 누가 누구인가 — DHCP</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| eval t=strftime(ts,"%H:%M:%S")
+| table t client_addr assigned_addr mac host_name msg_types server_addr
+| sort t
+</code></pre></div></div>
+<ul>
+<li><code>zeek:dhcp</code> = DHCP 주고받기 한 번이 한 줄. <code>assigned_addr</code> = 서버가 준 IP, <code>mac</code> = PC의 네트워크 카드, <code>host_name</code> = PC가 보낸 이름(DHCP 옵션 12).</li>
+<li><code>msg_types</code>: <strong>REQUEST/ACK</strong> = "이 IP 써도 돼요?" / "네", <strong>INFORM/ACK</strong> = "IP는 있어요, 설정만 주세요".</li>
+</ul>
+<p><strong>보여야 하는 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         client_addr      assigned_addr    mac                 host_name         msg_types
+22:05:47                   192.168.122.130  00:22:19:e2:4b:86   FULL-METAL-JACK   REQUEST ACK
+22:05:54  192.168.122.130                   00:22:19:e2:4b:86   FULL-METAL-JACK   INFORM ACK
+22:06:02                   192.168.122.52   00:26:55:32:a9:17   Jennifer-PC       REQUEST ACK
+22:06:10  192.168.122.52                    00:26:55:32:a9:17   Jennifer-PC       INFORM ACK
+22:06:21                   192.168.122.132  48:5b:39:c1:f2:48   Hokaydoo-PC       REQUEST ACK
+22:06:29  192.168.122.132                   48:5b:39:c1:f2:48   Hokaydoo-PC       INFORM ACK
+...       (.132가 22:10:45에, .130이 22:11:53에 INFORM을 한 번 더 보냄)
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong> 이름 셋, MAC 셋, IP 셋이에요. <code>server_addr</code>는 <strong>192.168.122.1</strong>이에요. 실습 질문 2번의 답이에요.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">IP</th>
+<th scope="col">MAC</th>
+<th scope="col">호스트 이름</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>192.168.122.130</td>
+<td>00:22:19:e2:4b:86</td>
+<td>FULL-METAL-JACK</td>
+</tr>
+<tr>
+<td>192.168.122.52</td>
+<td>00:26:55:32:a9:17</td>
+<td>Jennifer-PC</td>
+</tr>
+<tr>
+<td>192.168.122.132</td>
+<td>48:5b:39:c1:f2:48</td>
+<td>Hokaydoo-PC</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition question">
+<p class="admonition-title">질문: .132와 .130은 왜 나중에 DHCP INFORM을 한 번 더 보냈나요?</p>
+<p>무언가 네트워크 설정을 다시 물으면 윈도우가 INFORM을 보내요. 새 네트워크 확인이나 프로그램 시작 같은 때예요. 그것만으로는 아무 뜻이 없어요. 시간(22:10:45, 22:11:53)을 메모해 두고 그 무렵에 다른 일이 있는지 봐요. (힌트만: 둘 다 3단계와 4단계의 중요한 일과 몇 초 차이예요.)</p>
+</div>
+<h3 id="ko-user-agents">1-5. 각 PC가 쓰는 프로그램 — User-Agent</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| eval host=mvdedup(host)
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count dc(host) as sites by id_orig_h user_agent
+| sort id_orig_h first
+</code></pre></div></div>
+<ul>
+<li><code>user_agent</code> = HTTP 요청마다 프로그램이 스스로 밝히는 이름이에요. 브라우저에 하나, 다른 프로그램은 자기 것이 있어요.</li>
+<li><code>eval host=mvdedup(host)</code> — <code>host</code> 값을 하나만 남겨요(pcapbox Splunk가 예전에 두 번 저장하던 문제. 습관으로 넣어도 해가 없어요).</li>
+<li><code>stats … by id_orig_h user_agent</code> = <strong>PC + 프로그램</strong> 짝마다 한 줄.</li>
+</ul>
+<p><strong>보여야 하는 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h        user_agent                                                                  first     count  sites
+192.168.122.130  Microsoft NCSI                                                              22:05:58  1      1
+192.168.122.130  Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)            22:07:00  1      1
+192.168.122.130  Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Trident/6.0; SLCC2; ...)  22:11:53  9      3
+192.168.122.132  Microsoft NCSI                                                              22:06:33  1      1
+192.168.122.132  Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; rv:11.0) like Gecko        22:10:08  81     9
+192.168.122.132  Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; SLCC2; .NET CLR ...; rv:11.0) like Gecko  22:10:26  1  1
+192.168.122.132  Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/7.0; ...)  22:10:47  4      2
+192.168.122.52   Microsoft NCSI                                                              22:06:13  1      1
+192.168.122.52   Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)             22:08:49  ~190   ~15
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li>셋 다 <code>Windows NT 6.1</code> = <strong>윈도우 7</strong>이에요. <code>Microsoft NCSI</code> = 켜질 때 윈도우가 "인터넷 되나?" 확인하는 것 — 정상이에요.</li>
+<li>브라우저: .130 <strong>IE 10</strong>, .52 <strong>IE 9</strong>, .132 <strong>IE 11</strong>(<code>Trident/7.0; rv:11.0</code>, 64비트 윈도우: <code>WOW64</code>).</li>
+<li><strong>PC 두 대에 나중에 "MSIE 7.0"이 나와요</strong>(.130 22:11:53, .132 22:10:47). IE 7은 2006년 브라우저예요. 윈도우 7에서 이 이름은 <strong>스크립트와 프로그램이 쓰는 윈도우 자체 HTTP 객체</strong>(WScript, 많은 악성코드)의 기본 User-Agent예요. <strong>사용자의 브라우저가 아니에요.</strong> 후보예요.</li>
+<li><strong>.132에 한 번만 쓰인 세 번째 User-Agent</strong>(22:10:26)가 있어요. <code>.NET CLR</code>이 더 붙은 IE 11이에요. 다른 프로그램이 그 요청 하나를 했어요. 후보예요.</li>
+</ul>
+<h3 id="ko-dns-servers">1-6. DNS 서버</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_resp_p=53
+| stats count by id_orig_h id_resp_h
+</code></pre></div></div>
+<p><strong>보여야 하는 결과:</strong> .130과 .52는 <strong>192.168.122.1</strong>에 물어요. <strong>.132는 8.8.8.8과 8.8.4.4</strong>(구글)에 물어요. [데이터] 누군가 .132의 DNS를 손으로 바꿨어요. 그 자체가 악성은 아니지만, 게이트웨이의 DNS 로그로는 .132의 조회를 <strong>못 본다</strong>는 뜻이라 보고서에 한 줄 쓸 만해요.</p>
+<p><strong>베이스라인 메모 — 후보만, 결론은 아직:</strong></p>
+<ol>
+<li>22:10:26 — .132, 한 번만 쓰인 IE 11 변형 User-Agent</li>
+<li>22:10:47 — .132, <code>MSIE 7.0</code></li>
+<li>22:11:53 — .130, <code>MSIE 7.0</code></li>
+</ol>
+<hr>
+</section>
+<section>
+<h2 id="ko-triage">2단계 — PC마다 어디를 갔나: 정상 지우기</h2>
+<h3 id="ko-http-per-pc">2-1. PC별 HTTP 사이트, 시간 순서</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+| eval host=mvdedup(host)
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count values(method) as methods sum(response_body_len) as received by id_orig_h host
+| sort id_orig_h first
+</code></pre></div></div>
+<ul>
+<li><code>host</code> = HTTP Host 헤더(사이트 이름). <code>method</code>: <strong>GET</strong> 가져오기, <strong>POST</strong> 보내기.</li>
+<li><code>response_body_len</code> = 서버가 돌려준 바이트(압축을 푼 뒤).</li>
+</ul>
+<p><strong>보여야 하는 결과(핵심 줄):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h        host                                     first     count  methods    received
+192.168.122.130  www.msftncsi.com                         22:05:58  1      GET
+192.168.122.130  mail.yahoo.com                           22:07:00  1      GET
+192.168.122.130  ma-wt.com.sa                             22:11:53  3      GET        375301
+192.168.122.130  dariostoka.com                           22:11:55  3      GET        375301
+192.168.122.130  freshanointingministries-sc.org          22:11:57  3      GET        406541
+192.168.122.132  www.msftncsi.com                         22:06:33  1      GET
+192.168.122.132  www.google.com.au                        22:10:08  1      GET
+192.168.122.132  www.koeppl.com                           22:10:10  55     GET
+192.168.122.132  translate.google.com / pbs.twimg.com / stats.g.doubleclick.net / joomla-gtranslate.googlecode.com   (각 1개)
+192.168.122.132  uacltr.securetopc.top                    22:10:15  3      GET        84264
+192.168.122.132  gbesbsdsb.securetopc.top                 22:10:23  2      GET        421888
+192.168.122.132  bizsouls.com                             22:10:47  3      POST       123682
+192.168.122.132  estudiobarco.com.ar                      22:12:14  1      POST       6
+192.168.122.132  3wzn5p2yiumh7akj.waytopaytosystem.com    22:16:46  17     GET POST
+192.168.122.52   www.msftncsi.com                         22:06:13  1      GET
+192.168.122.52   au.search.yahoo.com / l.yimg.com / ri.search.yahoo.com   22:08:49   (Yahoo 검색)
+192.168.122.52   planetside.co.uk                         22:09:12  ~80    GET POST
+192.168.122.52   st.domandvilma.com                       22:09:24  1      GET        26
+192.168.122.52   ajax.googleapis.com / ajax.aspnetcdn.com / www.google-analytics.com   (사이트 구성 파일)
+192.168.122.52   www.outdoorsamoa.com / www.tripadvisor.com / fonts.* / static.tacdn.com   22:15:29 …
+</code></pre></div></div>
+<p><strong>정상을 지우는 방법:</strong></p>
+<ol>
+<li>윈도우 자체: <code>msftncsi.com</code>.</li>
+<li>잘 아는 큰 서비스와 그 부속: 구글(<code>google.*</code>, <code>gstatic</code>, <code>googleapis</code>, <code>google-analytics</code>, <code>doubleclick</code>), Yahoo(<code>yahoo.com</code>, <code>yimg.com</code>), 트위터(<code>twimg.com</code>), 마이크로소프트 CDN(<code>aspnetcdn.com</code>), 트립어드바이저(<code>tripadvisor.*</code>, <code>tacdn.com</code>, <code>jscache.com</code>).</li>
+<li>사용자가 분명히 고른 사이트(검색 결과, 직접 친 주소)와 그 사이트가 자기 이름으로 불러오는 파일.</li>
+</ol>
+<p><strong>[데이터] 남는 것:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">PC</th>
+<th scope="col">남은 것</th>
+<th scope="col">이상한 이유</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>.132</td>
+<td><code>uacltr.securetopc.top</code>, <code>gbesbsdsb.securetopc.top</code></td>
+<td><code>.top</code> 도메인에 아무렇게나 만든 하위 이름, 정상 사이트 몇 초 뒤</td>
+</tr>
+<tr>
+<td>.132</td>
+<td><code>bizsouls.com</code>, <code>estudiobarco.com.ar</code></td>
+<td><strong>POST만</strong>, <code>MSIE 7.0</code> 프로그램(후보 2)이 보냄</td>
+</tr>
+<tr>
+<td>.132</td>
+<td><code>3wzn5p2yiumh7akj.waytopaytosystem.com</code></td>
+<td>무작위 16글자 + "way to pay to system(돈 내는 시스템)"</td>
+</tr>
+<tr>
+<td>.130</td>
+<td><code>ma-wt.com.sa</code>, <code>dariostoka.com</code>, <code>freshanointingministries-sc.org</code></td>
+<td>서로 관계없는 사이트 셋에 같은 3번 요청, 각 약 375–406 KB, <code>MSIE 7.0</code>(후보 3)이 보냄</td>
+</tr>
+<tr>
+<td>.52</td>
+<td><code>st.domandvilma.com</code></td>
+<td>사용자가 연 사이트의 일부가 아님. 받은 건 <strong>26바이트</strong>뿐</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id="ko-no-dns">2-2. DNS 없이 간 목적지 — 여기선 왜 안 나오나</h3>
+<p>지난 사례에서는 이 쿼리로 C2를 찾았어요. 해 보세요. <strong>방법이 아무것도 못 찾을 때를 아는 것</strong>도 실력이에요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.0/24 proto=tcp NOT id_resp_h=192.168.0.0/16
+    NOT [search index=zeek sourcetype=zeek:dns pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS | mvexpand answers | rename answers as id_resp_h | dedup id_resp_h | fields id_resp_h]
+| stats count by id_orig_h id_resp_h id_resp_p
+</code></pre></div></div>
+<ul>
+<li><code>[ … ]</code> <strong>서브서치</strong>가 먼저 실행돼서 DNS 답에 나온 IP를 모두 모아요(<code>mvexpand</code> = 값마다 한 줄, <code>rename</code> = conn 필드 이름과 맞추기). <code>NOT</code>이 붙어서 <strong>한 번도 조회하지 않은</strong> TCP 목적지만 남아요.</li>
+</ul>
+<p><strong>보여야 하는 결과:</strong> <strong>결과 없음.</strong> [데이터] 외부 TCP 목적지는 모두 이름으로 찾아갔어요. 이 캡처의 악성 활동은 모두 <strong>도메인</strong>을 써요. 그래서 "하드코딩된 IP"를 찾는 것보다 HTTP와 DNS(2-1)를 보는 게 맞아요.</p>
+<p><strong>계획:</strong> PC 하나씩, 심각해 보이는 순서로: <strong>.132</strong>(이상한 통신이 세 종류) → <strong>.130</strong> → <strong>.52</strong>.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-pc-b">4단계 — PC B: 192.168.122.130 FULL-METAL-JACK</h2>
+<h3 id="ko-pc-b-timeline">4-1. 웹메일, 그다음 스크립트</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.130 (sourcetype=zeek:ssl OR sourcetype=zeek:http) ts&gt;=1452204300
+| eval name=coalesce(server_name, mvdedup(host))
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first max(t) as last count by sourcetype name
+| sort first
+</code></pre></div></div>
+<ul>
+<li>로그 두 종류를 한 번에: <code>(sourcetype=zeek:ssl OR sourcetype=zeek:http)</code>. <code>ts&gt;=1452204300</code> = 22:05:00부터.</li>
+<li><code>coalesce(a,b)</code> = <code>a</code>를 쓰고, <code>a</code>가 비면 <code>b</code>를 써요. HTTPS 줄엔 <code>server_name</code>(암호화 전에 보내는 사이트 이름, <strong>SNI</strong>)이 있고, HTTP 줄엔 <code>host</code>가 있어요.</li>
+</ul>
+<p><strong>보여야 하는 결과(핵심 줄):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>sourcetype  name                              first     last
+zeek:ssl    www.bing.com                      22:06:35  22:06:59
+zeek:http   mail.yahoo.com                    22:07:00  22:07:00
+zeek:ssl    login.yahoo.com                   22:07:05  22:07:33
+zeek:ssl    us-mg5.mail.yahoo.com             22:07:00  22:11:47
+zeek:ssl    prodxobni.mail.yahoo.com / ws-contacts / comet.yahoo.com ...
+zeek:http   ma-wt.com.sa                      22:11:53  22:12:30
+zeek:http   dariostoka.com                    22:11:55  22:12:34
+zeek:http   freshanointingministries-sc.org   22:11:57  22:12:47
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li>22:06–22:07: Bing, 그다음 사용자가 <strong>Yahoo 메일에 로그인</strong>하고(<code>login.yahoo.com</code>) 메일을 써요(<code>us-mg5.mail.yahoo.com</code>). 웹메일은 HTTPS라 <strong>메일과 첨부 파일 내용은 못 봐요</strong>.</li>
+<li><strong>22:11:45–47</strong> 마지막 웹메일 연결 → <strong>22:11:53</strong>, 6초 뒤 <code>MSIE 7.0</code> 프로그램 시작(후보 3). 1-4의 DHCP INFORM도 22:11:53이에요.</li>
+<li><strong>[추측]</strong> 사용자가 메일의 무언가(첨부 파일)를 열었고 <strong>스크립트</strong>가 실행됐어요. Referer 없는 <code>MSIE 7.0</code> User-Agent는 Windows Script Host(<code>.js</code> 파일)와 맞아요.</li>
+</ul>
+<h3 id="ko-pc-b-downloads">4-2. 다운로드: 프로그램인 "GIF" 파일</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.130 uri="/counter/*"
+| eval host=mvdedup(host)
+| rex field=uri "rnd=(?&lt;rnd&gt;\d+)"
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_resp_h host rnd status_code resp_filenames resp_mime_types response_body_len
+</code></pre></div></div>
+<ul>
+<li><code>uri="/counter/*"</code> — 이 요청만.</li>
+<li><code>rex field=uri "rnd=(?&lt;rnd&gt;\d+)"</code> — <code>rnd=</code> 뒤의 숫자를 잘라서 새 필드 <code>rnd</code>를 만들어요(<code>\d+</code> = 숫자 하나 이상).</li>
+<li><code>resp_filenames</code> = 서버가 붙인 파일 이름(<code>Content-Disposition: attachment; filename=…</code>). <code>resp_mime_types</code> = Zeek가 <strong>안을 보고</strong> 찾은 형식.</li>
+</ul>
+<p><strong>보여야 하는 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         id_resp_h       host                              rnd      status  resp_filenames        resp_mime_types         response_body_len
+22:11:53  216.158.85.7    ma-wt.com.sa                      8742951  200                                                   0
+22:11:55  174.36.186.235  dariostoka.com                    8742951  200     775d4.gif                                     0
+22:11:57  184.168.173.1   freshanointingministries-sc.org   8742951  200                                                   0
+22:11:58  216.158.85.7    ma-wt.com.sa                      8742952  200     66b32.gif             application/x-dosexec   260613
+22:12:04  174.36.186.235  dariostoka.com                    8742952  200     174125.gif            application/x-dosexec   260613
+22:12:21  184.168.173.1   freshanointingministries-sc.org   8742952  200     c9a63078fe7d3741.gif  application/x-dosexec   260619
+22:12:30  216.158.85.7    ma-wt.com.sa                      8742953  200     250acae.gif           application/x-dosexec   114688
+22:12:34  174.36.186.235  dariostoka.com                    8742953  200     d50f729942631.gif     application/x-dosexec   114688
+22:12:47  184.168.173.1   freshanointingministries-sc.org   8742953  200     2487ff63fb4e79.gif    application/x-dosexec   145922
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li><strong>모든 요청에 똑같은 긴 <code>id=</code></strong> — 피해자 ID 하나 — 그리고 <code>rnd</code>가 <strong>…51, …52, …53</strong>으로 늘어요. 회차 셋, 회차마다 <strong>세 사이트에 모두</strong> 물어요. 목록을 차례로 도는 스크립트예요.</li>
+<li>1회차는 아무것도 못 받았어요. 2, 3회차에 <strong>파일 여섯 개</strong>를 받았어요.</li>
+<li>서버는 <strong><code>image/gif</code></strong>라고 하고 이름도 <code>.gif</code>예요. Zeek가 안을 보니 <strong><code>application/x-dosexec</code> = 윈도우 프로그램</strong>(<code>MZ</code>로 시작)이에요. 이름표만 보는 필터를 지나가려는 위장이에요.</li>
+<li>Referer 없음, <code>MSIE 7.0</code> — 브라우저가 아니에요.</li>
+</ul>
+<h3 id="ko-pc-b-hashes">4-3. 해시 (Splunk)</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:files pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS rx_hosts="192.168.122.130" mime_type="application/x-dosexec"
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count values(tx_hosts) as from by md5 seen_bytes
+</code></pre></div></div>
+<ul>
+<li><code>stats … by md5 seen_bytes</code>로 같은 파일끼리 묶어요. 몇 번, 어디서 받았는지 나와요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>md5                                 seen_bytes  first     count  from
+9f756e72eacc6b805481a49ce51c4a79    260613      22:11:58  2      216.158.85.7 174.36.186.235
+d411bf37de7f72e98a62fc82917f50f7    260619      22:12:21  1      184.168.173.1
+e851eb249d2c38d56d1b496a3112cebc    114688      22:12:30  2      216.158.85.7 174.36.186.235
+92a4d0aeede3ce110b4121342df48496    145922      22:12:47  1      184.168.173.1
+</code></pre></div></div>
+<p><strong>[데이터]</strong> 다운로드 6번, <strong>서로 다른 EXE 4개</strong>예요. <code>zeek:pe</code>가 있으면 <code>index=zeek sourcetype=zeek:pe pcap_case=… | table ts id os compile_ts is_exe</code>로 윈도우 실행 파일인 걸 볼 수 있어요. 이 MD5는 <strong>진짜 프로그램</strong>(암호화 안 됨)의 해시라서 호스트 담당자가 디스크에서 찾을 수 있어요.</p>
+<p>SHA256(호스트 담당자와 악성코드 데이터베이스용):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>95a9c8fccbe0e49dc132cf59d7ebf73e692da9f35491e0bfcac40b92c9022f5c  (260,613 B)
+220a2e4f93d85f16dd74ed56247644e126b8d2d262374c4f09ec2be49cbcd0f3  (260,619 B)
+306ab541cf4ace30c0f905ded4c26b40458c4dda28d9c5f00abd679ada6cf27d  (114,688 B)
+227193160a2448dfa8bbbd2cf125afa9cca0d1a718b109a3adae5df8a24cdf6e  (145,922 B)
+</code></pre></div></div>
+<h3 id="ko-pc-b-after">4-4. 다운로드 뒤에 무슨 일이 있었나</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS id_orig_h=192.168.122.130 ts&gt;=1452204775
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count by id_resp_h id_resp_p service
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>ts&gt;=1452204775</code> = 마지막 다운로드가 끝난 <strong>22:12:55</strong>부터.</li>
+</ul>
+<p><strong>보여야 하는 결과:</strong> Yahoo 메일 연결(124.108.101.10, 106.10.x)과 DNS뿐이에요. <strong>[데이터] 다운로드 뒤 새 목적지가 없어요.</strong></p>
+<p><strong>PC B 결론:</strong></p>
+<ul>
+<li><strong>[데이터]</strong> 웹메일을 쓴 지 6초 뒤, 스크립트가 해킹된 웹사이트 3곳에서 GIF로 위장한 윈도우 프로그램 4개(다운로드 6번)를 받았어요.</li>
+<li><strong>[추측]</strong> 시작은 <strong>스크립트 첨부 파일이 달린 악성 메일</strong>이에요(원래 실습에서 zip으로 묶은 <code>.js</code> 첨부로 확인됨). 받은 프로그램은 악성코드예요. 실행됐는지는 안 보여요 — 남은 4분 동안 후속 통신이 없어요. <strong>감염된 PC로 처리해요.</strong></li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-snort">6단계 — 간단한 Snort 룰과 시험</h2>
+<p>악성 활동마다 아주 간단한 룰 하나씩이에요. pcapbox의 Snort는 TCP 내용을 다 보니까 <code>Host:</code> 헤더의 이름을 <code>content</code>로 맞추면 충분해요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"EK securetopc.top - Sung"; content:"securetopc.top"; nocase; sid:1000051; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"JS downloader counter id - Sung"; content:"/counter/?id="; nocase; sid:1000052; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"CryptoWall decrypt page waytopaytosystem.com - Sung"; content:"waytopaytosystem.com"; nocase; sid:1000053; rev:1;)
+</code></pre></div></div>
+<ul>
+<li><code>$HOME_NET any -&gt; $EXTERNAL_NET 80</code> — 내부에서 외부 80번 포트로. <code>content</code> + <code>nocase</code> — 패킷 어디든 이 글자, 대소문자 무시. <code>sid</code> 1000000 이상 = 직접 만든 룰.</li>
+</ul>
+<p>룰을 하나씩 <strong>한 줄로</strong> <code>\\10.50.10.60\rules\local.rules</code>에 넣고 pcapbox에서:</p>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>sudo snort -T -c /etc/snort/snort.conf 2&gt;&amp;1 | tail -5
+snort-test 20160107_ALERTS_ON_3_DIFFERENT_HOSTS
+</code></pre></div></div>
+<p><strong>보여야 하는 결과(대략):</strong> sid 1000051은 <code>securetopc.top</code> 요청 5개, sid 1000052는 <code>/counter/?id=</code> 요청 9개, sid 1000053은 지불 사이트 요청(17개)에 걸려요. 숫자가 조금 많으면 Snort가 요청 하나의 두 번째 패킷에서도 같은 글자를 찾은 거예요. <code>index=snort pcap_case=20160107_ALERTS_ON_3_DIFFERENT_HOSTS | stats count by sid dest_ip</code>로 확인해요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-timeline">타임라인 (2016-01-07, UTC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">시각</th>
+<th scope="col">PC</th>
+<th scope="col">이벤트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22:05:47</td>
+<td>전체</td>
+<td>캡처 시작, .130, .52(22:06:02), .132(22:06:21) DHCP</td>
+</tr>
+<tr>
+<td>22:07:00–22:11:47</td>
+<td>B .130</td>
+<td>Yahoo 메일(HTTPS)</td>
+</tr>
+<tr>
+<td>22:08:49</td>
+<td>C .52</td>
+<td>Yahoo에서 planetside.co.uk 검색</td>
+</tr>
+<tr>
+<td>22:09:12</td>
+<td>C .52</td>
+<td><code>planetside.co[.]uk</code>(해킹됨, <code>mootools-core.js</code>에 심긴 스크립트)</td>
+</tr>
+<tr>
+<td>22:09:24</td>
+<td>C .52</td>
+<td>게이트 <code>st.domandvilma[.]com</code> → <code>var main_color_handle='';</code> → <strong>아무 일 없음</strong></td>
+</tr>
+<tr>
+<td>22:10:08–10</td>
+<td>A .132</td>
+<td>구글 결과 → <code>www.koeppl[.]com</code>(해킹됨, <code>&lt;html&gt;</code> 앞의 코드)</td>
+</tr>
+<tr>
+<td>22:10:15</td>
+<td>A .132</td>
+<td>EK 랜딩 <code>uacltr.securetopc[.]top</code>(89.38.144.75)</td>
+</tr>
+<tr>
+<td>22:10:17</td>
+<td>A .132</td>
+<td>Flash 익스플로잇(83 KB)</td>
+</tr>
+<tr>
+<td>22:10:26</td>
+<td>A .132</td>
+<td><code>gbesbsdsb.securetopc[.]top</code>에서 암호화된 페이로드(412 KB)</td>
+</tr>
+<tr>
+<td>22:10:47–22:12:14</td>
+<td>A .132</td>
+<td><code>MSIE 7.0</code> POST 체크인 <code>bizsouls[.]com</code>, <code>estudiobarco.com[.]ar</code></td>
+</tr>
+<tr>
+<td>22:11:53</td>
+<td>B .130</td>
+<td>스크립트가 해킹된 사이트 3곳에 <code>/counter/?id=</code> 요청 시작</td>
+</tr>
+<tr>
+<td>22:11:58–22:12:47</td>
+<td>B .130</td>
+<td><code>.gif</code> 이름의 EXE 다운로드 6번(서로 다른 4개)</td>
+</tr>
+<tr>
+<td>22:15:29</td>
+<td>C .52</td>
+<td>정상 브라우징(outdoorsamoa, 트립어드바이저)</td>
+</tr>
+<tr>
+<td>22:16:46–22:17:05</td>
+<td>A .132</td>
+<td>사용자가 <code>3wzn5p2yiumh7akj.waytopaytosystem[.]com</code>의 <strong>CryptoWall "Decrypt service"</strong> 페이지를 엶</td>
+</tr>
+<tr>
+<td>22:17:18</td>
+<td>전체</td>
+<td>캡처 끝</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-iocs">지표</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">지표</th>
+<th scope="col">종류</th>
+<th scope="col">PC</th>
+<th scope="col">역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>www.koeppl[.]com</code> 92.51.131.150</td>
+<td>도메인 / IP</td>
+<td>A</td>
+<td>해킹된 사이트(<code>&lt;html&gt;</code> 앞의 코드)</td>
+</tr>
+<tr>
+<td><code>uacltr.securetopc[.]top</code>, <code>gbesbsdsb.securetopc[.]top</code> 89.38.144.75</td>
+<td>도메인 / IP</td>
+<td>A</td>
+<td>익스플로잇 킷(랜딩, Flash, 페이로드)</td>
+</tr>
+<tr>
+<td><code>bizsouls[.]com</code> 188.138.101.154, <code>estudiobarco.com[.]ar</code> 50.22.11.55</td>
+<td>도메인 / IP</td>
+<td>A</td>
+<td>CryptoWall 체크인(해킹된 사이트)</td>
+</tr>
+<tr>
+<td><code>3wzn5p2yiumh7akj.waytopaytosystem[.]com</code> 95.128.181.144</td>
+<td>도메인 / IP</td>
+<td>A</td>
+<td>CryptoWall 지불 페이지(Tor 게이트웨이)</td>
+</tr>
+<tr>
+<td>6631e8c0d5f07004fabff81872f10d5e</td>
+<td>MD5</td>
+<td>A</td>
+<td>Flash 익스플로잇</td>
+</tr>
+<tr>
+<td><code>ma-wt.com[.]sa</code> 216.158.85.7, <code>dariostoka[.]com</code> 174.36.186.235, <code>freshanointingministries-sc[.]org</code> 184.168.173.1</td>
+<td>도메인 / IP</td>
+<td>B</td>
+<td>EXE 다운로드(<code>/counter/?id=</code>)</td>
+</tr>
+<tr>
+<td>9f756e72…4a79, d411bf37…7f50f7, e851eb24…cebc, 92a4d0ae…8496</td>
+<td>MD5</td>
+<td>B</td>
+<td>내려받은 EXE(4개)</td>
+</tr>
+<tr>
+<td><code>planetside.co[.]uk</code> 67.225.139.108</td>
+<td>도메인 / IP</td>
+<td>C</td>
+<td>해킹된 사이트(심긴 스크립트)</td>
+</tr>
+<tr>
+<td><code>st.domandvilma[.]com</code> 192.185.21.183</td>
+<td>도메인 / IP</td>
+<td>C</td>
+<td>게이트(아무것도 안 줌)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-query-sheet">복사해서 쓰는 쿼리</h2>
+<p><code>&lt;case&gt;</code>는 케이스 이름으로 바꿔요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek pcap_case=&lt;case&gt; | stats count by sourcetype | sort - count
+index=zeek sourcetype=zeek:conn pcap_case=&lt;case&gt; | stats min(ts) as first max(ts) as last count as sessions | eval duration_min=round((last-first)/60,1) | eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")
+index=zeek sourcetype=zeek:conn pcap_case=&lt;case&gt; id_orig_h=192.168.0.0/16 | stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first by id_orig_h | eval first=strftime(first,"%H:%M:%S") | sort first
+index=zeek sourcetype=zeek:dhcp pcap_case=&lt;case&gt; | eval t=strftime(ts,"%H:%M:%S") | table t client_addr assigned_addr mac host_name msg_types server_addr | sort t
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first count dc(host) as sites by id_orig_h user_agent | sort id_orig_h first
+index=zeek sourcetype=zeek:dns pcap_case=&lt;case&gt; id_resp_p=53 | stats count by id_orig_h id_resp_h
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first count values(method) as methods sum(response_body_len) as received by id_orig_h host | sort id_orig_h first
+index=zeek sourcetype=zeek:conn pcap_case=&lt;case&gt; proto=tcp NOT id_resp_h=192.168.0.0/16 NOT [search index=zeek sourcetype=zeek:dns pcap_case=&lt;case&gt; | mvexpand answers | rename answers as id_resp_h | dedup id_resp_h | fields id_resp_h] | stats count by id_orig_h id_resp_h id_resp_p
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; ts&gt;=&lt;epoch&gt; | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S.%3N") | sort ts | table t host uri referrer status_code resp_mime_types response_body_len
+index=zeek sourcetype=zeek:files pcap_case=&lt;case&gt; tx_hosts="&lt;server ip&gt;" | eval t=strftime(ts,"%H:%M:%S") | table t tx_hosts rx_hosts mime_type seen_bytes md5
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; method=POST | eval host=mvdedup(host) | eval t=strftime(ts,"%H:%M:%S") | table t id_resp_h host uri user_agent request_body_len response_body_len
+index=zeek pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; (sourcetype=zeek:ssl OR sourcetype=zeek:http) | eval name=coalesce(server_name, mvdedup(host)) | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first max(t) as last count by sourcetype name | sort first
+index=zeek sourcetype=zeek:http pcap_case=&lt;case&gt; id_orig_h=&lt;pc&gt; uri="/counter/*" | eval host=mvdedup(host) | rex field=uri "rnd=(?&lt;rnd&gt;\d+)" | eval t=strftime(ts,"%H:%M:%S") | table t id_resp_h host rnd status_code resp_filenames resp_mime_types response_body_len
+index=zeek sourcetype=zeek:files pcap_case=&lt;case&gt; rx_hosts="&lt;pc&gt;" mime_type="application/x-dosexec" | eval t=strftime(ts,"%H:%M:%S") | stats min(t) as first count values(tx_hosts) as from by md5 seen_bytes
+index=zeek sourcetype=zeek:files pcap_case=&lt;case&gt; rx_hosts="&lt;pc&gt;" | stats count by mime_type
+</code></pre></div></div>
+<p><strong>Arkime</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tags == &lt;case&gt; &amp;&amp; ip.src == 192.168.122.132 &amp;&amp; host.http == www.koeppl.com &amp;&amp; http.uri == "/"
+tags == &lt;case&gt; &amp;&amp; host.http == 3wzn5p2yiumh7akj.waytopaytosystem.com
+tags == &lt;case&gt; &amp;&amp; ip.src == 192.168.122.52 &amp;&amp; http.uri == /media/system/js/mootools-core.js
+tags == &lt;case&gt; &amp;&amp; host.http == st.domandvilma.com
+tags == &lt;case&gt; &amp;&amp; ip.src == 192.168.122.130 &amp;&amp; http.uri == /counter/*
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="ko-lessons">배운 점</h2>
+<ol>
+<li><strong>경보 셋, 답도 셋.</strong> 경보는 "여기를 보세요"이지 "감염됨"이 아니에요. 경보 <strong>뒤에</strong> 무슨 일이 있었는지로 PC마다 판단해요.</li>
+<li><strong>감염 = 새로운 무언가가 실행됨.</strong> PC A와 B는 브라우저가 아닌 <strong>새 User-Agent</strong>(<code>MSIE 7.0</code>)가 나와요. PC C는 끝까지 안 나와요.</li>
+<li><strong>크기가 많은 걸 말해요.</strong> 26바이트 응답은 익스플로잇 킷일 수 없고, Flash 파일 뒤에 온 형식 없는 412 KB는 거의 확실히 페이로드예요.</li>
+<li><strong>이름표는 거짓말해도 내용은 안 해요.</strong> <code>image/gif</code>에 <code>.gif</code> 이름이지만 Zeek의 <code>application/x-dosexec</code>는 "프로그램"이라고 해요. <code>resp_filenames</code>와 <code>resp_mime_types</code>를 항상 비교해요.</li>
+<li><strong>심긴 코드는 주소만이 아니라 논리를 읽어요.</strong> <code>if (main_color_handle.length==0) return;</code>이 PC C에서 아무 일이 없던 이유를 설명해요.</li>
+<li><strong>모든 방법이 무언가를 찾지는 않아요.</strong> DNS 없는 목적지 서브서치는 여기서 아무것도 못 찾았어요. C2가 모두 이름을 썼거든요. 그것도 결과예요.</li>
+<li><strong>HTTPS가 PC B 이야기의 시작을 숨겨요.</strong> 웹메일 시간(22:11:47 → 22:11:53)이 연결 고리예요. 첨부 파일 자체는 메일함이나 호스트에서 가져와야 해요.</li>
+<li><strong>사용자의 행동도 중요해요.</strong> PC A의 사용자는 몸값 지불 페이지를 열었어요. 누가 돈을 내기 전에 대응팀에 알려요.</li>
+</ol>
+</section>
+<section>
+<h2 id="ko-references">참고 자료</h2>
+<ul>
+<li><a href="handbook-socgholish-fake-chrome-update-wscript-c2.html">Sorting through the alerts — 같은 Splunk 중심 방법</a> · <a href="handbook-phishing-red-herring-ek-driveby-ursnif-c2.html">피싱 미끼에서 EK 드라이브바이까지</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/splunk/spl-cheatsheet/">SPL 치트시트</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/">Zeek 로그</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/files-log/">files.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/conn-log/">conn.log</a></li>
+<li>원래 실습: <a href="https://malware-traffic-analysis.net/2016/01/07/index.html">malware-traffic-analysis.net — 2016-01-07 Alerts on 3 different hosts</a> · <a href="https://www.malware-traffic-analysis.net/2016/01/07/page2.html">답</a></li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

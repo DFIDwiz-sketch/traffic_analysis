@@ -67,6 +67,9 @@
 <div lang="en" data-guide-language>
 <h2>Did the burst go through the SMB share?</h2>
 <p>The publisher’s Night Dew exercise places a Windows client in an Active Directory environment and asks the analyst to investigate an infection. In the capture, <code>10.0.14.129</code> reads a policy file over SMB on the domain controller <code>10.0.14.3</code>. The same client later sends 1,522 Netlogon validation requests to the DC over a separate TCP/49158 connection. This guide scopes the authentication burst and tests whether SMB carried it.</p>
+<p><strong>Related handbook analysis</strong></p>
+<ul><li><a href="handbook-night-dew-hancitor-pony-zeus-panda-tls-c2.html">Night Dew — Hancitor check-ins to follow-up downloads, credential exfil and a self-signed TLS C2</a></li><li><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass — Arkime + Splunk (Zeek), netlogon password guessing and one Snort rule</a></li></ul>
+
 
 <p><strong>Capture metadata (directly measured)</strong></p>
 
@@ -83,6 +86,9 @@
 <div lang="ko" data-guide-language hidden>
 <h2>급증한 인증 요청은 SMB 공유를 거쳤는가?</h2>
 <p>공개 실습 Night Dew는 Active Directory 환경의 Windows 클라이언트에서 발생한 감염을 조사하는 사례입니다. 원본 캡처에서 <code>10.0.14.129</code>는 도메인 컨트롤러 <code>10.0.14.3</code>의 정책 파일을 SMB로 읽습니다. 이후 같은 클라이언트가 별도 TCP/49158 연결에서 해당 DC로 Netlogon 검증 요청 1,522건을 보냅니다. 인증 요청의 범위를 좁히고 SMB가 그 요청을 운반했는지 확인합니다.</p>
+<p><strong>DFIR Handbook 관련 분석</strong></p>
+<ul><li><a href="handbook-night-dew-hancitor-pony-zeus-panda-tls-c2.html">Night Dew — Hancitor 체크인에서 후속 다운로드, 정보 유출, 자체 서명 TLS C2까지</a></li><li><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석 — Arkime + Splunk(Zeek), netlogon 비밀번호 대입, Snort 룰 하나</a></li></ul>
+
 
 <p><strong>캡처 메타데이터 (직접 확인)</strong></p>
 

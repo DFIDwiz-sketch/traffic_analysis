@@ -1,0 +1,2324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>IcedID (Cold as Ice) — redirect, Firebase and fake gzip to HTTPS beacon and BackConnect · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase5Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase5Title">IcedID (Cold as Ice) — redirect, Firebase and fake gzip to HTTPS beacon and BackConnect</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-answers">Answers at a glance</a></li>
+<li><a href="#en-step-0">Step 0 — Data range and the big picture</a></li>
+<li><a href="#en-hosts">Step 1 — IP, MAC and hostname of the 3 clients (Q2–Q4)</a></li>
+<li><a href="#en-dns">Step 2 — Odd names in DNS, narrowing down the infected PC</a></li>
+<li><a href="#en-user">Step 3 — Finding the user account (Q5)</a></li>
+<li><a href="#en-https-c2">Step 7 — HTTPS C2: self-signed certificates</a></li>
+<li><a href="#en-beacon">Step 8 — Measuring the beacon interval</a></li>
+<li><a href="#en-non-tls-443">Step 9 — Port 443 that is not TLS: finding the follow-up activity (Q6)</a></li>
+<li><a href="#en-scope">Step 11 — Scope check and the second PC</a></li>
+<li><a href="#en-conclusion">Overall conclusion</a></li>
+<li><a href="#en-timeline">Timeline</a></li>
+<li><a href="#en-iocs">Indicators of compromise (IOC)</a></li>
+<li><a href="#en-attack">ATT&amp;CK mapping</a></li>
+<li><a href="#en-compare">Compared with the two earlier cases</a></li>
+<li><a href="#en-official-answers">Compared with the official Unit 42 answers</a></li>
+<li><a href="#en-query-sheet">Copy-ready query sheet</a></li>
+<li><a href="#en-lessons">Lessons</a></li>
+<li><a href="#en-references">References</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-answers">한눈에 보는 답</a></li>
+<li><a href="#ko-step-0">0단계 — 데이터 범위와 전체 그림</a></li>
+<li><a href="#ko-hosts">1단계 — 클라이언트 3대의 IP·MAC·호스트이름 (Q2~Q4)</a></li>
+<li><a href="#ko-dns">2단계 — DNS로 수상한 이름 찾기, 감염 PC 좁히기</a></li>
+<li><a href="#ko-user">3단계 — 사용자 계정 찾기 (Q5)</a></li>
+<li><a href="#ko-https-c2">7단계 — HTTPS C2: 자체 서명 인증서</a></li>
+<li><a href="#ko-beacon">8단계 — 비콘 주기 재기</a></li>
+<li><a href="#ko-non-tls-443">9단계 — 443인데 TLS가 아닌 것: 후속 활동 찾기 (Q6)</a></li>
+<li><a href="#ko-scope">11단계 — 범위 확인과 두 번째 PC</a></li>
+<li><a href="#ko-conclusion">전체 결론</a></li>
+<li><a href="#ko-timeline">타임라인</a></li>
+<li><a href="#ko-iocs">침해 지표(IOC)</a></li>
+<li><a href="#ko-attack">ATT&amp;CK 매핑</a></li>
+<li><a href="#ko-compare">앞의 두 사례와 비교</a></li>
+<li><a href="#ko-official-answers">Unit 42 공식 정답과 대조</a></li>
+<li><a href="#ko-query-sheet">복사용 쿼리 모음</a></li>
+<li><a href="#ko-lessons">교훈</a></li>
+<li><a href="#ko-references">참고</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>Follow the redirect and download, then measure TLS beacon timing. Review the later TCP/443 stream on its own merits. The packet evidence distinguishes the non-TLS BackConnect session from HTTPS beaconing.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/icedid-tds-gzip-loader-backconnect/">DFIR Handbook original</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td>Unit 42 Wireshark quiz April 2023 PCAP ("Cold as Ice"), 2023-04-19 15:26:28 – 21:22:36 UTC (about 5 h 56 min), about 1,640 sessions</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Closed network assumed (no hash or reputation lookups). Order and queries for Arkime, decoding in CyberChef</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Answers to the 6 quiz questions</td>
+</tr>
+<tr>
+<td><strong>Related pages</strong></td>
+<td><a href="handbook-arkime-only-credential-theft-tls-c2.html">Arkime-only analysis — Trickbot case</a> · <a href="handbook-redline-stealer-powershell-nettcp-c2.html">RedLine Stealer case</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-answers">Answers at a glance</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">Question</th>
+<th scope="col">Answer</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Infection start</td>
+<td><strong>2023-04-19 15:31 UTC</strong> (first malicious request: 15:31:07 <code>GET /main.php</code>)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>2</td>
+<td>IP</td>
+<td><strong>10.4.19.136</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MAC</td>
+<td><strong>14:58:d0:2e:c5:ae</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Hostname</td>
+<td><strong>DESKTOP-SFF9LJF</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>5</td>
+<td>User</td>
+<td><strong>csilva</strong> (LDAP full name Cornelius Silva)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Follow-up</td>
+<td><strong>Yes — BackConnect.</strong> From 20:48 UTC a remote shell and a file manager opened to 193.149.176.100:443 (not TLS). The attacker ran <code>net group "Domain Computers" /domain</code> and listed the drives and C:\</td>
+<td>Confirmed</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Network</td>
+<td>10.4.19.0/24, gateway 10.4.19.1, DC/DNS <strong>10.4.19.19 (WIN-GP4JHCK2JMV)</strong>, domain <code>boogienights.live</code></td>
+</tr>
+<tr>
+<td>Clients</td>
+<td>10.4.19.136 DESKTOP-SFF9LJF (infected), 10.4.19.138 DESKTOP-RETP4BU, 10.4.19.143 DESKTOP-JAL4D68</td>
+</tr>
+<tr>
+<td>Starting link</td>
+<td><code>hxxp://80.77.25[.]175/main.php</code> → 302 → Firebase Storage <code>Scan_Inv.zip</code></td>
+</tr>
+<tr>
+<td>gzip loader</td>
+<td><code>hxxp://skigimeetroc[.]com/</code> (192.153.57.233), PC details in cookies, 520,803-byte response</td>
+</tr>
+<tr>
+<td>HTTPS C2</td>
+<td><code>askamoshopsi[.]com</code> · <code>spakernakurs[.]com</code> (104.168.53.18), <code>skansnekssky[.]com</code> (217.199.121.56, 5-minute beacon)</td>
+</tr>
+<tr>
+<td>BackConnect</td>
+<td><strong>193.149.176.100:443</strong> (raw TCP)</td>
+</tr>
+<tr>
+<td>Extra</td>
+<td>10.4.19.138 downloaded a zip (.wsf) resembling Qakbot distribution at 17:17 — <a href="#en-second-host">step 11</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-step-0">Step 0 — Data range and the big picture</h2>
+<p><strong>Goal:</strong> Learn the start and end of the data, its size and the internal PCs first.</p>
+<p><strong>Query:</strong> Set the time range to <strong>All</strong>, leave the search bar empty and press Search. In Sessions, sort Start Time ascending / Stop Time descending to see the start and end (method in <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot case step 1</a>).</p>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start  2023/04/19 15:26:28 UTC
+End    2023/04/19 21:22:36 UTC   (duration 05:56:08)
+Sessions about 1,640
+Src IP 10.4.19.138 (833)   10.4.19.136 (718)   10.4.19.143 (85)   10.4.19.19 (4)
+</code></pre></div></div>
+<p>SPI View → General → Dst Port (session count, protocol/port):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>udp 53 (586)   tcp 443 (483)   tcp 389 (114)   tcp 445 (85)   udp 389 (73)   tcp 135 (67)
+tcp 49669 (63) tcp 88 (63)     tcp 80 (47)     tcp 49684 (12) tcp 139 (11)   udp 1900 (9)
+tcp 53 (6)     udp 137 (5)     udp 138 (4)     udp 123 (3)    udp 111 (3)    udp 5353 (2)   udp 5355 (1)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>The capture is <strong>almost 6 hours long</strong>. You cannot just scan the session list by eye like in the RedLine case (36 seconds). This time we use a <strong>"filter out, then look at what is left"</strong> approach.</li>
+<li>There are 4 internal IPs. 10.4.19.19 starts almost no sessions (4) and mostly receives them, so it is a <strong>server</strong> (confirmed as the DC later). The other <strong>3 are client PCs</strong>. The quiz also says "3 clients, only one infected".</li>
+<li>Grouping the ports by role:</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Port</th>
+<th scope="col">Protocol</th>
+<th scope="col">Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>53, 88, 389, 445, 135, 139, 49669·49684 (dynamic RPC), 123</td>
+<td>DNS, Kerberos, LDAP, SMB, RPC, NTP</td>
+<td><strong>Normal AD traffic</strong>. Mostly to 10.4.19.19</td>
+</tr>
+<tr>
+<td>137/138, 1900, 5353, 5355, 111</td>
+<td>NetBIOS, SSDP, mDNS, LLMNR, RPC portmapper</td>
+<td>Local noise</td>
+</tr>
+<tr>
+<td><strong>443 (483)</strong></td>
+<td>HTTPS</td>
+<td>Mostly Microsoft and Bing services. We have to find what is hiding inside</td>
+</tr>
+<tr>
+<td><strong>80 (47)</strong></td>
+<td>HTTP</td>
+<td><strong>Cleartext</strong> — we can read everything, so always look</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>Unlike RedLine, there is no "unknown port".</strong> That means the malicious traffic is hiding inside 80 and 443. So the order is: <strong>identify the 3 PCs → odd names in DNS → cleartext HTTP → HTTPS (certificates, intervals) → port 443 that is not TLS</strong>.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-hosts">Step 1 — IP, MAC and hostname of the 3 clients (Q2–Q4)</h2>
+<p><strong>Goal:</strong> We do not yet know which PC is infected, so we first record <strong>who all 3 are</strong>. When we later find "which PC went somewhere odd", we can name it straight away.</p>
+<h3 id="en-check-dhcp-first">Check DHCP first</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<p><strong>Actual result:</strong> <code>0 sessions</code></p>
+<p>There is <strong>no DHCP</strong> in this PCAP. The capture started after the PCs already had their IPs. As the tip in the RedLine case says, we use <strong>Kerberos, NetBIOS and the Ethernet MAC</strong> instead.</p>
+<h3 id="en-kerberos-computer-accounts">Kerberos computer accounts</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.0/24 &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.src == 10.4.19.0/24</code></td>
+<td>Connections started by PCs in the internal network (CIDR notation)</td>
+</tr>
+<tr>
+<td><code>&amp;&amp;</code></td>
+<td>and</td>
+</tr>
+<tr>
+<td><code>protocols == krb5</code></td>
+<td>Kerberos sessions only</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>SPI View → <strong>krb5</strong> → <strong>Load All</strong> on <code>krb5.cname</code>. In the same screen open <code>ip.src</code> and <code>mac.src</code> under <strong>General</strong>. Click a value and choose <strong>"and"</strong> to narrow the search to that value, so you can check the cname for each IP one by one.</p>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Src IP        Src MAC             krb5.cname (computer account, ends in $)
+10.4.19.136   14:58:d0:2e:c5:ae   desktop-sff9ljf$  (+ user account csilva → step 3)
+10.4.19.138   00:90:27:cd:92:90   desktop-retp4bu$
+10.4.19.143   00:02:a5:7c:61:08   desktop-jal4d68$
+10.4.19.19    00:21:5a:86:39:8f   (server, DC)
+</code></pre></div></div>
+<h3 id="en-cross-check-with-netbios">Cross-check with NetBIOS</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.0/24 &amp;&amp; port.dst == [137, 138]
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port.dst == [137, 138]</code></td>
+<td>List notation. 137 (NetBIOS name) <strong>or</strong> 138 (NetBIOS datagram)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Open a session and the names appear inside the broadcasts.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>15:26:37  10.4.19.19   WIN-GP4JHCK2JMV   BOOGIENIGHTS   __MSBROWSE__
+15:33:47  10.4.19.136  DESKTOP-SFF9LJF   BOOGIENIGHTS
+17:06:20  10.4.19.138  DESKTOP-RETP4BU   BOOGIENIGHTS
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>Kerberos and NetBIOS give the same names. When <strong>two sources agree</strong>, you can be sure.</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">IP</th>
+<th scope="col">MAC</th>
+<th scope="col">Hostname</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10.4.19.136</td>
+<td>14:58:d0:2e:c5:ae</td>
+<td>DESKTOP-SFF9LJF</td>
+</tr>
+<tr>
+<td>10.4.19.138</td>
+<td>00:90:27<span>💿</span>92:90</td>
+<td>DESKTOP-RETP4BU</td>
+</tr>
+<tr>
+<td>10.4.19.143</td>
+<td>00:02:a5:7c:61:08</td>
+<td>DESKTOP-JAL4D68</td>
+</tr>
+<tr>
+<td>10.4.19.19</td>
+<td>00:21:5a:86:39:8f</td>
+<td>WIN-GP4JHCK2JMV (DC)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>A MAC only means something inside the same LAN.</strong> When these PCs' packets go outside, <code>mac.dst</code> is always <strong>00:02:17:5c:e6:13</strong>, which is not the remote server but the <strong>gateway (10.4.19.1)</strong>. The answer to Q3 comes from <code>mac.src</code> on packets the PC sent.</li>
+<li>The DC name being <code>WIN-</code> plus random characters is the same as in the RedLine case (default Windows Server name).</li>
+<li>We still do not know which PC is infected. The next step finds it.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-dns">Step 2 — Odd names in DNS, narrowing down the infected PC</h2>
+<p><strong>Goal:</strong> From the names the 3 PCs looked up, <strong>filter out the normal ones and see what is left</strong>. The PC that looked up the leftovers is the candidate.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.0/24 &amp;&amp; protocols == dns
+</code></pre></div></div>
+<p>SPI View → <strong>dns</strong> → <code>host.dns</code> → <strong>Load All</strong>. If the list is long, look at one PC at a time (<code>ip.src == 10.4.19.136 &amp;&amp; protocols == dns</code>).</p>
+<p><strong>Actual result (10.4.19.136, some of its 51 names grouped by type):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>AD / internal  WIN-GP4JHCK2JMV.boogienights.live, _ldap._tcp.dc._msdcs.boogienights.live, wpad.boogienights.live
+Microsoft      *.msn.com, *.bing.com, *.microsoft.com, *.msedge.net, *.windowsupdate.com, *.live.com,
+               *.office.com, ecn.dev.virtualearth.net, fp-afd.azurefd.us ...
+Other normal   update.googleapis.com, acroipm2.adobe.com
+?              firebasestorage.googleapis.com   15:31:10
+???            skigimeetroc.com                  15:35:39  → 192.153.57.233
+???            askamoshopsi.com                  15:36:41  → 104.168.53.18
+???            skansnekssky.com                  15:36:43  → 217.199.121.56  (re-queried about every 30 min after that)
+???            spakernakurs.com                  20:12:16  → 104.168.53.18
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><code>skigimeetroc</code>, <code>askamoshopsi</code>, <code>skansnekssky</code>, <code>spakernakurs</code> — there are 4 <strong>.com names that look like random words no person would choose</strong>. The same PC (10.4.19.136) looked up all four.</li>
+<li><code>firebasestorage.googleapis.com</code> is a <strong>normal Google service</strong>. But attackers often abuse it to host files for free. Do not delete it from your list just because the name is normal — remember the time (15:31).</li>
+<li><code>askamoshopsi</code> and <code>spakernakurs</code> resolve to the <strong>same IP</strong> (104.168.53.18). Different names, same server.</li>
+<li>Odd names cluster in a short window, <strong>15:31 → 15:35 → 15:36</strong>. That is a strong clue to the infection time.</li>
+</ul>
+<p>Check straight away whether any other PC looked these names up.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>host.dns == [skigimeetroc.com, askamoshopsi.com, skansnekssky.com, spakernakurs.com]
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>host.dns == [a, b, c, d]</code></td>
+<td>Sessions that looked up <strong>any</strong> of these four names</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result:</strong> Every session has <code>ip.src</code> <strong>10.4.19.136</strong>. → <strong>The infected PC is 10.4.19.136 (DESKTOP-SFF9LJF).</strong> Q2, Q3 and Q4 come straight from the table in step 1.</p>
+<div class="admonition note">
+<p class="admonition-title">10.4.19.138 also has odd names</p>
+<p>The DNS of 10.4.19.138 shows <code>nobpc.joansstudio.store</code> and <code>dlmfz.joansstudio.store</code> (both <strong>NXDOMAIN</strong>, names that do not exist) at 17:12–17:15 and <code>cotecsecuritygroup.com</code> at 17:17. These are completely different from 10.4.19.136's names. We look at them separately in <a href="#en-second-host">step 11</a>. 10.4.19.143 only looked up internal names.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-user">Step 3 — Finding the user account (Q5)</h2>
+<p><strong>Goal:</strong> Find the user account logged on to 10.4.19.136.</p>
+<h3 id="en-kerberos">Kerberos</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Time      19:30:50 – 19:34:48 (12 sessions)
+cname     csilva   desktop-sff9ljf$
+Realm     BOOGIENIGHTS.LIVE
+sname     krbtgt/BOOGIENIGHTS.LIVE ...
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong><code>csilva</code>, without a <code>$</code>, is the user account</strong>. That is the answer to Q5.</li>
+<li>But Kerberos only appears <strong>at 19:30</strong>. The capture started <strong>after</strong> the user logged on (the same reason there is no DHCP). The Kerberos at 19:30 looks like a ticket renewal or a shared-drive connection (at the same time there is an SMB connection to <code>\\WIN-GP4JHCK2JMV\For_Shared_Drive</code>). Remember that <strong>in a long PCAP, Kerberos may not be at the start</strong>.</li>
+</ul>
+<h3 id="en-full-name-from-ldap">Full name from LDAP</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; ip.dst == 10.4.19.19 &amp;&amp; port.dst == 389
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 10.4.19.19</code></td>
+<td>Connections to the DC</td>
+</tr>
+<tr>
+<td><code>port.dst == 389</code></td>
+<td>LDAP</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Open the 19:34:48 session in the list and view it as <strong>ASCII</strong>. There is a line like this.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>CN=Cornelius Silva,CN=Users,DC=boogienights,DC=live
+</code></pre></div></div>
+<div class="admonition tip">
+<p class="admonition-title">Use Hunt when you do not know where it is</p>
+<p><strong>Hunt</strong> in Arkime's top menu searches packet contents for a string. Narrow the target with <code>ip.src == 10.4.19.136 &amp;&amp; port.dst == 389</code> in the search bar, then hunt for the ASCII string <code>CN=Users</code>; only the sessions that contain user DNs are left. You can search the results again with the <code>huntId</code> tag.</p>
+</div>
+<ul>
+<li>User <strong>csilva = Cornelius Silva</strong>. This value is confirmed <strong>once more</strong> in step 6 by the cookie the malware sent.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-https-c2">Step 7 — HTTPS C2: self-signed certificates</h2>
+<p><strong>Goal:</strong> Look at the TLS sessions to the C2 domains found in step 2. The content is encrypted, so we judge by <strong>certificate, size, time and JA3</strong>.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; host.http == [askamoshopsi.com, skansnekssky.com, spakernakurs.com]
+</code></pre></div></div>
+<p>SPI View → <strong>tls</strong> and <strong>cert</strong> sections → <strong>Load All</strong>.</p>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>askamoshopsi.com  104.168.53.18:443    3 sessions  15:36:41 – 15:37:50
+                  databytes (src / dst)  1,286 / 2,217    1,733 / 1,764    472 / 1,907,262   ← 1.9 MB down
+skansnekssky.com  217.199.121.56:443  69 sessions  15:36:44 – 21:17:46
+spakernakurs.com  104.168.53.18:443    1 session   20:12:16 – 21:22:21   3,603 / 4,094
+
+cert (same format on all 3 servers):
+  Subject   CN=localhost, O=Internet Widgits Pty Ltd, ST=Some-State, C=AU
+  Issuer    CN=localhost, O=Internet Widgits Pty Ltd, ST=Some-State, C=AU
+  Valid     2023-04-11 → 2024-04-10   (askamoshopsi/spakernakurs 12:36:03, skansnekssky 13:09:00)
+  SAN       (none)
+tags      cert:self-signed
+TLS       TLSv1.2, cipher 0xc030 (ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Subject and Issuer are identical</strong> → a <strong>self-signed certificate</strong> the server issued to itself (the method is the same as the <a href="handbook-arkime-only-credential-theft-tls-c2.html">certificate explanation in the Trickbot case</a>). Arkime also adds the <code>cert:self-signed</code> tag.</li>
+<li><code>Internet Widgits Pty Ltd</code>, <code>Some-State</code> and <code>AU</code> are <strong>the default values OpenSSL fills in when you create a certificate and just press Enter without changing anything</strong>. A real company website would not use a certificate like this. And because the CN is <code>localhost</code>, it <strong>does not match the name the PC connected to (SNI)</strong> either.</li>
+<li>The three servers' certificates were created <strong>on the same day (04-11), about half an hour apart</strong>. That looks like infrastructure the same operator prepared in one go.</li>
+<li>At 15:36:42 the PC downloaded <strong>1.9 MB</strong> from <code>askamoshopsi.com</code>. The content is encrypted, but a large download right after the C2 connection is inferred to be an <strong>additional module</strong>.</li>
+<li><code>skansnekssky.com</code> is contacted <strong>69 times</strong>. The next step measures the interval.</li>
+<li><code>spakernakurs.com</code> first appears <strong>4.5 hours after the infection</strong> and stays connected for over an hour. Same IP (104.168.53.18) but a <strong>different JA3</strong> (below). And <strong>36 minutes</strong> after this session starts, BackConnect (step 9) opens.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>cert.issuer.on == "Internet Widgits Pty Ltd"
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cert.issuer.on</code></td>
+<td>Organisation name (O) of the certificate issuer</td>
+</tr>
+<tr>
+<td><code>"..."</code></td>
+<td>Values with spaces go in quotes</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>This one query finds <strong>every server using an OpenSSL default certificate</strong>. In this PCAP only the three servers above appear. It is a "behaviour" query you can reuse in other PCAPs straight away.</p>
+<h3 id="en-ja3">What about JA3?</h3>
+<p>Let us check again, with this PCAP, the claim from the Trickbot discussion that "more JA3 values after infection is evidence of infection".</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p>SPI View → <strong>tls</strong> → <code>tls.ja3</code> → <strong>Load All</strong>.</p>
+<p><strong>Actual result (summary):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Distinct JA3 values on 10.4.19.136: 61
+  JA3 seen before 15:31:07 (before infection, about 5 minutes): 5
+  JA3 first seen after 15:31:07: 56
+    - 54 of them: www.msn.com, assets.msn.com, api.msn.com, ecn.dev.virtualearth.net, edge.microsoft.com,
+                  th.bing.com ...  (almost all used only once)
+    - 3c293bdf2a25c07559b560ba86debc77 (77 times): askamoshopsi.com 3 + skansnekssky.com 69
+                                                  + self.events.data.microsoft.com 5  ← Windows telemetry
+    - 6a5d235ee78c6aede6a61448b4e9ff1e (once):     spakernakurs.com (20:12:16)
+
+10.4.19.138: 3c293bdf... 0 times
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>56 new JA3 values appeared after the infection, but 54 of them are normal Edge traffic</strong>. Recent Chrome/Edge (110 and later) <strong>shuffle the order of TLS extensions randomly</strong> on every connection. JA3 includes that order in its hash, so <strong>the same browser gets a different JA3 on each connection.</strong> That is why "the number of JA3 values went up" cannot, on its own, be evidence of infection. <strong>JA4</strong> fixes this (it sorts the extensions before hashing). Recent Arkime versions have a <code>tls.ja4</code> field.</li>
+<li><strong>IcedID's C2 JA3 (<code>3c293bdf…</code>) is the same value as Windows' own telemetry (<code>self.events.data.microsoft.com</code>)</strong>. IcedID uses the built-in Windows networking (WinHTTP/Schannel). It is exactly the same lesson as the RedLine case. <strong>If you put "this bad JA3" on a block list, you block normal Windows traffic too.</strong></li>
+<li>On the other hand, <strong><code>6a5d235e…</code> (spakernakurs.com) is a new JA3 that appeared exactly once on this PC, just before the follow-up activity</strong>. This is a case where the instructor's "new JA3 after infection" <strong>actually meant something</strong>. But even here it was not JA3 alone: it meant something because <strong>a never-seen domain + a self-signed certificate + a long session + BackConnect right after</strong> all came together.</li>
+<li>Conclusion: read JA3 <strong>within the same PC, together with the destination (SNI) and certificate</strong>. Just as 10.4.19.138 never shows <code>3c293bdf…</code>, the same Windows can produce different JA3 values on different PCs (build, settings), so be careful comparing directly with other PCs too.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-beacon">Step 8 — Measuring the beacon interval</h2>
+<p><strong>Goal:</strong> Check whether the 69 connections to <code>skansnekssky.com</code> are <strong>a program's regular check-ins (a beacon)</strong> rather than a person.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == 217.199.121.56
+</code></pre></div></div>
+<p>In Sessions, sort by <strong>Start Time ascending</strong> and add the <strong>Src Databytes / Dst Databytes</strong> columns (column header menu → add field). In the <strong>SPI Graph</strong> tab, choosing <code>ip.dst</code> also shows it as a time graph.</p>
+<p><strong>Actual result (excerpt):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start      Src DB  Dst DB
+15:36:44   4,717   2,324    ← first contact (registration): large
+15:41:42     581   1,707
+15:46:45     581   1,707
+15:51:47     581   1,707
+15:56:49     581   1,707
+16:01:50     581   1,707
+ ...         (every 5 minutes)
+17:52:51     585   1,707
+ ...
+19:28:30     585   1,707
+19:32:00   1,100   1,707    ← one gap of 3 min 30 s, slightly more sent
+19:37:02     585   1,707
+ ...
+21:17:46     585   1,707    ← last (capture ends 21:22:36)
+
+69 sessions, start-to-start interval: median 302 s, min 210 s, max 307 s
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>It connects <strong>almost exactly every 5 minutes (about 300 seconds plus a few)</strong>, nonstop for 6 hours. People do not use websites like this. It is a typical <strong>beacon</strong>.</li>
+<li>The sizes are almost <strong>identical every time</strong> (sent 581–585, received 1,707). It looks like "any new commands?" → "no", over and over. <strong>Only the first contact being large</strong> (4,717 bytes) is also a common beacon trait, because it registers the PC's details first.</li>
+<li>It opens a new TLS connection every time and closes it quickly: a <strong>"short and frequent" beacon</strong>. This is different from the "holds on for minutes" type in the Trickbot case (see <a href="handbook-arkime-only-credential-theft-tls-c2.html">two kinds of beacon</a>).</li>
+<li>DNS is not looked up every time, only <strong>about every 30 minutes</strong> (17:07, 17:52, 18:23, 18:53 …). Because of the DNS cache, counting DNS lookups misses beacons. <strong>Count sessions.</strong></li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">A general way to find beacons quickly</p>
+<ol>
+<li>Collect TLS with <code>ip.src == &lt;PC&gt; &amp;&amp; protocols == tls</code> and look at the <strong>session count</strong> per <code>ip.dst</code> in SPI View. An IP that is not a normal service but appears dozens of times is a candidate.</li>
+<li>Search for the candidate IP and check whether the Start Time interval and Databytes are <strong>regular</strong>.</li>
+<li>Regular interval + regular size + self-signed certificate → almost certainly C2.</li>
+</ol>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-non-tls-443">Step 9 — Port 443 that is not TLS: finding the follow-up activity (Q6)</h2>
+<p><strong>Goal:</strong> Find Q6, the "follow-up activity". After infection IcedID often pulls down extras such as <strong>BackConnect</strong> (remote control), <strong>VNC</strong> or <strong>Cobalt Strike</strong>. From April 2023 BackConnect used <strong>port 443 but not TLS</strong>. So we look for "sessions on 443 that are not TLS".</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; port.dst == 443 &amp;&amp; protocols != tls
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port.dst == 443</code></td>
+<td>Connections to the HTTPS port</td>
+</tr>
+<tr>
+<td><code>protocols != tls</code></td>
+<td>Sessions Arkime <strong>did not recognise as TLS</strong>. On 443, not being TLS is odd</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>20:48:00 – 21:22:36  10.4.19.136:51534 → 193.149.176.100:443   pkts 74/73   databytes 827 / 629
+20:49:11 – 20:49:22  10.4.19.136:51535 → 193.149.176.100:443   pkts 19/21   databytes 727 / 41
+20:49:33 – 20:49:46  10.4.19.136:51537 → 193.149.176.100:443   pkts 12/15   databytes 770 / 26
+15:27:07 – 20:59:30  10.4.19.136:49769 → 40.83.247.108:443      (Microsoft, explained below)
+15:36:58             10.4.19.136:50171 → 20.25.241.18:443       (Microsoft, explained below)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>There are <strong>three sessions to 193.149.176.100</strong>. This IP has <strong>no DNS lookup</strong> (the IP is built into the program). The first session opens at 20:48:00 and two more open about a minute later.</li>
+<li>The two Microsoft sessions start with <code>17 03 03</code> in Source Raw. That is a <strong>TLS "application data" record</strong>. The connection was set up before the capture, or the handshake (<code>16 03 …</code>) was not captured, so Arkime could not label it TLS — but it is real TLS. You can <strong>tell them apart by the first bytes</strong> like this.</li>
+<li>The 193.149.176.100 sessions start with something like <code>f8 7f 92 46 …</code> in Source Raw, which <strong>does not look like TLS (<code>16 03</code>, <code>17 03</code>) at all.</strong> It uses 443 but runs <strong>its own protocol</strong>, not TLS.</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">First bytes</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>16 03 0x</code></td>
+<td>Start of a TLS handshake (first packet of normal HTTPS)</td>
+</tr>
+<tr>
+<td><code>17 03 03</code></td>
+<td>TLS data (HTTPS captured mid-stream)</td>
+</tr>
+<tr>
+<td>Anything else</td>
+<td>Not TLS → another protocol borrowing port 443</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-scope">Step 11 — Scope check and the second PC</h2>
+<p><strong>Goal:</strong> Check (1) whether other PCs contacted the same IOCs, (2) whether 10.4.19.136 tried to spread to other PCs, and (3) what 10.4.19.138, flagged in step 2, did.</p>
+<h3 id="en-other-pcs-contacting-the-iocs">Other PCs contacting the IOCs</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == [80.77.25.175, 142.251.32.234, 192.153.57.233, 104.168.53.18, 217.199.121.56, 193.149.176.100] &amp;&amp; ip.src != 10.4.19.136
+</code></pre></div></div>
+<p><strong>Actual result:</strong> <code>0 sessions</code>. 10.4.19.143 has <strong>no outbound sessions at all.</strong></p>
+<h3 id="en-lateral-movement">Lateral movement</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; ip.dst == 10.4.19.0/24 &amp;&amp; ip.dst != 10.4.19.19
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 10.4.19.0/24</code></td>
+<td>Connections into the internal network</td>
+</tr>
+<tr>
+<td><code>ip.dst != 10.4.19.19</code></td>
+<td>Excluding the DC</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result:</strong> apart from broadcast and multicast, <strong>0</strong>. 10.4.19.136 never went to the other clients (.138, .143) over SMB, RDP or RPC.</p>
+<ul>
+<li>There is SMB to the DC (<code>IPC$</code>, <code>SYSVOL</code>) <strong>about every 15 minutes</strong>, which is Windows checking Group Policy — <strong>normal behaviour</strong>. Because the timing is regular it can look like a beacon, so do not be confused. If the destination is the <strong>DC</strong> and the share names are <code>IPC$</code> / <code>SYSVOL</code>, it is normal.</li>
+</ul>
+<h3 id="en-second-host">The second PC: 10.4.19.138</h3>
+<p>Follow <code>cotecsecuritygroup.com</code> from step 2.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.138 &amp;&amp; host.http == cotecsecuritygroup.com
+</code></pre></div></div>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>17:17:10  10.4.19.138 → 66.29.147.117:80
+GET /wicd/643d0491bcea1.zip HTTP/1.1
+Host: cotecsecuritygroup.com
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Edg/112.0.1722.48
+
+HTTP/1.1 200 OK
+Server: Apache
+Content-Disposition: attachment; filename="643d0491bcea1.zip"
+Content-Encoding: gzip
+Content-Length: 5673
+Content-Type: application/zip
+</code></pre></div></div>
+<p>Download the response body as Destination Raw, then CyberChef <strong>Gunzip</strong> → <strong>Unzip</strong> (look at the file list only, never run anything):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Complaint_Copy_634917.wsf    16,173 bytes   (2023-04-19 15:16:56)
+</code></pre></div></div>
+<p>And 28 seconds later:</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.4.19.138 &amp;&amp; ip.dst == 85.239.53.73
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>17:17:38 – 17:18:53  10.4.19.138:49773 → 85.239.53.73:80   SYN ×5, RST ×1, data 0   (no DNS lookup)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>The user of 10.4.19.138 used Edge to download a file shaped like <strong><code>/folder/hex.zip</code></strong>, and inside is a <strong><code>.wsf</code> (Windows Script File)</strong>. A document-like name (<code>Complaint_Copy</code>) with a script extension is a typical lure. The <code>*.joansstudio.store</code> names looked up just before (17:12–17:15) <strong>did not exist (NXDOMAIN)</strong>.</li>
+<li>This shape (<strong>a .wsf inside a zip with a hex name</strong>) matches the <strong>Qakbot distribution reported on this very day (2023-04-19).</strong> The family is <strong>inferred</strong>, though.</li>
+<li>28 seconds later the PC <strong>tried 5 times to connect directly to an IP</strong> (no DNS), 85.239.53.73:80, and <strong>failed</strong> (no data, RST). It is <strong>possible</strong> that the script ran and failed to fetch its next stage (inferred — the network alone cannot confirm the script ran).</li>
+<li>After that there is no suspicious traffic from 10.4.19.138. So it fits the quiz's statement that <strong>"one PC (10.4.19.136) was infected"</strong>. But in real work you should record it not as "clean" but as <strong>"further analysis required"</strong> and request a host check. That is why the report ends this line with <strong>Further Analysis Required</strong>.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-conclusion">Overall conclusion</h2>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>15:20:41  (cookie time) earlier visit to the TDS — before the capture starts
+15:31:07  user opens hxxp://80.77.25.175/main.php in Edge → 302 to Firebase Storage
+15:31:14  Scan_Inv.zip downloaded over HTTPS (~273 KB)
+15:34:33  Windows fetches SSL.com root certificate (user likely runs Scan_Inv.exe)
+15:35:39  installer → skigimeetroc.com, cookie with host/user/SID → fake gzip 520 KB
+15:36:41  HTTPS C2 starts: askamoshopsi.com (+1.9 MB), skansnekssky.com every 5 min
+20:12:16  new C2 session spakernakurs.com, new JA3
+20:48:00  BackConnect to 193.149.176.100:443 (not TLS)
+20:49:17  operator runs net group "Domain Computers" /domain
+20:49:34  operator lists drives and C:\
+21:22:36  capture ends — beacon and BackConnect still alive
+</code></pre></div></div>
+</section>
+<section>
+<h2 id="en-timeline">Timeline</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">UTC (2023-04-19)</th>
+<th scope="col">Event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>15:20:41</td>
+<td>(time inside the cookie) inferred first TDS visit, before the capture</td>
+</tr>
+<tr>
+<td>15:26:28</td>
+<td>Capture starts</td>
+</tr>
+<tr>
+<td>15:31:07</td>
+<td>DESKTOP-SFF9LJF (10.4.19.136) Edge → <code>hxxp://80.77.25[.]175/main.php</code> → 302</td>
+</tr>
+<tr>
+<td>15:31:14</td>
+<td>HTTPS download of <code>Scan_Inv.zip</code> from Firebase Storage (273,619 B)</td>
+</tr>
+<tr>
+<td>15:34:33</td>
+<td><code>Microsoft-CryptoAPI</code> → <code>www.ssl.com</code> root certificate (inferred executable signature check)</td>
+</tr>
+<tr>
+<td>15:35:39</td>
+<td><code>skigimeetroc[.]com</code> GET / (no User-Agent, IcedID cookies) → <code>application/gzip</code> 520,803 B</td>
+</tr>
+<tr>
+<td>15:36:41–15:37:50</td>
+<td><code>askamoshopsi[.]com</code> 104.168.53.18 HTTPS ×3, 1.9 MB download</td>
+</tr>
+<tr>
+<td>15:36:44</td>
+<td>First beacon to <code>skansnekssky[.]com</code> 217.199.121.56 (4,717 B)</td>
+</tr>
+<tr>
+<td>15:41 ~ 21:17</td>
+<td>Beacon every 5 minutes (69 times)</td>
+</tr>
+<tr>
+<td>17:17:10</td>
+<td>(other PC) DESKTOP-RETP4BU (10.4.19.138) downloads <code>643d0491bcea1.zip</code> (.wsf)</td>
+</tr>
+<tr>
+<td>17:17:38</td>
+<td>(other PC) failed connection to 85.239.53.73:80</td>
+</tr>
+<tr>
+<td>20:12:16</td>
+<td>New session to <code>spakernakurs[.]com</code> 104.168.53.18, new JA3</td>
+</tr>
+<tr>
+<td>20:48:00</td>
+<td>BackConnect control channel 193.149.176.100:443</td>
+</tr>
+<tr>
+<td>20:49:11</td>
+<td>BackConnect remote shell</td>
+</tr>
+<tr>
+<td>20:49:17</td>
+<td><code>net group "Domain Computers" /domain</code> (+ SMB to the DC)</td>
+</tr>
+<tr>
+<td>20:49:33</td>
+<td>BackConnect file manager: <code>DISK</code>, <code>CDDIR Z:\</code>, <code>CDDIR C:\</code></td>
+</tr>
+<tr>
+<td>21:22:36</td>
+<td>Capture ends (beacon and control channel still alive)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-iocs">Indicators of compromise (IOC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Type</th>
+<th scope="col">Indicator</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>hxxp://80.77.25[.]175/main.php</code></td>
+<td>TDS redirect</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxps://firebasestorage.googleapis[.]com/v0/b/serene-cathode-377701.appspot.com/o/XSjwp6O0pq%2FScan_Inv.zip?alt=media&amp;token=[redacted]</code></td>
+<td><code>Scan_Inv.zip</code> (abused legitimate service)</td>
+</tr>
+<tr>
+<td>Domain / IP</td>
+<td><code>skigimeetroc[.]com</code> / <code>192.153.57[.]233</code></td>
+<td>gzip loader</td>
+</tr>
+<tr>
+<td>Domain / IP</td>
+<td><code>askamoshopsi[.]com</code>, <code>spakernakurs[.]com</code> / <code>104.168.53[.]18</code></td>
+<td>HTTPS C2</td>
+</tr>
+<tr>
+<td>Domain / IP</td>
+<td><code>skansnekssky[.]com</code> / <code>217.199.121[.]56</code></td>
+<td>HTTPS C2 beacon</td>
+</tr>
+<tr>
+<td>IP:port</td>
+<td><code>193.149.176[.]100:443</code> (not TLS)</td>
+<td>BackConnect</td>
+</tr>
+<tr>
+<td>Certificate</td>
+<td><code>CN=localhost, O=Internet Widgits Pty Ltd, ST=Some-State, C=AU</code> (self-signed, issued 2023-04-11)</td>
+<td>Shared by all 3 C2 servers</td>
+</tr>
+<tr>
+<td>Cookie names</td>
+<td><code>__gads</code>, <code>_gid</code>, <code>_u</code>, <code>__io</code>, <code>_ga</code>, <code>_gat</code> (request with no User-Agent)</td>
+<td>IcedID installer</td>
+</tr>
+<tr>
+<td>JA3</td>
+<td><code>3c293bdf2a25c07559b560ba86debc77</code> (same as Windows default — not for blocking), <code>6a5d235ee78c6aede6a61448b4e9ff1e</code></td>
+<td>Reference only</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>fc96c893a462660e2342febab2ad125ce1ec9a90fdf7473040b3aeb814ba7901</code></td>
+<td><code>Scan_Inv.zip</code> (262,343 B, password [redacted])</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>bd24b6344dcde0c84726e620818cb5795c472d9def04b259bf9bff1538e5a759</code></td>
+<td><code>Scan_Inv.exe</code> (333,408 B, IcedID installer)</td>
+</tr>
+<tr>
+<td>(other PC) URL / IP</td>
+<td><code>hxxp://cotecsecuritygroup[.]com/wicd/643d0491bcea1.zip</code> / <code>66.29.147[.]117</code>, <code>85.239.53[.]73:80</code></td>
+<td>zip/.wsf lure (inferred Qakbot-style)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The two hashes cannot be calculated from the PCAP (HTTPS download), so they are taken from the Unit 42 write-up.</p>
+<div class="admonition warning">
+<p class="admonition-title">IP typos in the official write-up</p>
+<p>The IOC list in the Unit 42 write-up gives the gzip loader as <code>192.153.57[.]223</code> and the TDS as <code>80.77.24[.]175</code>, but the PCAP's DNS answers and sessions show <strong>192.153.57.233</strong> and <strong>80.77.25.175</strong>. <strong>Always re-check IOCs against the original data.</strong></p>
+</div>
+</section>
+<section>
+<h2 id="en-attack">ATT&amp;CK mapping</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Technique</th>
+<th scope="col">Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1566.002 Phishing: Spearphishing Link (inferred)</td>
+<td>A link made of an IP opened in the browser. The link's source is not in the PCAP</td>
+</tr>
+<tr>
+<td>T1608.001 / T1105 Ingress Tool Transfer</td>
+<td><code>Scan_Inv.zip</code> hosted on Firebase Storage, gzip loader</td>
+</tr>
+<tr>
+<td>T1027.002 / T1027 Obfuscated Files</td>
+<td>Password-protected zip, encrypted payload disguised as gzip</td>
+</tr>
+<tr>
+<td>T1204.002 User Execution: Malicious File</td>
+<td>User ran <code>Scan_Inv.exe</code> (Unit 42)</td>
+</tr>
+<tr>
+<td>T1082 System Information Discovery, T1033 System Owner/User Discovery</td>
+<td>OS build, CPU, host, user and SID in the cookies</td>
+</tr>
+<tr>
+<td>T1071.001 Web Protocols, T1573 Encrypted Channel</td>
+<td>Self-signed HTTPS C2, 5-minute beacon</td>
+</tr>
+<tr>
+<td>T1095 Non-Application Layer Protocol</td>
+<td>BackConnect: its own non-TLS protocol on 443</td>
+</tr>
+<tr>
+<td>T1059.003 Windows Command Shell</td>
+<td>BackConnect remote shell</td>
+</tr>
+<tr>
+<td>T1018 Remote System Discovery, T1069.002 Domain Groups</td>
+<td><code>net group "Domain Computers" /domain</code></td>
+</tr>
+<tr>
+<td>T1083 File and Directory Discovery</td>
+<td><code>DISK</code>, <code>CDDIR</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-compare">Compared with the two earlier cases</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"><a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot (2020)</a></th>
+<th scope="col"><a href="handbook-redline-stealer-powershell-nettcp-c2.html">RedLine (2023)</a></th>
+<th scope="col">IcedID (2023)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Capture length</td>
+<td>About 44 minutes</td>
+<td>36 seconds</td>
+<td><strong>About 6 hours</strong></td>
+</tr>
+<tr>
+<td>Start</td>
+<td>Script downloads an EXE</td>
+<td><code>.ps1</code> run</td>
+<td><strong>IP link → TDS 302 → Firebase zip</strong></td>
+</tr>
+<tr>
+<td>Payload disguise</td>
+<td>EXE named <code>.png</code></td>
+<td>EXE named <code>.jpg</code></td>
+<td><strong>Disguised as <code>application/gzip</code> + password zip</strong></td>
+</tr>
+<tr>
+<td>First check-in</td>
+<td>Hostname and bot ID in the URI</td>
+<td><code>status=start&amp;av=</code> in the URI</td>
+<td><strong>Host, user and SID in hex in cookies</strong></td>
+</tr>
+<tr>
+<td>C2</td>
+<td>HTTP POST + self-signed TLS (447/449)</td>
+<td>net.tcp, port 12432, cleartext</td>
+<td><strong>Self-signed HTTPS (443), 5-minute beacon</strong></td>
+</tr>
+<tr>
+<td>Certificate</td>
+<td>Self-signed <code>example.com</code></td>
+<td>Let's Encrypt (legitimate)</td>
+<td><strong>Self-signed <code>localhost</code> / Internet Widgits</strong></td>
+</tr>
+<tr>
+<td>Beacon</td>
+<td>Holds on for a long time</td>
+<td>None (one upload)</td>
+<td><strong>Short and frequent (5 min)</strong></td>
+</tr>
+<tr>
+<td>Follow-up</td>
+<td>Recon + SMB lateral movement attempt</td>
+<td>None</td>
+<td><strong>BackConnect: remote shell, file manager</strong></td>
+</tr>
+<tr>
+<td>JA3</td>
+<td>—</td>
+<td>No new JA3 (same as Windows)</td>
+<td>C2 JA3 = Windows, <strong>one new JA3 just before follow-up</strong>, Edge gets a new JA3 every time</td>
+</tr>
+<tr>
+<td>Key to finding it</td>
+<td>Odd ports and URIs</td>
+<td>One unknown port</td>
+<td><strong>Odd names in DNS → certificate → interval → 443 that is not TLS</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Across all three cases, the key clues were <strong>direct IP connections, files whose name and content do not match, self-signed certificates and regular intervals</strong>. IcedID is one step harder because it <strong>hides inside a normal port (443) and a normal service (Firebase)</strong>.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-official-answers">Compared with the official Unit 42 answers</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Question</th>
+<th scope="col">This analysis</th>
+<th scope="col">Unit 42 answer</th>
+<th scope="col">Match</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Infection start</td>
+<td>2023-04-19 15:31 UTC (15:31:07)</td>
+<td>2023-04-19 15:31 UTC</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>IP</td>
+<td>10.4.19.136</td>
+<td>10.4.19[.]136</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>MAC</td>
+<td>14:58:d0:2e:c5:ae</td>
+<td>14:58:d0:2e:c5:ae</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Hostname</td>
+<td>DESKTOP-SFF9LJF</td>
+<td>DESKTOP-SFF9LJF</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>User</td>
+<td>csilva (Cornelius Silva)</td>
+<td>csilva (Cornelius Silva, LDAP)</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Follow-up</td>
+<td>BackConnect (193.149.176.100:443)</td>
+<td>BackConnect</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>What this page looked at beyond that</strong>: 15:20:41 inside the TDS cookie (inferred visit before the capture), decoding the <code>_u</code>, <code>__io</code> and <code>_gat</code> cookies, the 302-second beacon interval, the role of each of the three BackConnect sessions and the actual commands, the JA3 comparison, and the zip/.wsf download on 10.4.19.138. The last one is outside the quiz, but in real work it must be reported separately.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-query-sheet">Copy-ready query sheet</h2>
+<p>Replace the <code>&lt;…&gt;</code> parts.</p>
+<p><strong>Identifying PCs (when there is no DHCP)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;internal-CIDR&gt; &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;internal-CIDR&gt; &amp;&amp; port.dst == [137, 138]
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst == &lt;DC-IP&gt; &amp;&amp; port.dst == 389
+</code></pre></div></div>
+<p><strong>Odd names → narrowing down the infected PC</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;internal-CIDR&gt; &amp;&amp; protocols == dns
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>host.dns == [&lt;domain-1&gt;, &lt;domain-2&gt;, &lt;domain-3&gt;]
+</code></pre></div></div>
+<p><strong>Cleartext HTTP</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == http
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>host.http == &lt;IP-or-domain&gt;
+</code></pre></div></div>
+<p><strong>HTTPS C2</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; host.http == [&lt;domain-1&gt;, &lt;domain-2&gt;]
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>cert.issuer.on == "Internet Widgits Pty Ltd"
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tags == cert:self-signed &amp;&amp; ip.src == &lt;host-IP&gt;
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p><strong>Beacon</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == &lt;C2-IP&gt;
+</code></pre></div></div>
+<p><strong>Port 443 that is not TLS (things like BackConnect)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; port.dst == 443 &amp;&amp; protocols != tls
+</code></pre></div></div>
+<p><strong>Scope</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == [&lt;IOC-IP-1&gt;, &lt;IOC-IP-2&gt;, &lt;IOC-IP-3&gt;] &amp;&amp; ip.src != &lt;host-IP&gt;
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst == &lt;internal-CIDR&gt; &amp;&amp; ip.dst != &lt;DC-IP&gt;
+</code></pre></div></div>
+<p><strong>CyberChef recipes used</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Recipe</th>
+<th scope="col">Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JWT Decode / From Base64 (URL safe)</td>
+<td>TDS cookie <code>34ab8=</code></td>
+</tr>
+<tr>
+<td>From UNIX Timestamp</td>
+<td>Time inside the JWT, times in the file manager listing</td>
+</tr>
+<tr>
+<td>From Hex</td>
+<td>IcedID <code>_u</code> cookie → hostname, user</td>
+</tr>
+<tr>
+<td>To Hex</td>
+<td>First bytes of the response (<code>1f 8b 08 08</code> gzip), first bytes of a session (<code>16 03</code> / <code>17 03</code>)</td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>Pulling commands and output out of BackConnect Raw</td>
+</tr>
+<tr>
+<td>Gunzip → Unzip</td>
+<td><strong>File list only</strong> of the zip the other PC downloaded</td>
+</tr>
+<tr>
+<td>Defang URL / Defang IP</td>
+<td>Writing IOCs in the report</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-lessons">Lessons</h2>
+<ul>
+<li><strong>Filter long PCAPs.</strong> You cannot scan 6 hours by eye. Remove the normal names (Microsoft, internal) from the DNS list and start with what is left.</li>
+<li><strong>You can identify PCs without DHCP.</strong> Kerberos computer accounts (<code>$</code>), NetBIOS, <code>mac.src</code> — and even the details the malware sent itself (cookies).</li>
+<li><strong>URLs made of an IP, requests with no User-Agent, and requests that carry cookies on a first visit</strong> are all signs of "not a person".</li>
+<li><strong>Normal services (Firebase) are abused too.</strong> Look at <strong>"who sent the browser there"</strong> (the source of the 302) rather than whether the domain is normal.</li>
+<li><strong>An OpenSSL default certificate (<code>Internet Widgits Pty Ltd</code>) is a strong clue by itself.</strong> You can find it directly with <code>cert.issuer.on</code>.</li>
+<li><strong>Beacons have a regular interval and size.</strong> Count sessions. DNS appears less often because of caching.</li>
+<li><strong>Not everything on 443 is TLS.</strong> Use <code>port.dst == 443 &amp;&amp; protocols != tls</code>, and tell them apart by the first bytes (<code>16 03</code> / <code>17 03</code>).</li>
+<li><strong>A "change in the number of JA3 values" means almost nothing with modern browsers</strong> (Edge's JA3 changes on every connection). Instead, look for the combination <strong>a JA3 never seen before on the same PC + a never-seen domain + self-signed</strong>. Use JA4 where you can.</li>
+<li><strong>Line up commands and network traces by time.</strong> <code>net group … /domain</code> (20:49:17) and the SMB to the DC (20:49:17) are in the same second.</li>
+<li><strong>Look beyond the quiz.</strong> Even if the conclusion is "one infected PC", record an odd download on another PC in its own report.</li>
+</ul>
+</section>
+<section>
+<h2 id="en-references">References</h2>
+<ul>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-icedid/">Cold as Ice: Unit 42 Wireshark Quiz for IcedID</a> — questions and PCAP location</li>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-icedid-answers/">Cold as Ice: Answers to Unit 42 Wireshark Quiz for IcedID</a> — official answers, IOCs, hashes</li>
+<li>IcedID GZIPLOADER Analysis — Binary Defense — the fake gzip stage</li>
+<li>ICEDID network infrastructure — Elastic Security Labs — meaning of the cookie values</li>
+<li>IcedID's updated photoloader — sysopfb — <code>_u</code>, <code>_gat</code>, <code>__io</code>, <code>_gid</code> explained</li>
+<li><a href="https://www.malware-traffic-analysis.net/2023/04/19/index.html">2023-04-19 Qakbot activity — malware-traffic-analysis.net</a> — zip/.wsf distribution on the same day</li>
+<li><a href="https://www.malware-traffic-analysis.net/training-exercises.html">malware-traffic-analysis.net training exercises</a></li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>리다이렉트와 다운로드를 따라간 뒤 TLS 비콘 간격을 측정합니다. 이후 TCP/443 스트림의 프로토콜을 직접 확인합니다. 패킷 근거로 비TLS BackConnect 세션과 HTTPS 비콘을 구분합니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/icedid-tds-gzip-loader-backconnect/">DFIR Handbook 원문</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td>Unit 42 Wireshark 퀴즈 2023년 4월 PCAP("Cold as Ice"), 2023-04-19 15:26:28 – 21:22:36 UTC (약 5시간 56분), 세션 약 1,640개</td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>폐쇄망 가정(해시·평판 조회 없음). 분석 순서와 쿼리는 Arkime 기준, 디코딩은 CyberChef</td>
+</tr>
+<tr>
+<td><strong>결과물</strong></td>
+<td>퀴즈 6문항의 답</td>
+</tr>
+<tr>
+<td><strong>관련 페이지</strong></td>
+<td><a href="handbook-arkime-only-credential-theft-tls-c2.html">Arkime만으로 분석하기 — Trickbot 사례</a> · <a href="handbook-redline-stealer-powershell-nettcp-c2.html">RedLine Stealer 사례</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-answers">한눈에 보는 답</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">질문</th>
+<th scope="col">답</th>
+<th scope="col">상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>감염 시작</td>
+<td><strong>2023-04-19 15:31 UTC</strong> (첫 악성 요청: 15:31:07 <code>GET /main.php</code>)</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>2</td>
+<td>IP</td>
+<td><strong>10.4.19.136</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MAC</td>
+<td><strong>14:58:d0:2e:c5:ae</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>4</td>
+<td>호스트이름</td>
+<td><strong>DESKTOP-SFF9LJF</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>5</td>
+<td>사용자</td>
+<td><strong>csilva</strong> (LDAP 전체 이름 Cornelius Silva)</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>6</td>
+<td>후속 활동</td>
+<td><strong>있음 — BackConnect.</strong> 20:48 UTC부터 193.149.176.100:443(TLS 아님)으로 원격 셸과 파일 관리자가 열림. 공격자가 <code>net group "Domain Computers" /domain</code> 실행, 드라이브·C: 목록 확인</td>
+<td>확인됨</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">항목</th>
+<th scope="col">값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>네트워크</td>
+<td>10.4.19.0/24, 게이트웨이 10.4.19.1, DC/DNS <strong>10.4.19.19 (WIN-GP4JHCK2JMV)</strong>, 도메인 <code>boogienights.live</code></td>
+</tr>
+<tr>
+<td>클라이언트</td>
+<td>10.4.19.136 DESKTOP-SFF9LJF(감염), 10.4.19.138 DESKTOP-RETP4BU, 10.4.19.143 DESKTOP-JAL4D68</td>
+</tr>
+<tr>
+<td>시작 링크</td>
+<td><code>hxxp://80.77.25[.]175/main.php</code> → 302 → Firebase Storage <code>Scan_Inv.zip</code></td>
+</tr>
+<tr>
+<td>gzip 로더</td>
+<td><code>hxxp://skigimeetroc[.]com/</code> (192.153.57.233), 쿠키에 PC 정보, 응답 520,803바이트</td>
+</tr>
+<tr>
+<td>HTTPS C2</td>
+<td><code>askamoshopsi[.]com</code>·<code>spakernakurs[.]com</code> (104.168.53.18), <code>skansnekssky[.]com</code> (217.199.121.56, 5분 비콘)</td>
+</tr>
+<tr>
+<td>BackConnect</td>
+<td><strong>193.149.176.100:443</strong> (raw TCP)</td>
+</tr>
+<tr>
+<td>덤</td>
+<td>10.4.19.138이 17:17에 Qakbot 배포와 비슷한 zip(.wsf)을 받음 — <a href="#ko-second-host">11단계</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-step-0">0단계 — 데이터 범위와 전체 그림</h2>
+<p><strong>목적:</strong> 데이터의 시작·끝, 크기, 내부 PC를 먼저 파악합니다.</p>
+<p><strong>쿼리:</strong> 시간 범위를 <strong>All</strong>로 바꾸고 검색창은 비운 채 Search. Sessions에서 Start Time 오름차순 / Stop Time 내림차순으로 시작·끝을 봅니다(방법은 <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot 사례 1단계</a>).</p>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start  2023/04/19 15:26:28 UTC
+End    2023/04/19 21:22:36 UTC   (duration 05:56:08)
+Sessions about 1,640
+Src IP 10.4.19.138 (833)   10.4.19.136 (718)   10.4.19.143 (85)   10.4.19.19 (4)
+</code></pre></div></div>
+<p>SPI View → General → Dst Port (세션 수, 프로토콜/포트):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>udp 53 (586)   tcp 443 (483)   tcp 389 (114)   tcp 445 (85)   udp 389 (73)   tcp 135 (67)
+tcp 49669 (63) tcp 88 (63)     tcp 80 (47)     tcp 49684 (12) tcp 139 (11)   udp 1900 (9)
+tcp 53 (6)     udp 137 (5)     udp 138 (4)     udp 123 (3)    udp 111 (3)    udp 5353 (2)   udp 5355 (1)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>캡처가 6시간 가까이</strong> 됩니다. RedLine 사례(36초)처럼 세션 목록을 눈으로 훑어서는 끝이 안 나요. 이번에는 <strong>"걸러내고 남은 것을 보는"</strong> 방법을 씁니다.</li>
+<li>내부 IP는 4개입니다. 10.4.19.19는 세션을 거의 시작하지 않고(4개) 받기만 하니 <strong>서버</strong>(뒤에서 DC로 확인)입니다. 나머지 <strong>3대가 클라이언트 PC</strong>예요. 퀴즈도 "클라이언트 3대 중 한 대만 감염"이라고 했습니다.</li>
+<li>포트를 역할별로 나누면:</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">포트</th>
+<th scope="col">프로토콜</th>
+<th scope="col">판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>53, 88, 389, 445, 135, 139, 49669·49684(동적 RPC), 123</td>
+<td>DNS, Kerberos, LDAP, SMB, RPC, NTP</td>
+<td><strong>정상 AD 통신</strong>. 대부분 10.4.19.19로 감</td>
+</tr>
+<tr>
+<td>137/138, 1900, 5353, 5355, 111</td>
+<td>NetBIOS, SSDP, mDNS, LLMNR, RPC 포트매퍼</td>
+<td>로컬 잡음</td>
+</tr>
+<tr>
+<td><strong>443 (483)</strong></td>
+<td>HTTPS</td>
+<td>대부분 Microsoft·Bing 서비스. 그 안에 숨은 것을 찾아야 함</td>
+</tr>
+<tr>
+<td><strong>80 (47)</strong></td>
+<td>HTTP</td>
+<td><strong>평문</strong> — 내용을 다 볼 수 있으니 꼭 봄</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>RedLine 때와 달리 "모르는 포트"가 없습니다.</strong> 악성 통신이 80과 443 안에 숨어 있다는 뜻이에요. 그래서 순서를 이렇게 잡습니다: <strong>PC 3대의 정체 → DNS로 수상한 이름 → 평문 HTTP → HTTPS(인증서·주기) → 443인데 TLS가 아닌 것</strong>.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-hosts">1단계 — 클라이언트 3대의 IP·MAC·호스트이름 (Q2~Q4)</h2>
+<p><strong>목적:</strong> 누가 감염됐는지 아직 모르니, <strong>3대 모두의 정체</strong>를 먼저 적어 둡니다. 나중에 "어느 PC가 이상한 곳에 갔나"를 찾으면 바로 이름을 붙일 수 있어요.</p>
+<h3 id="ko-dhcp">DHCP부터 확인</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<p><strong>실제 결과:</strong> <code>0 sessions</code></p>
+<p>이 PCAP에는 <strong>DHCP가 없습니다.</strong> PC들이 이미 IP를 받은 뒤부터 캡처했다는 뜻이에요. RedLine 사례의 팁대로 <strong>Kerberos, NetBIOS, 이더넷 MAC</strong>으로 찾습니다.</p>
+<h3 id="ko-kerberos">Kerberos의 컴퓨터 계정</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.0/24 &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.src == 10.4.19.0/24</code></td>
+<td>내부망 PC가 시작한 연결 (CIDR 표기)</td>
+</tr>
+<tr>
+<td><code>&amp;&amp;</code></td>
+<td>그리고</td>
+</tr>
+<tr>
+<td><code>protocols == krb5</code></td>
+<td>Kerberos 세션만</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>SPI View → <strong>krb5</strong> → <code>krb5.cname</code>을 <strong>Load All</strong>. 그리고 같은 화면 <strong>General</strong>에서 <code>ip.src</code>와 <code>mac.src</code>도 펼칩니다. 값을 누르고 **"and"**를 고르면 그 값으로 검색이 좁혀져서, IP마다 cname을 하나씩 확인할 수 있어요.</p>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Src IP        Src MAC             krb5.cname (컴퓨터 계정, $로 끝남)
+10.4.19.136   14:58:d0:2e:c5:ae   desktop-sff9ljf$  (+ 사용자 계정 csilva → 3단계)
+10.4.19.138   00:90:27:cd:92:90   desktop-retp4bu$
+10.4.19.143   00:02:a5:7c:61:08   desktop-jal4d68$
+10.4.19.19    00:21:5a:86:39:8f   (서버, DC)
+</code></pre></div></div>
+<h3 id="ko-netbios">NetBIOS로 교차 확인</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.0/24 &amp;&amp; port.dst == [137, 138]
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port.dst == [137, 138]</code></td>
+<td>목록 표기. 137(NetBIOS 이름) <strong>또는</strong> 138(NetBIOS 데이터그램)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>세션을 펼치면 브로드캐스트 안에 이름이 보입니다.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>15:26:37  10.4.19.19   WIN-GP4JHCK2JMV   BOOGIENIGHTS   __MSBROWSE__
+15:33:47  10.4.19.136  DESKTOP-SFF9LJF   BOOGIENIGHTS
+17:06:20  10.4.19.138  DESKTOP-RETP4BU   BOOGIENIGHTS
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>Kerberos와 NetBIOS가 같은 이름을 줍니다. <strong>출처 두 곳이 일치</strong>하면 확실합니다.</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">IP</th>
+<th scope="col">MAC</th>
+<th scope="col">호스트이름</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10.4.19.136</td>
+<td>14:58:d0:2e:c5:ae</td>
+<td>DESKTOP-SFF9LJF</td>
+</tr>
+<tr>
+<td>10.4.19.138</td>
+<td>00:90:27<span>💿</span>92:90</td>
+<td>DESKTOP-RETP4BU</td>
+</tr>
+<tr>
+<td>10.4.19.143</td>
+<td>00:02:a5:7c:61:08</td>
+<td>DESKTOP-JAL4D68</td>
+</tr>
+<tr>
+<td>10.4.19.19</td>
+<td>00:21:5a:86:39:8f</td>
+<td>WIN-GP4JHCK2JMV (DC)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>MAC은 같은 LAN 안에서만 의미가 있습니다.</strong> 이 PC들의 패킷이 바깥으로 갈 때 <code>mac.dst</code>는 모두 <strong>00:02:17:5c:e6:13</strong>인데, 이건 상대 서버가 아니라 **게이트웨이(10.4.19.1)**의 MAC이에요. Q3의 답은 PC가 보낸 패킷의 <code>mac.src</code>에서 찾아야 합니다.</li>
+<li>DC가 <code>WIN-</code> + 무작위 글자 이름인 건 RedLine 사례와 같아요(윈도우 서버 기본 이름).</li>
+<li>아직 어느 PC가 감염됐는지는 모릅니다. 다음 단계에서 찾습니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-dns">2단계 — DNS로 수상한 이름 찾기, 감염 PC 좁히기</h2>
+<p><strong>목적:</strong> 3대가 조회한 이름에서 <strong>정상 이름을 걸러내고 남는 것</strong>을 찾습니다. 남은 이름을 조회한 PC가 감염 후보예요.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.0/24 &amp;&amp; protocols == dns
+</code></pre></div></div>
+<p>SPI View → <strong>dns</strong> → <code>host.dns</code> → <strong>Load All</strong>. 목록이 길면 PC 하나씩(<code>ip.src == 10.4.19.136 &amp;&amp; protocols == dns</code>) 봅니다.</p>
+<p><strong>실제 결과 (10.4.19.136, 이름 51개 중 일부를 성격별로 묶음):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>AD / 내부      WIN-GP4JHCK2JMV.boogienights.live, _ldap._tcp.dc._msdcs.boogienights.live, wpad.boogienights.live
+Microsoft      *.msn.com, *.bing.com, *.microsoft.com, *.msedge.net, *.windowsupdate.com, *.live.com,
+               *.office.com, ecn.dev.virtualearth.net, fp-afd.azurefd.us ...
+기타 정상      update.googleapis.com, acroipm2.adobe.com
+?              firebasestorage.googleapis.com   15:31:10
+???            skigimeetroc.com                  15:35:39  → 192.153.57.233
+???            askamoshopsi.com                  15:36:41  → 104.168.53.18
+???            skansnekssky.com                  15:36:43  → 217.199.121.56  (그 뒤 약 30분마다 다시 조회)
+???            spakernakurs.com                  20:12:16  → 104.168.53.18
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><code>skigimeetroc</code>, <code>askamoshopsi</code>, <code>skansnekssky</code>, <code>spakernakurs</code> — <strong>사람이 지었다고 보기 어려운 무작위 단어 같은 .com 이름</strong>이 4개 있습니다. 넷 다 같은 PC(10.4.19.136)가 조회했어요.</li>
+<li><code>firebasestorage.googleapis.com</code>은 <strong>Google의 정상 서비스</strong>입니다. 그런데 공격자가 무료로 파일을 올려 두는 데 자주 악용돼요. 정상 이름이라고 바로 지우지 말고, 앞뒤 시간(15:31)을 기억해 둡니다.</li>
+<li><code>askamoshopsi</code>와 <code>spakernakurs</code>는 <strong>같은 IP</strong>(104.168.53.18)로 풀립니다. 이름은 달라도 같은 서버예요.</li>
+<li><strong>15:31 → 15:35 → 15:36</strong>으로 이어지는 짧은 시간에 이상한 이름이 몰려 있습니다. 감염 시점의 강한 단서입니다.</li>
+</ul>
+<p>이 이름들을 다른 PC도 조회했는지 바로 확인합니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>host.dns == [skigimeetroc.com, askamoshopsi.com, skansnekssky.com, spakernakurs.com]
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>host.dns == [a, b, c, d]</code></td>
+<td>이 네 이름 중 <strong>하나라도</strong> 조회한 세션</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과:</strong> 모든 세션의 <code>ip.src</code>가 <strong>10.4.19.136</strong>입니다. → <strong>감염 PC는 10.4.19.136 (DESKTOP-SFF9LJF).</strong> Q2·Q3·Q4는 1단계 표에서 바로 나옵니다.</p>
+<div class="admonition note">
+<p class="admonition-title">10.4.19.138도 이상한 이름이 있다</p>
+<p>10.4.19.138의 DNS를 보면 17:12~17:15에 <code>nobpc.joansstudio.store</code>, <code>dlmfz.joansstudio.store</code>(둘 다 <strong>NXDOMAIN</strong>, 없는 이름), 17:17에 <code>cotecsecuritygroup.com</code>이 나옵니다. 10.4.19.136과는 전혀 다른 이름이에요. 이건 <a href="#ko-second-host">11단계</a>에서 따로 봅니다. 10.4.19.143은 내부 이름만 조회했습니다.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-user">3단계 — 사용자 계정 찾기 (Q5)</h2>
+<p><strong>목적:</strong> 10.4.19.136에 로그인한 사용자 계정을 찾습니다.</p>
+<h3 id="ko-kerberos_1">Kerberos</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Time      19:30:50 – 19:34:48 (12 sessions)
+cname     csilva   desktop-sff9ljf$
+Realm     BOOGIENIGHTS.LIVE
+sname     krbtgt/BOOGIENIGHTS.LIVE ...
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><code>$</code>가 없는 <strong><code>csilva</code>가 사용자 계정</strong>입니다. Q5의 답이에요.</li>
+<li>그런데 Kerberos가 <strong>19:30에야</strong> 나옵니다. 캡처가 사용자 로그인 <strong>뒤</strong>에 시작됐기 때문이에요(DHCP가 없는 것과 같은 이유). 19:30의 Kerberos는 티켓 갱신이나 공유 드라이브 접속(같은 시각 SMB로 <code>\\WIN-GP4JHCK2JMV\For_Shared_Drive</code> 접속) 때 나온 것으로 보입니다. <strong>긴 PCAP에서는 Kerberos가 맨 앞에 없을 수도 있다</strong>는 걸 기억하세요.</li>
+</ul>
+<h3 id="ko-ldap">LDAP로 전체 이름까지</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; ip.dst == 10.4.19.19 &amp;&amp; port.dst == 389
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 10.4.19.19</code></td>
+<td>DC로 간 연결</td>
+</tr>
+<tr>
+<td><code>port.dst == 389</code></td>
+<td>LDAP</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>세션 목록에서 19:34:48 세션을 펼치고 <strong>ASCII</strong>로 보면 이런 줄이 있습니다.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>CN=Cornelius Silva,CN=Users,DC=boogienights,DC=live
+</code></pre></div></div>
+<div class="admonition tip">
+<p class="admonition-title">어디 있는지 모를 때는 Hunt</p>
+<p>Arkime 위쪽 메뉴의 <strong>Hunt</strong>는 패킷 내용에서 문자열을 찾아 줍니다. 검색창에 <code>ip.src == 10.4.19.136 &amp;&amp; port.dst == 389</code>를 넣어 대상을 좁힌 뒤, Hunt에서 ASCII 문자열 <code>CN=Users</code>를 찾으면 사용자 DN이 든 세션만 남아요. 결과는 <code>huntId</code> 태그로 다시 검색할 수 있습니다.</p>
+</div>
+<ul>
+<li>사용자 <strong>csilva = Cornelius Silva</strong>. 이 값은 6단계에서 악성코드가 보낸 쿠키로 <strong>한 번 더</strong> 확인됩니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-https-c2">7단계 — HTTPS C2: 자체 서명 인증서</h2>
+<p><strong>목적:</strong> 2단계에서 찾은 C2 도메인들의 TLS 세션을 봅니다. 내용은 암호화돼서 못 보니 <strong>인증서, 크기, 시간, JA3</strong>로 판단합니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; host.http == [askamoshopsi.com, skansnekssky.com, spakernakurs.com]
+</code></pre></div></div>
+<p>SPI View → <strong>tls</strong>와 <strong>cert</strong> 섹션 → <strong>Load All</strong>.</p>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>askamoshopsi.com  104.168.53.18:443    3 sessions  15:36:41 – 15:37:50
+                  databytes (src / dst)  1,286 / 2,217    1,733 / 1,764    472 / 1,907,262   ← 1.9 MB down
+skansnekssky.com  217.199.121.56:443  69 sessions  15:36:44 – 21:17:46
+spakernakurs.com  104.168.53.18:443    1 session   20:12:16 – 21:22:21   3,603 / 4,094
+
+cert (3개 서버 모두 같은 형식):
+  Subject   CN=localhost, O=Internet Widgits Pty Ltd, ST=Some-State, C=AU
+  Issuer    CN=localhost, O=Internet Widgits Pty Ltd, ST=Some-State, C=AU
+  Valid     2023-04-11 → 2024-04-10   (askamoshopsi/spakernakurs 12:36:03, skansnekssky 13:09:00)
+  SAN       (없음)
+tags      cert:self-signed
+TLS       TLSv1.2, cipher 0xc030 (ECDHE_RSA_WITH_AES_256_GCM_SHA384)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>Subject와 Issuer가 똑같습니다</strong> → 자기가 자기한테 발급한 <strong>자체 서명 인증서</strong>예요(판별법은 <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot 사례의 인증서 설명</a>과 같음). Arkime도 <code>cert:self-signed</code> 태그를 붙입니다.</li>
+<li><code>Internet Widgits Pty Ltd</code>, <code>Some-State</code>, <code>AU</code>는 <strong>OpenSSL로 인증서를 만들 때 아무것도 안 바꾸고 엔터만 누르면 들어가는 기본값</strong>입니다. 실제 회사 웹사이트라면 이런 인증서를 쓸 리 없어요. 그리고 CN이 <code>localhost</code>라서 <strong>접속한 이름(SNI)과도 맞지 않습니다.</strong></li>
+<li>세 서버의 인증서가 <strong>같은 날(04-11) 몇십 분 간격</strong>으로 만들어졌습니다. 같은 운영자가 한꺼번에 준비한 인프라로 보여요.</li>
+<li><code>askamoshopsi.com</code>에서 15:36:42에 <strong>1.9MB</strong>를 받았습니다. 내용은 암호화되어 못 보지만 C2 연결 직후의 큰 다운로드이니 <strong>추가 모듈</strong>로 추정합니다.</li>
+<li><code>skansnekssky.com</code>은 <strong>69번</strong>이나 접속합니다. 이건 다음 단계에서 주기를 봅니다.</li>
+<li><code>spakernakurs.com</code>은 감염 <strong>4시간 반 뒤</strong>에 처음 나오고 한 시간 넘게 붙어 있습니다. 같은 IP(104.168.53.18)인데 <strong>JA3가 다릅니다</strong>(아래). 그리고 이 세션이 시작되고 <strong>36분 뒤</strong>에 BackConnect(9단계)가 열려요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>cert.issuer.on == "Internet Widgits Pty Ltd"
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cert.issuer.on</code></td>
+<td>인증서 발급자의 조직 이름(O)</td>
+</tr>
+<tr>
+<td><code>"..."</code></td>
+<td>띄어쓰기가 있는 값은 따옴표로</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>이 쿼리 하나로 <strong>OpenSSL 기본값 인증서를 쓰는 서버</strong>를 전부 찾을 수 있습니다. 이 PCAP에서는 위 세 서버만 나와요. 다른 PCAP에서도 바로 쓸 수 있는 "행동" 쿼리입니다.</p>
+<h3 id="ko-ja3">JA3로 보면?</h3>
+<p>Trickbot 때 나온 "감염 뒤 JA3가 늘어나면 감염 증거"라는 이야기를 이 PCAP으로 다시 확인해 봅니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p>SPI View → <strong>tls</strong> → <code>tls.ja3</code> → <strong>Load All</strong>.</p>
+<p><strong>실제 결과 (요약):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>10.4.19.136의 서로 다른 JA3: 61개
+  15:31:07 이전(감염 전, 약 5분)에 나온 JA3: 5개
+  15:31:07 이후 새로 나온 JA3: 56개
+    - 그중 54개: www.msn.com, assets.msn.com, api.msn.com, ecn.dev.virtualearth.net, edge.microsoft.com,
+                 th.bing.com ...  (거의 다 1번씩만 쓰임)
+    - 3c293bdf2a25c07559b560ba86debc77 (77회): askamoshopsi.com 3 + skansnekssky.com 69
+                                              + self.events.data.microsoft.com 5  ← 윈도우 원격 분석
+    - 6a5d235ee78c6aede6a61448b4e9ff1e (1회):  spakernakurs.com (20:12:16)
+
+10.4.19.138: 3c293bdf... 0회
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>감염 뒤 새 JA3가 56개나 생겼지만, 그중 54개는 정상 Edge 통신</strong>입니다. 최신 Chrome/Edge(110 이후)는 TLS 확장(extension)의 <strong>순서를 매번 무작위로 섞어서</strong> 보냅니다. JA3는 이 순서까지 넣어서 해시를 만드니, <strong>같은 브라우저인데도 연결마다 JA3가 달라져요.</strong> 그래서 "JA3 개수가 늘었다"는 것만으로는 감염 증거가 될 수 없습니다. 이 문제를 고친 게 <strong>JA4</strong>(확장을 정렬한 뒤 계산)예요. Arkime 최신 버전에는 <code>tls.ja4</code> 필드가 있습니다.</li>
+<li><strong>IcedID의 C2 JA3(<code>3c293bdf…</code>)는 윈도우 자체 원격 분석(<code>self.events.data.microsoft.com</code>)과 같은 값</strong>입니다. IcedID가 윈도우 기본 통신 기능(WinHTTP/Schannel)을 쓰기 때문이에요. RedLine 사례와 똑같은 교훈입니다. <strong>"이 JA3는 나쁜 JA3"라고 차단 목록에 넣으면 윈도우 정상 통신도 같이 막힙니다.</strong></li>
+<li>반면 <strong><code>6a5d235e…</code>(spakernakurs.com)는 이 PC에서 딱 한 번, 후속 활동 직전에</strong> 나온 새 JA3입니다. 강사님이 말한 "감염 뒤 새 JA3"가 <strong>실제로 의미 있었던 경우</strong>예요. 다만 이것도 JA3 하나만 보고 안 게 아니라, <strong>처음 보는 도메인 + 자체 서명 인증서 + 긴 세션 + 직후 BackConnect</strong>가 같이 있어서 의미가 생긴 겁니다.</li>
+<li>결론: <strong>JA3는 "같은 PC 안에서, 목적지(SNI)·인증서와 같이" 읽어야</strong> 합니다. 10.4.19.138에는 <code>3c293bdf…</code>가 한 번도 없는 것처럼, 같은 윈도우라도 PC(빌드·설정)마다 JA3가 다를 수 있으니 다른 PC와 바로 비교하는 것도 조심해야 해요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-beacon">8단계 — 비콘 주기 재기</h2>
+<p><strong>목적:</strong> <code>skansnekssky.com</code> 69번 접속이 사람이 아닌 **프로그램의 규칙적인 체크인(비콘)**인지 확인합니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == 217.199.121.56
+</code></pre></div></div>
+<p>Sessions에서 <strong>Start Time 오름차순</strong>으로 정렬하고, 열에 <strong>Src Databytes / Dst Databytes</strong>를 추가합니다(열 머리글 오른쪽 메뉴 → 필드 추가). <strong>SPI Graph</strong> 탭에서 <code>ip.dst</code>를 고르면 시간 그래프로도 볼 수 있어요.</p>
+<p><strong>실제 결과 (일부):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start      Src DB  Dst DB
+15:36:44   4,717   2,324    ← 첫 접속(등록): 크다
+15:41:42     581   1,707
+15:46:45     581   1,707
+15:51:47     581   1,707
+15:56:49     581   1,707
+16:01:50     581   1,707
+ ...         (5분 간격 계속)
+17:52:51     585   1,707
+ ...
+19:28:30     585   1,707
+19:32:00   1,100   1,707    ← 한 번 간격이 3분 30초, 보낸 양도 조금 큼
+19:37:02     585   1,707
+ ...
+21:17:46     585   1,707    ← 마지막 (캡처 끝 21:22:36)
+
+69 sessions, start-to-start interval: median 302 s, min 210 s, max 307 s
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>거의 정확히 5분(약 300초 + 몇 초)마다</strong> 접속합니다. 6시간 동안 쉬지 않아요. 사람이 웹사이트를 이렇게 쓰지는 않습니다. 전형적인 <strong>비콘</strong>입니다.</li>
+<li>크기도 거의 <strong>매번 같습니다</strong>(보냄 581~585, 받음 1,707). "새 명령 있어?" → "없어"를 반복하는 모양이에요. <strong>첫 접속만 크다</strong>(4,717바이트)는 것도 비콘의 흔한 특징입니다. 처음에 PC 정보를 등록하기 때문이에요.</li>
+<li>매번 새 TLS 연결을 맺고 금방 끊는 <strong>"짧고 자주"형 비콘</strong>입니다. Trickbot 사례의 "몇 분씩 붙잡는" 형태와 다릅니다(<a href="handbook-arkime-only-credential-theft-tls-c2.html">비콘의 두 종류</a> 참고).</li>
+<li>DNS는 매번 하지 않고 <strong>약 30분마다</strong> 다시 조회합니다(17:07, 17:52, 18:23, 18:53 …). DNS 캐시 때문이라 DNS 개수만 세면 비콘 횟수를 놓칩니다. <strong>세션 단위로 세야</strong> 해요.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">비콘을 빨리 찾는 일반적인 방법</p>
+<ol>
+<li><code>ip.src == &lt;PC&gt; &amp;&amp; protocols == tls</code>로 TLS를 모으고 SPI View에서 <code>ip.dst</code>의 <strong>세션 수</strong>를 봅니다. 정상 서비스가 아닌데 수십 번 나오는 IP가 후보예요.</li>
+<li>후보 IP로 검색해서 Start Time 간격과 Databytes가 <strong>일정한지</strong> 봅니다.</li>
+<li>간격이 일정 + 크기가 일정 + 자체 서명 인증서 → 거의 확실한 C2.</li>
+</ol>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-non-tls-443">9단계 — 443인데 TLS가 아닌 것: 후속 활동 찾기 (Q6)</h2>
+<p><strong>목적:</strong> Q6 "후속 활동"을 찾습니다. IcedID는 감염 뒤 <strong>BackConnect</strong>(원격 조종), <strong>VNC</strong>, <strong>Cobalt Strike</strong> 같은 걸 추가로 내려받는 경우가 많아요. 그중 BackConnect는 2023년 4월부터 <strong>443 포트를 쓰지만 TLS가 아닌</strong> 통신을 했습니다. 그러니 "443인데 TLS가 아닌 세션"을 찾으면 됩니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; port.dst == 443 &amp;&amp; protocols != tls
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>port.dst == 443</code></td>
+<td>HTTPS 포트로 간 연결</td>
+</tr>
+<tr>
+<td><code>protocols != tls</code></td>
+<td>Arkime가 <strong>TLS로 인식하지 못한</strong> 세션. 443인데 TLS가 아니면 이상함</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>20:48:00 – 21:22:36  10.4.19.136:51534 → 193.149.176.100:443   pkts 74/73   databytes 827 / 629
+20:49:11 – 20:49:22  10.4.19.136:51535 → 193.149.176.100:443   pkts 19/21   databytes 727 / 41
+20:49:33 – 20:49:46  10.4.19.136:51537 → 193.149.176.100:443   pkts 12/15   databytes 770 / 26
+15:27:07 – 20:59:30  10.4.19.136:49769 → 40.83.247.108:443      (Microsoft, 아래 설명)
+15:36:58             10.4.19.136:50171 → 20.25.241.18:443       (Microsoft, 아래 설명)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>193.149.176.100으로 세 세션</strong>이 있습니다. 이 IP는 <strong>DNS 조회가 없습니다</strong>(IP가 프로그램에 박혀 있음). 첫 세션이 20:48:00에 열리고 1분쯤 뒤 두 개가 더 열려요.</li>
+<li>Microsoft 두 세션은 Source Raw의 첫 바이트가 <code>17 03 03</code>입니다. <strong>TLS의 "데이터" 레코드</strong>예요. 연결이 캡처 전에 맺어졌거나 핸드셰이크(<code>16 03 …</code>)가 잡히지 않아서 Arkime가 TLS로 못 붙인 것뿐, 진짜 TLS입니다. 이렇게 <strong>첫 바이트로 구별</strong>할 수 있어요.</li>
+<li>193.149.176.100 세션의 Source Raw 첫 부분은 <code>f8 7f 92 46 …</code>처럼 <strong>TLS 모양(<code>16 03</code>, <code>17 03</code>)이 전혀 아닙니다.</strong> 443을 쓰지만 TLS가 아닌 <strong>자체 프로토콜</strong>입니다.</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">첫 바이트</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>16 03 0x</code></td>
+<td>TLS 핸드셰이크 시작 (정상 HTTPS의 첫 패킷)</td>
+</tr>
+<tr>
+<td><code>17 03 03</code></td>
+<td>TLS 데이터 (중간부터 잡힌 HTTPS)</td>
+</tr>
+<tr>
+<td>그 밖의 값</td>
+<td>TLS 아님 → 443을 빌려 쓰는 다른 프로토콜</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-scope">11단계 — 범위 확인과 두 번째 PC</h2>
+<p><strong>목적:</strong> (1) 다른 PC도 같은 IOC에 접속했는지, (2) 10.4.19.136이 다른 PC로 퍼지려 했는지, (3) 2단계에서 표시해 둔 10.4.19.138이 무엇을 했는지 확인합니다.</p>
+<h3 id="ko-ioc-pc">IOC에 접속한 다른 PC</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == [80.77.25.175, 142.251.32.234, 192.153.57.233, 104.168.53.18, 217.199.121.56, 193.149.176.100] &amp;&amp; ip.src != 10.4.19.136
+</code></pre></div></div>
+<p><strong>실제 결과:</strong> <code>0 sessions</code>. 10.4.19.143은 <strong>외부로 나간 세션 자체가 없습니다.</strong></p>
+<h3 id="ko-_1">측면 이동</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.136 &amp;&amp; ip.dst == 10.4.19.0/24 &amp;&amp; ip.dst != 10.4.19.19
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 10.4.19.0/24</code></td>
+<td>내부망으로 간 연결</td>
+</tr>
+<tr>
+<td><code>ip.dst != 10.4.19.19</code></td>
+<td>DC는 제외</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과:</strong> 브로드캐스트·멀티캐스트 말고는 <strong>0개</strong>. 10.4.19.136이 다른 클라이언트(.138, .143)에 SMB·RDP·RPC로 간 적이 없습니다.</p>
+<ul>
+<li>DC로는 SMB(<code>IPC$</code>, <code>SYSVOL</code>)가 <strong>약 15분마다</strong> 있는데, 이건 윈도우가 그룹 정책을 확인하는 <strong>정상 동작</strong>입니다. 시간이 규칙적이라 비콘처럼 보일 수 있으니 헷갈리지 마세요. 목적지가 <strong>DC</strong>이고 공유 이름이 <code>IPC$</code>·<code>SYSVOL</code>이면 정상입니다.</li>
+</ul>
+<h3 id="ko-second-host">두 번째 PC: 10.4.19.138</h3>
+<p>2단계에서 본 <code>cotecsecuritygroup.com</code>을 따라갑니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.138 &amp;&amp; host.http == cotecsecuritygroup.com
+</code></pre></div></div>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>17:17:10  10.4.19.138 → 66.29.147.117:80
+GET /wicd/643d0491bcea1.zip HTTP/1.1
+Host: cotecsecuritygroup.com
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) ... Edg/112.0.1722.48
+
+HTTP/1.1 200 OK
+Server: Apache
+Content-Disposition: attachment; filename="643d0491bcea1.zip"
+Content-Encoding: gzip
+Content-Length: 5673
+Content-Type: application/zip
+</code></pre></div></div>
+<p>응답 본문을 Destination Raw로 받아 CyberChef <strong>Gunzip</strong> → <strong>Unzip</strong>(파일 목록만 보기, 실행 금지):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Complaint_Copy_634917.wsf    16,173 bytes   (2023-04-19 15:16:56)
+</code></pre></div></div>
+<p>그리고 28초 뒤:</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.4.19.138 &amp;&amp; ip.dst == 85.239.53.73
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>17:17:38 – 17:18:53  10.4.19.138:49773 → 85.239.53.73:80   SYN ×5, RST ×1, data 0   (DNS 조회 없음)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>10.4.19.138의 사용자가 Edge로 <strong><code>/폴더/16진수.zip</code></strong> 모양의 파일을 받았고, 안에는 **<code>.wsf</code>(윈도우 스크립트 파일)**가 들어 있습니다. 문서처럼 보이는 이름(<code>Complaint_Copy</code>, "민원 사본")에 스크립트 확장자 — 전형적인 미끼예요. 바로 전(17:12~17:15)에 조회한 <code>*.joansstudio.store</code> 이름은 **존재하지 않는 이름(NXDOMAIN)**이었습니다.</li>
+<li>이 모양(<strong>zip 안의 .wsf, 16진수 zip 이름</strong>)은 바로 이날(2023-04-19) 보고된 <strong>Qakbot 배포 방식과 같습니다.</strong> 다만 계열은 <strong>추정</strong>이에요.</li>
+<li>28초 뒤 <strong>DNS 없이 IP로 직접</strong> 85.239.53.73:80에 접속을 <strong>5번 시도했지만 실패</strong>(데이터 0, RST)했습니다. 스크립트가 실행돼서 다음 단계를 받으려다 실패한 것일 <strong>가능성</strong>이 있습니다(추정 — 스크립트가 실행됐는지는 네트워크만으로 확정 불가).</li>
+<li>그 뒤 10.4.19.138에는 수상한 통신이 없습니다. 그래서 **"감염된 PC는 한 대(10.4.19.136)"**라는 퀴즈의 설명과 맞아요. 하지만 실제 업무라면 **"깨끗함"이 아니라 "추가 분석 필요"**로 적고 호스트 점검을 요청해야 합니다. 그래서 보고서에도 <strong>Further Analysis Required</strong>로 남깁니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-conclusion">전체 결론</h2>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>15:20:41  (cookie time) earlier visit to the TDS — before the capture starts
+15:31:07  user opens hxxp://80.77.25.175/main.php in Edge → 302 to Firebase Storage
+15:31:14  Scan_Inv.zip downloaded over HTTPS (~273 KB)
+15:34:33  Windows fetches SSL.com root certificate (user likely runs Scan_Inv.exe)
+15:35:39  installer → skigimeetroc.com, cookie with host/user/SID → fake gzip 520 KB
+15:36:41  HTTPS C2 starts: askamoshopsi.com (+1.9 MB), skansnekssky.com every 5 min
+20:12:16  new C2 session spakernakurs.com, new JA3
+20:48:00  BackConnect to 193.149.176.100:443 (not TLS)
+20:49:17  operator runs net group "Domain Computers" /domain
+20:49:34  operator lists drives and C:\
+21:22:36  capture ends — beacon and BackConnect still alive
+</code></pre></div></div>
+</section>
+<section>
+<h2 id="ko-timeline">타임라인</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">UTC (2023-04-19)</th>
+<th scope="col">이벤트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>15:20:41</td>
+<td>(쿠키 안의 시간) 캡처 전에 TDS 첫 방문으로 추정</td>
+</tr>
+<tr>
+<td>15:26:28</td>
+<td>캡처 시작</td>
+</tr>
+<tr>
+<td>15:31:07</td>
+<td>DESKTOP-SFF9LJF(10.4.19.136) Edge → <code>hxxp://80.77.25[.]175/main.php</code> → 302</td>
+</tr>
+<tr>
+<td>15:31:14</td>
+<td>Firebase Storage에서 <code>Scan_Inv.zip</code> HTTPS 다운로드(273,619B)</td>
+</tr>
+<tr>
+<td>15:34:33</td>
+<td><code>Microsoft-CryptoAPI</code> → <code>www.ssl.com</code> 루트 인증서(실행 파일 서명 확인 추정)</td>
+</tr>
+<tr>
+<td>15:35:39</td>
+<td><code>skigimeetroc[.]com</code> GET / (User-Agent 없음, IcedID 쿠키) → <code>application/gzip</code> 520,803B</td>
+</tr>
+<tr>
+<td>15:36:41–15:37:50</td>
+<td><code>askamoshopsi[.]com</code> 104.168.53.18 HTTPS 3회, 1.9MB 다운로드</td>
+</tr>
+<tr>
+<td>15:36:44</td>
+<td><code>skansnekssky[.]com</code> 217.199.121.56 첫 비콘(4,717B)</td>
+</tr>
+<tr>
+<td>15:41 ~ 21:17</td>
+<td>5분마다 비콘(69회)</td>
+</tr>
+<tr>
+<td>17:17:10</td>
+<td>(다른 PC) DESKTOP-RETP4BU(10.4.19.138) <code>643d0491bcea1.zip</code>(.wsf) 다운로드</td>
+</tr>
+<tr>
+<td>17:17:38</td>
+<td>(다른 PC) 85.239.53.73:80 접속 실패</td>
+</tr>
+<tr>
+<td>20:12:16</td>
+<td><code>spakernakurs[.]com</code> 104.168.53.18 새 세션, 새 JA3</td>
+</tr>
+<tr>
+<td>20:48:00</td>
+<td>BackConnect 제어 채널 193.149.176.100:443</td>
+</tr>
+<tr>
+<td>20:49:11</td>
+<td>BackConnect 원격 셸</td>
+</tr>
+<tr>
+<td>20:49:17</td>
+<td><code>net group "Domain Computers" /domain</code> (+ DC로 SMB)</td>
+</tr>
+<tr>
+<td>20:49:33</td>
+<td>BackConnect 파일 관리자: <code>DISK</code>, <code>CDDIR Z:\</code>, <code>CDDIR C:\</code></td>
+</tr>
+<tr>
+<td>21:22:36</td>
+<td>캡처 끝 (비콘·제어 채널 계속 살아 있음)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-iocs">침해 지표(IOC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">종류</th>
+<th scope="col">지표</th>
+<th scope="col">역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>hxxp://80.77.25[.]175/main.php</code></td>
+<td>TDS 리다이렉트</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxps://firebasestorage.googleapis[.]com/v0/b/serene-cathode-377701.appspot.com/o/XSjwp6O0pq%2FScan_Inv.zip?alt=media&amp;token=[redacted]</code></td>
+<td><code>Scan_Inv.zip</code> (정상 서비스 악용)</td>
+</tr>
+<tr>
+<td>도메인 / IP</td>
+<td><code>skigimeetroc[.]com</code> / <code>192.153.57[.]233</code></td>
+<td>gzip 로더</td>
+</tr>
+<tr>
+<td>도메인 / IP</td>
+<td><code>askamoshopsi[.]com</code>, <code>spakernakurs[.]com</code> / <code>104.168.53[.]18</code></td>
+<td>HTTPS C2</td>
+</tr>
+<tr>
+<td>도메인 / IP</td>
+<td><code>skansnekssky[.]com</code> / <code>217.199.121[.]56</code></td>
+<td>HTTPS C2 비콘</td>
+</tr>
+<tr>
+<td>IP:포트</td>
+<td><code>193.149.176[.]100:443</code> (TLS 아님)</td>
+<td>BackConnect</td>
+</tr>
+<tr>
+<td>인증서</td>
+<td><code>CN=localhost, O=Internet Widgits Pty Ltd, ST=Some-State, C=AU</code> (자체 서명, 2023-04-11 발급)</td>
+<td>C2 서버 3개 공통</td>
+</tr>
+<tr>
+<td>쿠키 이름</td>
+<td><code>__gads</code>, <code>_gid</code>, <code>_u</code>, <code>__io</code>, <code>_ga</code>, <code>_gat</code> (User-Agent 없는 요청)</td>
+<td>IcedID 설치 파일</td>
+</tr>
+<tr>
+<td>JA3</td>
+<td><code>3c293bdf2a25c07559b560ba86debc77</code> (윈도우 기본값과 같음 — 차단용 아님), <code>6a5d235ee78c6aede6a61448b4e9ff1e</code></td>
+<td>참고용</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>fc96c893a462660e2342febab2ad125ce1ec9a90fdf7473040b3aeb814ba7901</code></td>
+<td><code>Scan_Inv.zip</code>(262,343B, 비밀번호 [redacted])</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>bd24b6344dcde0c84726e620818cb5795c472d9def04b259bf9bff1538e5a759</code></td>
+<td><code>Scan_Inv.exe</code>(333,408B, IcedID 설치 파일)</td>
+</tr>
+<tr>
+<td>(다른 PC) URL / IP</td>
+<td><code>hxxp://cotecsecuritygroup[.]com/wicd/643d0491bcea1.zip</code> / <code>66.29.147[.]117</code>, <code>85.239.53[.]73:80</code></td>
+<td>zip/.wsf 미끼(Qakbot 계열 추정)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>해시 두 개는 PCAP에서 계산할 수 없어서(HTTPS 다운로드) Unit 42 해설에서 가져온 값입니다.</p>
+<div class="admonition warning">
+<p class="admonition-title">공식 해설의 IP 오타</p>
+<p>Unit 42 해설의 IOC 목록은 gzip 로더를 <code>192.153.57[.]223</code>, TDS를 <code>80.77.24[.]175</code>로 적었지만, PCAP의 DNS 응답과 세션은 <strong>192.153.57.233</strong>, <strong>80.77.25.175</strong>입니다. IOC는 <strong>항상 원본 데이터로 다시 확인</strong>하세요.</p>
+</div>
+</section>
+<section>
+<h2 id="ko-attack">ATT&amp;CK 매핑</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">기법</th>
+<th scope="col">증거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1566.002 Phishing: Spearphishing Link (추정)</td>
+<td>IP로 된 링크를 브라우저로 엶. 링크 출처는 PCAP에 없음</td>
+</tr>
+<tr>
+<td>T1608.001 / T1105 Ingress Tool Transfer</td>
+<td>Firebase Storage에 올린 <code>Scan_Inv.zip</code>, gzip 로더</td>
+</tr>
+<tr>
+<td>T1027.002 / T1027 Obfuscated Files</td>
+<td>비밀번호 걸린 zip, gzip으로 위장한 암호화 페이로드</td>
+</tr>
+<tr>
+<td>T1204.002 User Execution: Malicious File</td>
+<td>사용자가 <code>Scan_Inv.exe</code> 실행(Unit 42)</td>
+</tr>
+<tr>
+<td>T1082 System Information Discovery, T1033 System Owner/User Discovery</td>
+<td>쿠키의 OS 빌드·CPU·호스트·사용자·SID</td>
+</tr>
+<tr>
+<td>T1071.001 Web Protocols, T1573 Encrypted Channel</td>
+<td>자체 서명 HTTPS C2, 5분 비콘</td>
+</tr>
+<tr>
+<td>T1095 Non-Application Layer Protocol</td>
+<td>BackConnect: 443 위의 TLS 아닌 자체 프로토콜</td>
+</tr>
+<tr>
+<td>T1059.003 Windows Command Shell</td>
+<td>BackConnect 원격 셸</td>
+</tr>
+<tr>
+<td>T1018 Remote System Discovery, T1069.002 Domain Groups</td>
+<td><code>net group "Domain Computers" /domain</code></td>
+</tr>
+<tr>
+<td>T1083 File and Directory Discovery</td>
+<td><code>DISK</code>, <code>CDDIR</code></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-compare">앞의 두 사례와 비교</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"><a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot (2020)</a></th>
+<th scope="col"><a href="handbook-redline-stealer-powershell-nettcp-c2.html">RedLine (2023)</a></th>
+<th scope="col">IcedID (2023)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>캡처 길이</td>
+<td>약 44분</td>
+<td>36초</td>
+<td><strong>약 6시간</strong></td>
+</tr>
+<tr>
+<td>시작</td>
+<td>스크립트가 EXE 다운로드</td>
+<td><code>.ps1</code> 실행</td>
+<td><strong>IP 링크 → TDS 302 → Firebase zip</strong></td>
+</tr>
+<tr>
+<td>페이로드 위장</td>
+<td><code>.png</code> 이름의 EXE</td>
+<td><code>.jpg</code> 이름의 EXE</td>
+<td><strong><code>application/gzip</code> 위장 + 비밀번호 zip</strong></td>
+</tr>
+<tr>
+<td>첫 체크인</td>
+<td>URI에 호스트이름·봇 ID</td>
+<td>URI에 <code>status=start&amp;av=</code></td>
+<td><strong>쿠키에 hex로 호스트·사용자·SID</strong></td>
+</tr>
+<tr>
+<td>C2</td>
+<td>HTTP POST + 자체 서명 TLS(447/449)</td>
+<td>net.tcp, 포트 12432, 평문</td>
+<td><strong>자체 서명 HTTPS(443), 5분 비콘</strong></td>
+</tr>
+<tr>
+<td>인증서</td>
+<td>자체 서명 <code>example.com</code></td>
+<td>Let's Encrypt(정상)</td>
+<td><strong>자체 서명 <code>localhost</code>/Internet Widgits</strong></td>
+</tr>
+<tr>
+<td>비콘</td>
+<td>길게 붙잡는 형</td>
+<td>없음(한 번 업로드)</td>
+<td><strong>짧고 자주(5분)</strong></td>
+</tr>
+<tr>
+<td>후속</td>
+<td>정찰 + SMB 측면 이동 시도</td>
+<td>없음</td>
+<td><strong>BackConnect: 원격 셸, 파일 관리자</strong></td>
+</tr>
+<tr>
+<td>JA3</td>
+<td>—</td>
+<td>새 JA3 없음(윈도우와 같음)</td>
+<td>C2 JA3 = 윈도우와 같음, <strong>후속 직전 새 JA3 1개</strong>, Edge는 매번 새 JA3</td>
+</tr>
+<tr>
+<td>찾는 열쇠</td>
+<td>이상한 포트·URI</td>
+<td>모르는 포트 하나</td>
+<td><strong>DNS의 이상한 이름 → 인증서 → 주기 → 443인데 TLS 아님</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>세 사례 공통으로 <strong>IP 직접 접속, 이름과 내용이 안 맞는 파일, 자체 서명 인증서, 일정한 주기</strong>가 핵심 단서였습니다. 그리고 IcedID는 **"정상 포트(443)와 정상 서비스(Firebase) 안에 숨는다"**는 점에서 한 단계 어려워요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-official-answers">Unit 42 공식 정답과 대조</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">질문</th>
+<th scope="col">이 분석</th>
+<th scope="col">Unit 42 정답</th>
+<th scope="col">일치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>감염 시작</td>
+<td>2023-04-19 15:31 UTC (15:31:07)</td>
+<td>2023-04-19 15:31 UTC</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>IP</td>
+<td>10.4.19.136</td>
+<td>10.4.19[.]136</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>MAC</td>
+<td>14:58:d0:2e:c5:ae</td>
+<td>14:58:d0:2e:c5:ae</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>호스트이름</td>
+<td>DESKTOP-SFF9LJF</td>
+<td>DESKTOP-SFF9LJF</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>사용자</td>
+<td>csilva (Cornelius Silva)</td>
+<td>csilva (Cornelius Silva, LDAP)</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>후속 활동</td>
+<td>BackConnect (193.149.176.100:443)</td>
+<td>BackConnect</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>이 페이지에서 <strong>더 본 것</strong>: TDS 쿠키 안의 15:20:41(캡처 전 방문 추정), <code>_u</code>·<code>__io</code>·<code>_gat</code> 쿠키 해독, 비콘 주기 302초, BackConnect 세 세션의 역할과 실제 명령, JA3 비교, 그리고 10.4.19.138의 zip/.wsf 다운로드. 마지막은 퀴즈 범위 밖이지만 실제 업무라면 꼭 따로 보고해야 할 내용입니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-query-sheet">복사용 쿼리 모음</h2>
+<p><code>&lt;…&gt;</code>를 바꿔서 쓰세요.</p>
+<p><strong>PC 정체 (DHCP가 없을 때)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;internal-CIDR&gt; &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;internal-CIDR&gt; &amp;&amp; port.dst == [137, 138]
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst == &lt;DC-IP&gt; &amp;&amp; port.dst == 389
+</code></pre></div></div>
+<p><strong>수상한 이름 → 감염 PC 좁히기</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;internal-CIDR&gt; &amp;&amp; protocols == dns
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>host.dns == [&lt;domain-1&gt;, &lt;domain-2&gt;, &lt;domain-3&gt;]
+</code></pre></div></div>
+<p><strong>평문 HTTP</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == http
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>host.http == &lt;IP-or-domain&gt;
+</code></pre></div></div>
+<p><strong>HTTPS C2</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; host.http == [&lt;domain-1&gt;, &lt;domain-2&gt;]
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>cert.issuer.on == "Internet Widgits Pty Ltd"
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tags == cert:self-signed &amp;&amp; ip.src == &lt;host-IP&gt;
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p><strong>비콘</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == &lt;C2-IP&gt;
+</code></pre></div></div>
+<p><strong>443인데 TLS가 아닌 것 (BackConnect 같은 것)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; port.dst == 443 &amp;&amp; protocols != tls
+</code></pre></div></div>
+<p><strong>범위</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == [&lt;IOC-IP-1&gt;, &lt;IOC-IP-2&gt;, &lt;IOC-IP-3&gt;] &amp;&amp; ip.src != &lt;host-IP&gt;
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst == &lt;internal-CIDR&gt; &amp;&amp; ip.dst != &lt;DC-IP&gt;
+</code></pre></div></div>
+<p><strong>사용한 CyberChef 레시피</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">레시피</th>
+<th scope="col">용도</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JWT Decode / From Base64 (URL safe)</td>
+<td>TDS 쿠키 <code>34ab8=</code></td>
+</tr>
+<tr>
+<td>From UNIX Timestamp</td>
+<td>JWT 안의 시간, 파일 관리자 목록의 시간</td>
+</tr>
+<tr>
+<td>From Hex</td>
+<td>IcedID <code>_u</code> 쿠키 → 호스트이름, 사용자</td>
+</tr>
+<tr>
+<td>To Hex</td>
+<td>응답 첫 바이트(<code>1f 8b 08 08</code> gzip), 세션 첫 바이트(<code>16 03</code>/<code>17 03</code>) 확인</td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>BackConnect Raw에서 명령·결과 뽑기</td>
+</tr>
+<tr>
+<td>Gunzip → Unzip</td>
+<td>다른 PC가 받은 zip의 <strong>파일 목록만</strong> 보기</td>
+</tr>
+<tr>
+<td>Defang URL / Defang IP</td>
+<td>보고서에 IOC 적을 때</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-lessons">교훈</h2>
+<ul>
+<li><strong>긴 PCAP은 걸러내서 봅니다.</strong> 6시간짜리는 눈으로 못 훑어요. DNS 이름 목록에서 정상(Microsoft, 내부)을 빼고 남는 것부터 보세요.</li>
+<li><strong>DHCP가 없어도 PC 정체는 찾을 수 있습니다.</strong> Kerberos 컴퓨터 계정(<code>$</code>), NetBIOS, <code>mac.src</code> — 그리고 악성코드가 직접 보낸 정보(쿠키)까지.</li>
+<li><strong>IP로 된 URL, User-Agent 없는 요청, 첫 방문인데 쿠키가 있는 요청</strong>은 모두 "사람이 아닌 것"의 표시입니다.</li>
+<li><strong>정상 서비스(Firebase)도 악용됩니다.</strong> 도메인이 정상인지보다 <strong>"누가 거기로 보냈나"</strong>(302의 출처)를 보세요.</li>
+<li><strong>OpenSSL 기본값 인증서(<code>Internet Widgits Pty Ltd</code>)는 그 자체로 강한 단서</strong>입니다. <code>cert.issuer.on</code>으로 바로 찾을 수 있어요.</li>
+<li><strong>비콘은 간격과 크기가 일정합니다.</strong> 세션 단위로 세세요. DNS는 캐시 때문에 덜 나옵니다.</li>
+<li><strong>443이라고 다 TLS는 아닙니다.</strong> <code>port.dst == 443 &amp;&amp; protocols != tls</code>, 그리고 첫 바이트(<code>16 03</code>/<code>17 03</code>)로 구별하세요.</li>
+<li><strong>JA3 "개수 변화"는 최신 브라우저 때문에 거의 의미가 없습니다</strong>(Edge는 연결마다 JA3가 바뀜). 대신 <strong>같은 PC 안에서 처음 보는 JA3 + 처음 보는 도메인 + 자체 서명</strong> 조합을 보세요. 가능하면 JA4를 쓰세요.</li>
+<li><strong>명령과 네트워크 흔적을 시간으로 맞춰 보세요.</strong> <code>net group … /domain</code>(20:49:17)과 DC로 간 SMB(20:49:17)가 같은 초입니다.</li>
+<li><strong>퀴즈 범위 밖도 봅니다.</strong> "감염 PC는 한 대"라는 결론이 나와도, 다른 PC의 이상한 다운로드는 따로 보고서로 남기세요.</li>
+</ul>
+</section>
+<section>
+<h2 id="ko-references">참고</h2>
+<ul>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-icedid/">Wireshark Quiz: IcedID (Cold as Ice) — Unit 42</a> — 문제와 PCAP 위치</li>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-icedid-answers/">Answers to Unit 42 Wireshark Quiz for IcedID</a> — 공식 정답, IOC, 해시</li>
+<li>IcedID GZIPLOADER Analysis — Binary Defense — 가짜 gzip 단계</li>
+<li>ICEDID network infrastructure — Elastic Security Labs — 쿠키 값의 뜻</li>
+<li>IcedID's updated photoloader — sysopfb — <code>_u</code>, <code>_gat</code>, <code>__io</code>, <code>_gid</code> 설명</li>
+<li><a href="https://www.malware-traffic-analysis.net/2023/04/19/index.html">2023-04-19 Qakbot activity — malware-traffic-analysis.net</a> — 같은 날 zip/.wsf 배포</li>
+<li><a href="https://www.malware-traffic-analysis.net/training-exercises.html">malware-traffic-analysis.net 연습 문제 목록</a></li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

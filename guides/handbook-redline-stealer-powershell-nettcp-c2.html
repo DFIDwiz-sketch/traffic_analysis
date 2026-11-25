@@ -1,0 +1,2020 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>RedLine Stealer — PowerShell script to net.tcp C2 data theft · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase4Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase4Title">RedLine Stealer — PowerShell script to net.tcp C2 data theft</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-answers">Answers at a glance</a></li>
+<li><a href="#en-step-0">Step 0 — Data range and the big picture</a></li>
+<li><a href="#en-dhcp">Step 1 — IP, MAC and hostname from DHCP (Q2–Q4)</a></li>
+<li><a href="#en-kerberos">Step 2 — The DC and the user account (Q5)</a></li>
+<li><a href="#en-dns">Step 3 — Odd domains in DNS</a></li>
+<li><a href="#en-http">Step 4 — Cleartext HTTP: PowerShell check-ins and a download</a></li>
+<li><a href="#en-step-5">Step 5 — The HTTPS download and JA3</a></li>
+<li><a href="#en-c2-hunt">Step 6 — Find the C2 by unusual port</a></li>
+<li><a href="#en-c2-session">Step 7 — Reading the C2 session: protocol and flow</a></li>
+<li><a href="#en-scope">Step 10 — Scope</a></li>
+<li><a href="#en-conclusion">Conclusion</a></li>
+<li><a href="#en-timeline">Timeline</a></li>
+<li><a href="#en-iocs">Indicators of compromise</a></li>
+<li><a href="#en-attack">ATT&amp;CK mapping</a></li>
+<li><a href="#en-compare">Compared with the Trickbot case</a></li>
+<li><a href="#en-official-answers">Compared with the official Unit 42 answers</a></li>
+<li><a href="#en-query-sheet">Copy-ready query sheet</a></li>
+<li><a href="#en-lessons">Lessons learned</a></li>
+<li><a href="#en-references">References</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-answers">한눈에 보는 답</a></li>
+<li><a href="#ko-step-0">0단계 — 데이터 범위와 전체 그림</a></li>
+<li><a href="#ko-dhcp">1단계 — DHCP로 IP, MAC, 호스트이름 찾기 (Q2~Q4)</a></li>
+<li><a href="#ko-kerberos">2단계 — DC와 사용자 계정 찾기 (Q5)</a></li>
+<li><a href="#ko-dns">3단계 — DNS로 수상한 도메인 찾기</a></li>
+<li><a href="#ko-http">4단계 — 평문 HTTP: PowerShell의 보고와 다운로드</a></li>
+<li><a href="#ko-step-5">5단계 — HTTPS 다운로드와 JA3</a></li>
+<li><a href="#ko-c2-hunt">6단계 — 이상한 포트로 C2 찾기</a></li>
+<li><a href="#ko-c2-session">7단계 — C2 세션 읽기: 프로토콜과 흐름</a></li>
+<li><a href="#ko-scope">10단계 — 범위 확인</a></li>
+<li><a href="#ko-conclusion">전체 결론</a></li>
+<li><a href="#ko-timeline">타임라인</a></li>
+<li><a href="#ko-iocs">침해 지표(IOC)</a></li>
+<li><a href="#ko-attack">ATT&amp;CK 매핑</a></li>
+<li><a href="#ko-compare">Trickbot 사례와 비교</a></li>
+<li><a href="#ko-official-answers">Unit 42 공식 정답과 대조</a></li>
+<li><a href="#ko-query-sheet">복사용 쿼리 모음</a></li>
+<li><a href="#ko-lessons">교훈</a></li>
+<li><a href="#ko-references">참고</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>Use the start-up traffic to identify the host, then isolate the external net.tcp session. Compare its direction and byte counts with the earlier HTTP and TLS connections. The handbook identifies separate evidence of a screenshot, system details, a browser credential and a document.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/redline-stealer-powershell-nettcp-c2/">DFIR Handbook original</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td>Unit 42 Wireshark quiz PCAP, July 2023: 2023-07-10 22:39:22 – 22:39:58 UTC (36 s), about 120 sessions</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Treated as closed network (no hash/reputation lookups). Steps and queries in Arkime terms, decoding with CyberChef</td>
+</tr>
+<tr>
+<td><strong>Deliverable</strong></td>
+<td>Answers to the 6 quiz questions</td>
+</tr>
+<tr>
+<td><strong>Related pages</strong></td>
+<td><a href="handbook-arkime-only-credential-theft-tls-c2.html">Arkime-only walkthrough — Trickbot case</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/offline-pcap-guide/">Arkime offline PCAP guide</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-answers">Answers at a glance</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">Question</th>
+<th scope="col">Answer</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Infection start</td>
+<td><strong>2023-07-10 22:39 UTC</strong> (first malicious traffic: PowerShell HTTP request at 22:39:47)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>2</td>
+<td>IP</td>
+<td><strong>10.7.10.47</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MAC</td>
+<td><strong>80:86:5b<span>🆎</span>1e:c4</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Hostname</td>
+<td><strong>DESKTOP-9PEA63H</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>5</td>
+<td>User</td>
+<td><strong>rwalters</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Targeted information</td>
+<td>Desktop and Documents files (<code>*.txt</code>, <code>*.doc*</code>, <code>*key*</code>, <code>*wallet*</code>, <code>*seed*</code>), browser user data (Chromium- and Firefox-based), crypto wallets (programs and browser extensions), cloud/developer API keys and credentials. Actually uploaded: screenshot, system details, process list, one saved Edge password, <code>Top_secret_ducment.docx</code></td>
+<td>Confirmed</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Network</td>
+<td>10.7.10.0/24, gateway 10.7.10.1, DC/DNS/DHCP <strong>10.7.10.9 (WIN-S3WT6LGQFVX)</strong>, domain <code>coolweathercoat.com</code></td>
+</tr>
+<tr>
+<td>Initial execution</td>
+<td><code>powershell.exe ... &amp; 'C:\Users\rwalters\Documents\mystery_file.ps1'</code></td>
+</tr>
+<tr>
+<td>Check-ins</td>
+<td><code>hxxp://623start[.]site/?status=start&amp;av=Windows%20Defender</code>, <code>/?status=install</code> (195.161.114.3)</td>
+</tr>
+<tr>
+<td>Payload</td>
+<td><code>hxxp(s)://guiatelefonos[.]com/data/czx.jpg</code> (92.118.151.9), about 353 KB over HTTPS</td>
+</tr>
+<tr>
+<td>C2 / exfil</td>
+<td><strong>194.26.135.119:12432</strong>, .NET net.tcp (SOAP), 542,386 bytes uploaded</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-step-0">Step 0 — Data range and the big picture</h2>
+<p><strong>Goal:</strong> find the start, end and size of the data and the internal hosts.</p>
+<p><strong>Query:</strong> time range <strong>All</strong>, empty search, Search. Start/end from Sessions sorted Start Time ascending / Stop Time descending (method in <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot step 1</a>).</p>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start  2023/07/10 22:39:22 UTC
+End    2023/07/10 22:39:58 UTC   (duration 00:00:36)
+Sessions about 120
+Src IP 10.7.10.47 (118)   10.7.10.9 (1)   0.0.0.0 (1)
+</code></pre></div></div>
+<p>SPI View → General → Dst Port (session count, protocol/port):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>udp 53 (34)   tcp 88 (26)   tcp 443 (20)   tcp 389 (14)   udp 389 (7)   tcp 135 (4)   tcp 49669 (3)
+tcp 80 (2)    udp 67 (1)    udp 68 (1)     udp 5353 (1)   udp 137 (1)   udp 138 (1)   udp 123 (1)
+tcp 445 (1)   tcp 55390 (1) tcp 12432 (1)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>The capture is only <strong>36 seconds</strong>, and the very first session is <strong>DHCP</strong> (<code>0.0.0.0:68 → 255.255.255.255:67</code>): it starts as the PC gets its IP — just booted or reconnected.</li>
+<li><strong>One internal client, 10.7.10.47</strong>, starts almost every session (118). 10.7.10.9 starts only the DHCP reply and otherwise just receives — a <strong>server</strong>. 0.0.0.0 is the DHCP request before the PC has an address.</li>
+<li>Ports grouped by role:</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Ports</th>
+<th scope="col">Protocols</th>
+<th scope="col">Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>53, 88, 389, 445, 135, 49669·55390 (dynamic RPC), 123</td>
+<td>DNS, Kerberos, LDAP, SMB, RPC, NTP</td>
+<td><strong>Normal AD traffic</strong> of a domain logon, all to 10.7.10.9</td>
+</tr>
+<tr>
+<td>67/68, 137/138, 5353</td>
+<td>DHCP, NetBIOS, mDNS</td>
+<td>Normal</td>
+</tr>
+<tr>
+<td>443 (20)</td>
+<td>TLS</td>
+<td>Mostly Microsoft/Bing services; checked in <a href="#en-step-5">step 5</a></td>
+</tr>
+<tr>
+<td><strong>80 (2)</strong></td>
+<td>HTTP</td>
+<td><strong>Cleartext</strong> — look first</td>
+</tr>
+<tr>
+<td><strong>12432 (1)</strong></td>
+<td>???</td>
+<td>No standard service uses it — <strong>most suspicious</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>In a 36-second PCAP, "one unknown port" jumps out. We still fill in the basics first, because the report needs IP, MAC, hostname and account.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-dhcp">Step 1 — IP, MAC and hostname from DHCP (Q2–Q4)</h2>
+<p><strong>Goal:</strong> a DHCP request carries the <strong>MAC address and hostname</strong>. This PCAP starts with DHCP, so it is the most reliable source.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>protocols</code></td>
+<td>Protocol field detected by Arkime</td>
+</tr>
+<tr>
+<td><code>== dhcp</code></td>
+<td>DHCP sessions only</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>SPI View → <strong>dhcp</strong> → <strong>Load All</strong>. The key fields are <code>dhcp.host</code> (hostname), <code>dhcp.mac</code> (client MAC) and <code>dhcp.classId</code> (vendor class). Open the sessions to see the request and reply.</p>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:22.849  DHCP Request   0.0.0.0:68 → 255.255.255.255:67
+              Client MAC        80:86:5b:ab:1e:c4
+              Host Name (12)    DESKTOP-9PEA63H
+              Client FQDN (81)  DESKTOP-9PEA63H.coolweathercoat.com
+              Requested IP (50) 10.7.10.47
+              Vendor class (60) MSFT 5.0
+
+22:39:22.850  DHCP ACK       10.7.10.9:67 → 255.255.255.255:68
+              Your IP           10.7.10.47
+              Subnet mask       255.255.255.0
+              Router            10.7.10.1
+              DNS server        10.7.10.9
+              Domain name       coolweathercoat.com
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>IP 10.7.10.47, MAC 80:86:5b<span>🆎</span>1e:c4, hostname DESKTOP-9PEA63H</strong> — answers to Q2, Q3, Q4.</li>
+<li><code>MSFT 5.0</code> is the DHCP vendor class every Windows version since 2000 sends — evidence of a Windows PC.</li>
+<li>The DHCP reply also gives the <strong>network facts</strong>: 10.7.10.0/24 (mask 255.255.255.0), gateway 10.7.10.1, DNS and DHCP server 10.7.10.9, domain <code>coolweathercoat.com</code>.</li>
+<li><strong>Cross-check:</strong> ordinary packets from this PC carry Src MAC <code>80:86:5b:ab:1e:c4</code>, and the NetBIOS (137) broadcast names <code>DESKTOP-9PEA63H</code> in domain <code>COOLWEATHERCOAT</code>. Two sources, same values.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">When there is no DHCP</p>
+<p>A capture that starts after the PC already had its IP has no DHCP. Then use NetBIOS names (udp 137/138 broadcast), the Kerberos cname ending in <code>$</code> (next step) or host details in SMB sessions.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-kerberos">Step 2 — The DC and the user account (Q5)</h2>
+<p><strong>Goal:</strong> find the domain controller's name and the <strong>user account</strong> that logged on to this PC.</p>
+<h3 id="en-dc">The DC (DNS SRV)</h3>
+<p>At logon a Windows PC asks DNS "where is this domain's DC?" with an <strong>SRV record</strong> query.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>host.dns == _ldap._tcp.dc._msdcs.*
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>host.dns</code></td>
+<td>Names queried over DNS</td>
+</tr>
+<tr>
+<td><code>_ldap._tcp.dc._msdcs.*</code></td>
+<td>The standard "where is the DC's LDAP service?" query; <code>*</code> = any domain after it</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result (DNS answers in the session detail):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Query   _ldap._tcp.dc._msdcs.coolweathercoat.com  (SRV)
+Answer  SRV  win-s3wt6lgqfvx.coolweathercoat.com
+Query   win-s3wt6lgqfvx.coolweathercoat.com  (A)
+Answer  10.7.10.9
+</code></pre></div></div>
+<p>→ <strong>DC 10.7.10.9, name WIN-S3WT6LGQFVX.</strong> <code>WIN-</code> + random letters is the default name of a Windows Server that was never renamed.</p>
+<h3 id="en-user">The user (Kerberos)</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.src == 10.7.10.47</code></td>
+<td>Connections started by the suspect PC</td>
+</tr>
+<tr>
+<td><code>&amp;&amp;</code></td>
+<td>AND</td>
+</tr>
+<tr>
+<td><code>protocols == krb5</code></td>
+<td>Kerberos sessions only</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>SPI View → <strong>krb5</strong> → <strong>Load All</strong> (if only field names show, click the name or Load All).</p>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>cname   desktop-9pea63h$   rwalters
+Realm   COOLWEATHERCOAT.COM
+sname   krbtgt/COOLWEATHERCOAT.COM   ...
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong><code>desktop-9pea63h$</code></strong> ends in <code>$</code> — the <strong>computer account</strong>, matching step 1.</li>
+<li><strong><code>rwalters</code></strong> has no <code>$</code> — the <strong>user account</strong>. Answer to Q5.</li>
+<li>26 Kerberos sessions right after the capture starts (22:39:23~) fit step 1: the PC starting and <strong>the user logging on</strong>.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-dns">Step 3 — Odd domains in DNS</h2>
+<p><strong>Goal:</strong> the names a PC looks up show where it tried to go. Remove the normal names and see what is left.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == dns
+</code></pre></div></div>
+<p>SPI View → <strong>dns</strong> → <code>host.dns</code> values; Sessions sorted by Start Time ascending shows the order.</p>
+<p><strong>Actual result (in time order):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:23-24  _ldap._tcp... / _kerberos._tcp... SRV, WIN-S3WT6LGQFVX, wpad.coolweathercoat.com  ← AD logon
+22:39:23     dns.msftncsi.com                                      ← Windows "am I online?" check
+22:39:33-34  api.msn.com, assets.msn.com, www.bing.com, r.bing.com, th.bing.com,
+             fp.msedge.net, k-ring.msedge.net, l-ring.msedge.net, wac-ring.msedge.net,
+             fp-as-nocache.azureedge.net, fp-vs.azureedge.net, fp-afd-nocache-ccp.azureedge.net,
+             static-ecst.licdn.com, v20.events.data.microsoft.com,
+             sat09prdapp01-canary-opaph.netmon.azure.com, &lt;hex&gt;.clo.footprintdns.com   ← Windows / Edge start-up
+22:39:44     checkappexec.microsoft.com                            ← SmartScreen
+22:39:46     evoke-windowsservices-tas.msedge.net, client.wns.windows.com   ← Windows services
+22:39:47     623start.site        → 195.161.114.3                  ← ?
+22:39:49     guiatelefonos.com    → 92.118.151.9                   ← ?
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>The burst of Microsoft, Bing, MSN and Azure CDN names at 22:39:33–34 is <strong>normal noise</strong> from Windows and Edge starting after logon. <code>msedge.net</code>, <code>footprintdns.com</code>, <code>azureedge.net</code> are Microsoft connection measurement and CDN services.</li>
+<li><strong><code>checkappexec.microsoft.com</code> (22:39:44)</strong> is where Windows Defender <strong>SmartScreen</strong> asks Microsoft "is this program/file safe to run?". A legitimate service, but it appears <strong>when the user is about to run something</strong>, three seconds before the suspicious traffic. (What was checked is encrypted — inferred.)</li>
+<li>The two left over, <strong><code>623start.site</code></strong> and <strong><code>guiatelefonos.com</code></strong>, are names a company PC has no reason to visit. <code>.site</code> is a cheap TLD frequently abused. Step 4 shows what HTTP did with them.</li>
+<li><strong>Note for later:</strong> 194.26.135.119 (port 12432) is <strong>not in this list</strong>. The PC connected to the IP with no DNS lookup — typical of an IP <strong>hard-coded</strong> in the malware.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-http">Step 4 — Cleartext HTTP: PowerShell check-ins and a download</h2>
+<p><strong>Goal:</strong> read the two HTTP sessions.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == http
+</code></pre></div></div>
+<p>SPI View → <strong>http</strong> → Load All, then open both sessions in Sessions and read Source / Destination.</p>
+<p><strong>Actual result — session 1 (195.161.114.3:80):</strong></p>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>GET /?status=start&amp;av=Windows%20Defender HTTP/1.1
+User-Agent: Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.3031
+Host: 623start.site
+Connection: Keep-Alive
+
+GET /?status=install HTTP/1.1
+User-Agent: Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.3031
+Host: 623start.site
+</code></pre></div></div>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>HTTP/1.1 200 OK
+Date: Mon, 10 Jul 2023 22:39:48 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 14
+Server: Apache/2.4.6 (CentOS) PHP/7.4.33
+X-Powered-By: PHP/7.4.33
+
+404 HTTP Error
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong><code>WindowsPowerShell/5.1</code> in the User-Agent</strong> — the default value added by PowerShell's <code>Invoke-WebRequest</code> / <code>Invoke-RestMethod</code>. Not a person in a browser: <strong>a PowerShell script made the request</strong>. (User-Agents can be faked, but malware rarely pretends to be PowerShell, so this is a fairly reliable clue.)</li>
+<li>Split the URIs:</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>/?status=start                 → "the script has started"
+&amp;av=Windows%20Defender         → "the antivirus here is Windows Defender"  (%20 = space; CyberChef URL Decode)
+/?status=install               → "now installing (next stage)"
+</code></pre></div></div>
+<p>The infected PC <strong>reports its status and antivirus to the attacker</strong> — a check-in. Attackers can pick a payload based on the antivirus.
+- The response is odd: <strong>status <code>200 OK</code> (success) but the body says <code>404 HTTP Error</code></strong> (14 bytes). A real "not found" would have status 404. Possibly camouflage so that a quick glance says "page did not exist". Either way the server only <strong>records the check-ins</strong>.</p>
+<p><strong>Actual result — session 2 (92.118.151.9:80):</strong></p>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>GET /data/czx.jpg HTTP/1.1
+Host: guiatelefonos.com
+Connection: Keep-Alive
+</code></pre></div></div>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>HTTP/1.1 301 Moved Permanently
+Server: nginx/1.20.2
+Location: hxxps://guiatelefonos[.]com:443/data/czx.jpg
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>This request has <strong>no User-Agent at all</strong>. Browsers always send one. Only <code>Host</code> and <code>Connection</code> = <strong>a minimal request built by a program</strong> (for example .NET's basic web client).</li>
+<li>The server <strong>redirects (301) to HTTPS</strong>, so the file itself comes over encrypted 443 — no longer visible in cleartext.</li>
+<li>The name ends in <code>.jpg</code>, but there is no reason to fetch an "image" right after a PowerShell check-in — suspect a <strong>payload disguised as an image</strong>.</li>
+<li>Timing: 22:39:47.579 start → 22:39:48.415 install → <strong>0.8 s later</strong> 22:39:49.250 czx.jpg. It reported "install" and went straight for the payload.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-step-5">Step 5 — The HTTPS download and JA3</h2>
+<p><strong>Goal:</strong> after the 301, what and how much came over HTTPS?</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == 92.118.151.9 &amp;&amp; port.dst == 443
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 92.118.151.9</code></td>
+<td>Connections to guiatelefonos.com's IP</td>
+</tr>
+<tr>
+<td><code>port.dst == 443</code></td>
+<td>HTTPS port</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result (session detail):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Time          2023/07/10 22:39:49.323 - 22:39:49.874 UTC   (0.55 s)
+Src           10.7.10.47:49743   Packets 61    Databytes 413
+Dst           92.118.151.9:443   Packets 263   Databytes 353,715
+TLS           SNI guiatelefonos.com   TLSv1.2   Cipher 0xc02f (ECDHE_RSA_WITH_AES_128_GCM_SHA256)
+              JA3  3b5074b1b5d032e5620f69f9f700ff0e
+              JA3S 389ed42c02ebecc32e73aa31def07e14
+Certificate   Subject CN guiatelefonos.com   SAN guiatelefonos.com, www.guiatelefonos.com
+              Issuer  CN R3, O Let's Encrypt
+              Not Before 2023-07-08 16:17:07 UTC   Not After 2023-10-06
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Server → PC 353,715 bytes, PC → server 413 bytes</strong>: one request, about 345 KB received in half a second. Encrypted, but this is the <code>czx.jpg</code> from step 4 requested again over HTTPS. (TLS record overhead makes it a little bigger than the file; per the Unit 42 answers the file is a 348,160-byte RedLine executable.)</li>
+<li><strong>The certificate is a proper Let's Encrypt certificate</strong>, not self-signed — not suspicious on its own; attackers get free certificates easily. It was issued <strong>2 days before</strong> (07-08), but Let's Encrypt certificates are renewed every 90 days anyway, so that is weak evidence. What makes this download suspicious is <strong>the context, not the certificate</strong>: PowerShell check-in → request with no User-Agent → <code>.jpg</code> disguise.</li>
+</ul>
+<h3 id="en-ja3">What does JA3 show?</h3>
+<p>This PCAP is a good test of the idea "new JA3 values after infection are evidence of infection".</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p>SPI View → <strong>tls</strong> → <strong>JA3</strong>:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>JA3                                  count   destinations (SNI)
+6271f898ce5be7dd52b0fc260d0662b3     14      www.bing.com, r.bing.com, th.bing.com, *.msedge.net, *.azureedge.net,
+                                             static-ecst.licdn.com, netmon.azure.com, checkappexec.microsoft.com
+3b5074b1b5d032e5620f69f9f700ff0e      3      evoke-windowsservices-tas.msedge.net (22:39:46), client.wns.windows.com (22:39:46),
+                                             guiatelefonos.com (22:39:49)  ← the payload download
+37f463bf4616ecd445d4a1937da06e19      2      api.msn.com, assets.msn.com
+28a2c9bd18a11de089ef85a160da29e4      1      v20.events.data.microsoft.com
+</code></pre></div></div>
+<ul>
+<li>The payload download (<code>guiatelefonos.com</code>) has <strong>the same JA3 that Windows services (WNS etc.) used three seconds earlier</strong>, because PowerShell/.NET uses the built-in Windows TLS stack. So <strong>no new JA3 appeared after the infection</strong>.</li>
+<li>And the C2 (12432) <strong>is not TLS at all</strong>, so it has no JA3.</li>
+<li>In this case, "a change in the number of JA3 values" would not have caught the infection. A JA3 change is <strong>strong evidence when present, but its absence does not mean clean</strong>. On the other hand, the same JA3 going to an <strong>odd destination (SNI)</strong> instead of Microsoft services stands out — read JA3 together with destinations.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-c2-hunt">Step 6 — Find the C2 by unusual port</h2>
+<p><strong>Goal:</strong> formally find the port 12432 session seen in step 0 — a method that works on any PCAP.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; ip.dst != 10.0.0.0/8 &amp;&amp; ip.dst != 224.0.0.0/4 &amp;&amp; port.dst != 80 &amp;&amp; port.dst != 443 &amp;&amp; port.dst != 53
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.src == 10.7.10.47</code></td>
+<td>Connections started by the suspect PC</td>
+</tr>
+<tr>
+<td><code>ip.dst != 10.0.0.0/8</code></td>
+<td>Destination <strong>not</strong> internal</td>
+</tr>
+<tr>
+<td><code>ip.dst != 224.0.0.0/4</code></td>
+<td>Without multicast (224–239): mDNS, IGMP noise</td>
+</tr>
+<tr>
+<td><code>port.dst != 80 &amp;&amp; … != 443 &amp;&amp; … != 53</code></td>
+<td>Without web, HTTPS, DNS</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:50.151  10.7.10.47:49744 → 194.26.135.119:12432   tcp   Packets 380/407   Databytes 542,386 / 7,179
+</code></pre></div></div>
+<p>Exactly one session remains.</p>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Port 12432</strong> is not used by any standard service.</li>
+<li>As step 3 showed, <strong>no DNS lookup</strong> points to this IP — it is built into the program.</li>
+<li>It starts <strong>0.3 s</strong> (22:39:50.151) after the payload download ended (22:39:49.874) — the downloaded file ran and connected immediately.</li>
+<li>Above all, <strong>the PC sent 75 times more data (542,386 bytes) than it received (7,179 bytes)</strong>: an upload, i.e. <strong>exfiltration</strong>.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-c2-session">Step 7 — Reading the C2 session: protocol and flow</h2>
+<p><strong>Goal:</strong> which protocol the 12432 session uses and what was exchanged when.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == 194.26.135.119 &amp;&amp; port.dst == 12432
+</code></pre></div></div>
+<p>Open the session. Arkime has no parser for this protocol, so Protocols shows <strong>only <code>tcp</code></strong> and there is no HTTP or TLS section. Read the packet content (Source / Destination) as <code>ascii</code> — or, since it is long, download <strong>Source Raw</strong> and use CyberChef <strong>Strings</strong>.</p>
+<p><strong>Actual result — the first bytes the PC sent:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>00 01 00 01 02 02 1f  net.tcp://194.26.135.119:12432/  03 08 0c ...
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>net.tcp://194.26.135.119:12432/
+hxxp://tempuri[.]org/Contract/MSValue1
+Authorization   c75a68098b33270de4b87af925fb5ffd
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><code>net.tcp://</code> is the <strong>.NET WCF (Windows Communication Foundation) net.tcp protocol</strong>: SOAP messages in a binary format over plain TCP instead of HTTP. Not as neat as cleartext HTTP, but the strings are readable. RedLine is written in .NET, so it uses this.</li>
+<li><strong><code>hxxp://tempuri[.]org/</code></strong> is the <strong>default placeholder namespace</strong> .NET tools insert when the developer sets none. Nothing is actually fetched from it. Real products usually change it before release, so <code>tempuri.org</code> in traffic to an external IP points to a quickly built .NET program — malware included.</li>
+<li><strong><code>MSValue1</code>, <code>MSValue2</code>, <code>MSValue3</code></strong> are the method names called, renamed to hide their meaning.</li>
+<li><strong><code>Authorization c75a6809…</code></strong> looks like a key identifying this malware build (inferred) — useful for finding other infections from the same operator.</li>
+</ul>
+<p><strong>Flow (time order):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:50.151  TCP connect (SYN → SYN-ACK → ACK)
+22:39:50.425  PC → server   41 B      net.tcp preamble (address)
+22:39:50.732  server → PC    1 B      preamble ack
+22:39:50.753  PC → server   218 B     MSValue1  (check-in with Authorization key)
+22:39:51.037  server → PC   159 B     MSValue1Response
+22:39:51.042  PC → server   166 B     MSValue2  ("give me my settings")
+22:39:51.347  server → PC   6,899 B   MSValue2Response  ← target list (step 8)
+              ... about 5 seconds: the malware collects data on the PC ...
+22:39:56.522  PC → server   541,961 B MSValue3  ← stolen data (step 9), 373 segments until 22:39:57.806
+22:39:58.311  server → PC   120 B     MSValue3Response (ack)
+</code></pre></div></div>
+<ul>
+<li><strong>"Get settings → collect for 5 seconds → upload in one go"</strong> — the textbook infostealer flow.</li>
+<li>Unlike Trickbot, there is <strong>no beacon</strong>: no connection held open for minutes, no repeated check-ins. A <strong>one-shot</strong> session finished in 8 seconds — infostealers often "steal and leave". In the report's C2 field: "single short session, no repeating beacon".</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-scope">Step 10 — Scope</h2>
+<p><strong>Goal:</strong> check whether the PC tried to spread to other internal hosts.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; ip.dst == 10.7.10.0/24 &amp;&amp; ip.dst != 10.7.10.9
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Piece</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 10.7.10.0/24</code></td>
+<td>Connections to the internal network</td>
+</tr>
+<tr>
+<td><code>ip.dst != 10.7.10.9</code></td>
+<td>Without the DC</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Actual result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:23.138  udp 137 → 10.7.10.255:137   (NetBIOS name broadcast)
+22:39:26.828  udp 138 → 10.7.10.255:138   (NetBIOS browser broadcast)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong> only two broadcasts (<code>.255</code>); no SMB, RPC or RDP to other hosts. <strong>No lateral movement.</strong> This PCAP has no other internal PCs, so "are other PCs infected?" cannot be answered here. In a real network, search for other hosts talking to the IOC IPs, as in <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot step 18</a>:</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == [195.161.114.3, 92.118.151.9, 194.26.135.119] &amp;&amp; ip.src != 10.7.10.47
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="en-conclusion">Conclusion</h2>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:22  PC boots / user rwalters logs on (DHCP, Kerberos, LDAP)
+22:39:44  SmartScreen check (checkappexec.microsoft.com)
+22:39:47  mystery_file.ps1 runs → PowerShell reports "start, AV = Windows Defender" to 623start.site
+22:39:48  reports "install"
+22:39:49  fetches czx.jpg from guiatelefonos.com → 301 → HTTPS download (~345 KB, RedLine)
+22:39:50  RedLine connects to 194.26.135.119:12432 (net.tcp), gets target list
+22:39:56  uploads screenshot, system info, Edge password, document (~542 KB)
+22:39:58  server acknowledges — done in 11 seconds from first check-in
+</code></pre></div></div>
+</section>
+<section>
+<h2 id="en-timeline">Timeline</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">UTC (2023-07-10)</th>
+<th scope="col">Event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22:39:22</td>
+<td>DHCP: DESKTOP-9PEA63H gets 10.7.10.47</td>
+</tr>
+<tr>
+<td>22:39:23–24, 22:39:32–33</td>
+<td>Domain logon (DNS SRV, LDAP, Kerberos <code>rwalters</code>, SMB/RPC to DC)</td>
+</tr>
+<tr>
+<td>22:39:33–35</td>
+<td>Windows/Edge start-up traffic (MSN, Bing, Microsoft CDN)</td>
+</tr>
+<tr>
+<td>22:39:44</td>
+<td>SmartScreen check <code>checkappexec.microsoft.com</code></td>
+</tr>
+<tr>
+<td>22:39:47.579</td>
+<td>PowerShell → <code>623start[.]site/?status=start&amp;av=Windows%20Defender</code></td>
+</tr>
+<tr>
+<td>22:39:48.415</td>
+<td>PowerShell → <code>623start[.]site/?status=install</code></td>
+</tr>
+<tr>
+<td>22:39:49.250</td>
+<td><code>guiatelefonos[.]com/data/czx.jpg</code> (HTTP, no User-Agent) → 301</td>
+</tr>
+<tr>
+<td>22:39:49.323–49.874</td>
+<td>About 353 KB downloaded over HTTPS</td>
+</tr>
+<tr>
+<td>22:39:50.151</td>
+<td>Connection to 194.26.135.119:12432 (net.tcp)</td>
+</tr>
+<tr>
+<td>22:39:51.347</td>
+<td>Server sends the target list (6,899 B)</td>
+</tr>
+<tr>
+<td>22:39:56.522–57.806</td>
+<td>Exfil upload 541,961 B</td>
+</tr>
+<tr>
+<td>22:39:58.311</td>
+<td>Server acknowledges; capture ends</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-iocs">Indicators of compromise</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Type</th>
+<th scope="col">Indicator</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>hxxp://623start[.]site/?status=start&amp;av=</code>, <code>/?status=install</code></td>
+<td>PowerShell check-ins</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>195.161.114[.]3</code></td>
+<td>623start.site</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://guiatelefonos[.]com/data/czx.jpg</code>, <code>hxxps://guiatelefonos[.]com/data/czx.jpg</code></td>
+<td>Payload</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>92.118.151[.]9</code></td>
+<td>guiatelefonos.com</td>
+</tr>
+<tr>
+<td>IP:port</td>
+<td><code>194.26.135[.]119:12432</code> (<code>net.tcp://194.26.135[.]119:12432/</code>)</td>
+<td>RedLine C2 and exfil</td>
+</tr>
+<tr>
+<td>String</td>
+<td><code>Authorization c75a68098b33270de4b87af925fb5ffd</code></td>
+<td>Build / bot key (inferred)</td>
+</tr>
+<tr>
+<td>File path</td>
+<td><code>C:\Users\rwalters\Documents\mystery_file.ps1</code></td>
+<td>Initial execution script</td>
+</tr>
+<tr>
+<td>User-Agent</td>
+<td><code>Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.3031</code></td>
+<td>PowerShell downloader</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>3c42b93801f02696487de64bb623f81cf7baf73a379a46e1459ca19ae7dc2454</code></td>
+<td>RedLine executable (348,160 B)</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>f754d7674a3a74969cccb7d834c99b72b9f79c29dc8d0e9c15854a6bfb1a9c97</code></td>
+<td>PowerShell launcher script (800 B)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The two hashes cannot be computed from the PCAP (HTTPS download; the script never crossed the network) and come from the Unit 42 answers.</p>
+</section>
+<section>
+<h2 id="en-attack">ATT&amp;CK mapping</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Technique</th>
+<th scope="col">Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1204.002 User Execution: Malicious File</td>
+<td>"Run with PowerShell" style command line (inferred)</td>
+</tr>
+<tr>
+<td>T1059.001 PowerShell</td>
+<td><code>mystery_file.ps1</code>, <code>WindowsPowerShell</code> User-Agent</td>
+</tr>
+<tr>
+<td>T1518.001 Security Software Discovery</td>
+<td><code>av=Windows%20Defender</code> report</td>
+</tr>
+<tr>
+<td>T1105 Ingress Tool Transfer</td>
+<td><code>czx.jpg</code> download</td>
+</tr>
+<tr>
+<td>T1036 Masquerading</td>
+<td>Executable named <code>.jpg</code></td>
+</tr>
+<tr>
+<td>T1082 System Information Discovery, T1057 Process Discovery</td>
+<td>Uploaded system details and process list</td>
+</tr>
+<tr>
+<td>T1555.003 Credentials from Web Browsers</td>
+<td>Saved Edge password</td>
+</tr>
+<tr>
+<td>T1005 Data from Local System</td>
+<td><code>Top_secret_ducment.docx</code>, file-grabber rules</td>
+</tr>
+<tr>
+<td>T1113 Screen Capture</td>
+<td>PNG screenshot</td>
+</tr>
+<tr>
+<td>T1571 Non-Standard Port, T1095 Non-Application Layer Protocol</td>
+<td>TCP 12432, net.tcp</td>
+</tr>
+<tr>
+<td>T1041 Exfiltration Over C2 Channel</td>
+<td>MSValue3 upload</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-compare">Compared with the Trickbot case</h2>
+<p>Two malware families that both steal data leave very different shapes on the network. Knowing the differences helps narrow down the family in the next PCAP.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"><a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot (2020)</a></th>
+<th scope="col">RedLine Stealer (2023)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Initial execution</td>
+<td>Script (<code>WinHttp.WinHttpRequest.5</code>) downloads an EXE</td>
+<td>User runs a <code>.ps1</code>; PowerShell checks in</td>
+</tr>
+<tr>
+<td>Payload disguise</td>
+<td>EXE named <code>.png</code></td>
+<td>EXE named <code>.jpg</code>, fetched over HTTPS</td>
+</tr>
+<tr>
+<td>C2 protocol</td>
+<td>HTTP POST (8082) + TLS (447/449, self-signed)</td>
+<td>.NET net.tcp (SOAP), unencrypted, port 12432</td>
+</tr>
+<tr>
+<td>C2 address</td>
+<td>Raw IP</td>
+<td>Raw IP (no DNS)</td>
+</tr>
+<tr>
+<td>Traffic pattern</td>
+<td>C2 held open for minutes + module downloads, stays active</td>
+<td>Get config → collect → upload once, <strong>done in 8 seconds</strong></td>
+</tr>
+<tr>
+<td>Stolen</td>
+<td>Browser passwords, Firefox tokens, recon (nltest etc.)</td>
+<td>Screenshot, system details, browser password, document, (per list) wallets and API keys</td>
+</tr>
+<tr>
+<td>Next move</td>
+<td>Domain recon, SMB lateral-movement attempt</td>
+<td>No lateral movement</td>
+</tr>
+<tr>
+<td>Stand-out clues</td>
+<td>Hostname and bot ID in URI, fake IE7 UA</td>
+<td><code>WindowsPowerShell</code> UA, <code>tempuri.org</code>, upload ≫ download</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Also remember what they share: <strong>raw-IP connections, non-standard ports, disguised file names and sessions whose upload dwarfs the download</strong> were key clues in both.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-official-answers">Compared with the official Unit 42 answers</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Question</th>
+<th scope="col">This analysis</th>
+<th scope="col">Unit 42 answer</th>
+<th scope="col">Match</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Infection start</td>
+<td>2023-07-10 22:39 UTC (22:39:47)</td>
+<td>2023-07-10 22:39 UTC</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>IP</td>
+<td>10.7.10.47</td>
+<td>10.7.10[.]47</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>MAC</td>
+<td>80:86:5b<span>🆎</span>1e:c4</td>
+<td>80:86:5b<span>🆎</span>1e:c4</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Hostname</td>
+<td>DESKTOP-9PEA63H</td>
+<td>DESKTOP-9PEA63H</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>User</td>
+<td>rwalters</td>
+<td>rwalters</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>Targeted information</td>
+<td>Desktop/Documents files, browser data, wallets, API keys and credentials + actual upload contents</td>
+<td>Same categories (files, browsers, wallets, API keys and credentials)</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The official write-up found the hostname via NetBIOS and the account via Kerberos; this page used DHCP and Kerberos. Different routes, same answers — two sources are better than one.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-query-sheet">Copy-ready query sheet</h2>
+<p>Replace <code>&lt;…&gt;</code>.</p>
+<p><strong>Host information</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>host.dns == _ldap._tcp.dc._msdcs.*
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<p><strong>Finding the suspicious traffic</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == dns
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == http
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>http.user-agent == *WindowsPowerShell*
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == tls
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst != 10.0.0.0/8 &amp;&amp; ip.dst != 172.16.0.0/12 &amp;&amp; ip.dst != 192.168.0.0/16 &amp;&amp; ip.dst != 224.0.0.0/4 &amp;&amp; port.dst != 80 &amp;&amp; port.dst != 443 &amp;&amp; port.dst != 53
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == &lt;C2-IP&gt; &amp;&amp; port.dst == &lt;port&gt;
+</code></pre></div></div>
+<p><strong>Big uploads (exfil candidates)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; databytes.src &gt; 100000 &amp;&amp; ip.dst != &lt;internal-CIDR&gt;
+</code></pre></div></div>
+<p><strong>Scope</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst == &lt;internal-CIDR&gt; &amp;&amp; ip.dst != &lt;DC-IP&gt;
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.dst == [&lt;IOC-IP-1&gt;, &lt;IOC-IP-2&gt;, &lt;IOC-IP-3&gt;] &amp;&amp; ip.src != &lt;host-IP&gt;
+</code></pre></div></div>
+<p><strong>CyberChef recipes used</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Recipe</th>
+<th scope="col">Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL Decode</td>
+<td>URIs like <code>av=Windows%20Defender</code></td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>Readable text from net.tcp data exported with Source/Destination Raw</td>
+</tr>
+<tr>
+<td>Extract Files</td>
+<td>Carving the PNG and docx out of the upload</td>
+</tr>
+<tr>
+<td>Render Image</td>
+<td>Viewing the carved screenshot</td>
+</tr>
+<tr>
+<td>Unzip</td>
+<td>Reading <code>word/document.xml</code> inside the docx (a zip)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-lessons">Lessons learned</h2>
+<ul>
+<li><strong>The shorter the PCAP, the faster "one unknown port" shows.</strong> Group the ports by role and 12432 jumps out of the normal AD traffic.</li>
+<li><strong>DHCP gives IP, MAC and hostname at once.</strong> A capture that starts with DHCP was recording from the moment the PC came up.</li>
+<li><strong>A <code>WindowsPowerShell</code> User-Agent and a request with no User-Agent</strong> both mean "a program, not a person".</li>
+<li><strong>Responses that contradict themselves</strong> (status 200 with a "404" body) may be camouflage.</li>
+<li><strong>A proper certificate (Let's Encrypt) does not mean safe.</strong> Judge by context.</li>
+<li><strong>No JA3 change does not mean clean.</strong> Here the payload download shared a JA3 with Windows services and the C2 was not even TLS.</li>
+<li><strong>Sessions where upload ≫ download are the first exfil candidates</strong> (<code>databytes.src</code>).</li>
+<li><strong>Unencrypted C2 shows both the orders and the loot.</strong> Report "what was targeted" (the server's list) separately from "what was lost" (the upload).</li>
+<li><strong>Record capture loss.</strong> A missing segment damaged part of the evidence (the screenshot) — the report should say so.</li>
+</ul>
+</section>
+<section>
+<h2 id="en-references">References</h2>
+<ul>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-redline-stealer/">Crossing the Line: Unit 42 Wireshark Quiz for RedLine Stealer</a> — questions and where to get the PCAP</li>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-redline-stealer-answers/">Answers to Unit 42 Wireshark Quiz for RedLine Stealer</a> — official answers and hashes</li>
+<li><a href="https://www.malware-traffic-analysis.net/training-exercises.html">malware-traffic-analysis.net exercise list</a></li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>시작 트래픽에서 호스트를 식별한 뒤 외부 net.tcp 세션을 좁힙니다. 그 방향과 바이트 수를 앞선 HTTP·TLS 연결과 비교합니다. 핸드북은 화면 캡처, 시스템 정보, 브라우저 자격 증명, 문서가 전송된 근거를 각각 설명합니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/redline-stealer-powershell-nettcp-c2/">DFIR Handbook 원문</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td>Unit 42 Wireshark 퀴즈 2023년 7월 PCAP, 2023-07-10 22:39:22 – 22:39:58 UTC (36초), 세션 약 120개</td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>폐쇄망 가정(해시·평판 조회 없음). 분석 순서와 쿼리는 Arkime 기준, 디코딩은 CyberChef</td>
+</tr>
+<tr>
+<td><strong>결과물</strong></td>
+<td>퀴즈 6문항의 답</td>
+</tr>
+<tr>
+<td><strong>관련 페이지</strong></td>
+<td><a href="handbook-arkime-only-credential-theft-tls-c2.html">Arkime만으로 분석하기 — Trickbot 사례</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/offline-pcap-guide/">Arkime로 PCAP 분석하기</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-answers">한눈에 보는 답</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">질문</th>
+<th scope="col">답</th>
+<th scope="col">상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>감염 시작</td>
+<td><strong>2023-07-10 22:39 UTC</strong> (첫 악성 통신: 22:39:47 PowerShell HTTP 요청)</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>2</td>
+<td>IP</td>
+<td><strong>10.7.10.47</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MAC</td>
+<td><strong>80:86:5b<span>🆎</span>1e:c4</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>4</td>
+<td>호스트이름</td>
+<td><strong>DESKTOP-9PEA63H</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>5</td>
+<td>사용자</td>
+<td><strong>rwalters</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>6</td>
+<td>훔치려 한 정보</td>
+<td>바탕화면·문서의 파일(<code>*.txt</code>, <code>*.doc*</code>, <code>*key*</code>, <code>*wallet*</code>, <code>*seed*</code>), 브라우저 사용자 데이터(Chromium 계열, Firefox 계열), 암호화폐 지갑(프로그램·브라우저 확장), 클라우드·개발 서비스 API 키와 자격 증명. 실제로 올라간 것: 화면 캡처, 시스템 정보, 프로세스 목록, Edge 저장 비밀번호 1개, <code>Top_secret_ducment.docx</code></td>
+<td>확인됨</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">항목</th>
+<th scope="col">값</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>네트워크</td>
+<td>10.7.10.0/24, 게이트웨이 10.7.10.1, DC/DNS/DHCP <strong>10.7.10.9 (WIN-S3WT6LGQFVX)</strong>, 도메인 <code>coolweathercoat.com</code></td>
+</tr>
+<tr>
+<td>초기 실행</td>
+<td><code>powershell.exe ... &amp; 'C:\Users\rwalters\Documents\mystery_file.ps1'</code></td>
+</tr>
+<tr>
+<td>체크인</td>
+<td><code>hxxp://623start[.]site/?status=start&amp;av=Windows%20Defender</code>, <code>/?status=install</code> (195.161.114.3)</td>
+</tr>
+<tr>
+<td>페이로드</td>
+<td><code>hxxp(s)://guiatelefonos[.]com/data/czx.jpg</code> (92.118.151.9), HTTPS로 약 353KB</td>
+</tr>
+<tr>
+<td>C2 / 유출</td>
+<td><strong>194.26.135.119:12432</strong>, .NET net.tcp(SOAP), 업로드 542,386바이트</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-step-0">0단계 — 데이터 범위와 전체 그림</h2>
+<p><strong>목적:</strong> 데이터의 시작·끝, 크기, 내부 PC를 먼저 파악합니다.</p>
+<p><strong>쿼리:</strong> 시간 범위를 <strong>All</strong>로 바꾸고 검색창은 비운 채 Search. Sessions에서 Start Time 오름차순 / Stop Time 내림차순으로 시작·끝을 봅니다(방법은 <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot 사례 1단계</a>).</p>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start  2023/07/10 22:39:22 UTC
+End    2023/07/10 22:39:58 UTC   (duration 00:00:36)
+Sessions about 120
+Src IP 10.7.10.47 (118)   10.7.10.9 (1)   0.0.0.0 (1)
+</code></pre></div></div>
+<p>SPI View → General → Dst Port를 보면 이렇게 나옵니다(세션 수, 프로토콜/포트).</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>udp 53 (34)   tcp 88 (26)   tcp 443 (20)   tcp 389 (14)   udp 389 (7)   tcp 135 (4)   tcp 49669 (3)
+tcp 80 (2)    udp 67 (1)    udp 68 (1)     udp 5353 (1)   udp 137 (1)   udp 138 (1)   udp 123 (1)
+tcp 445 (1)   tcp 55390 (1) tcp 12432 (1)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>캡처가 36초</strong>밖에 안 됩니다. 그리고 맨 처음 세션이 <strong>DHCP</strong>(<code>0.0.0.0:68 → 255.255.255.255:67</code>)입니다. PC가 막 켜졌거나 네트워크에 다시 붙으면서 IP를 받는 장면부터 시작한다는 뜻이에요.</li>
+<li><strong>내부 PC는 10.7.10.47 한 대</strong>뿐입니다. 거의 모든 세션(118개)을 이 PC가 시작했습니다. 10.7.10.9는 DHCP 응답 하나만 시작했고 나머지는 받기만 하니 <strong>서버</strong>입니다. 0.0.0.0은 IP를 받기 전의 DHCP 요청입니다.</li>
+<li>포트를 역할별로 나누면:</li>
+</ul>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">포트</th>
+<th scope="col">프로토콜</th>
+<th scope="col">판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>53, 88, 389, 445, 135, 49669·55390(동적 RPC), 123</td>
+<td>DNS, Kerberos, LDAP, SMB, RPC, NTP</td>
+<td>PC가 도메인에 로그인할 때 나오는 <strong>정상 AD 통신</strong>. 모두 10.7.10.9로 감</td>
+</tr>
+<tr>
+<td>67/68, 137/138, 5353</td>
+<td>DHCP, NetBIOS, mDNS</td>
+<td>정상</td>
+</tr>
+<tr>
+<td>443 (20)</td>
+<td>TLS</td>
+<td>대부분 Microsoft·Bing 서비스. 하나하나 <a href="#ko-step-5">5단계</a>에서 확인</td>
+</tr>
+<tr>
+<td><strong>80 (2)</strong></td>
+<td>HTTP</td>
+<td><strong>평문</strong> — 가장 먼저 볼 곳</td>
+</tr>
+<tr>
+<td><strong>12432 (1)</strong></td>
+<td>???</td>
+<td>표준 서비스가 쓰지 않는 포트. <strong>가장 수상함</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>36초짜리 PCAP에서 "모르는 포트 하나"는 바로 눈에 띕니다. 그래도 순서대로 기본 정보부터 채우겠습니다. 보고서에는 IP·MAC·호스트이름·계정이 필요하니까요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-dhcp">1단계 — DHCP로 IP, MAC, 호스트이름 찾기 (Q2~Q4)</h2>
+<p><strong>목적:</strong> PC가 IP를 받을 때 보내는 DHCP 요청에는 <strong>MAC 주소와 호스트이름</strong>이 들어 있습니다. 이 PCAP은 DHCP로 시작하니 가장 확실한 출처예요.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>protocols</code></td>
+<td>Arkime가 알아낸 프로토콜 필드</td>
+</tr>
+<tr>
+<td><code>== dhcp</code></td>
+<td>DHCP 세션만</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>SPI View → <strong>dhcp</strong> 섹션 → <strong>Load All</strong>. 중요한 필드는 <code>dhcp.host</code>(호스트이름), <code>dhcp.mac</code>(클라이언트 MAC), <code>dhcp.classId</code>(벤더 클래스)입니다. 세션을 펼치면 요청과 응답 내용이 다 보입니다.</p>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:22.849  DHCP Request   0.0.0.0:68 → 255.255.255.255:67
+              Client MAC        80:86:5b:ab:1e:c4
+              Host Name (12)    DESKTOP-9PEA63H
+              Client FQDN (81)  DESKTOP-9PEA63H.coolweathercoat.com
+              Requested IP (50) 10.7.10.47
+              Vendor class (60) MSFT 5.0
+
+22:39:22.850  DHCP ACK       10.7.10.9:67 → 255.255.255.255:68
+              Your IP           10.7.10.47
+              Subnet mask       255.255.255.0
+              Router            10.7.10.1
+              DNS server        10.7.10.9
+              Domain name       coolweathercoat.com
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>IP 10.7.10.47, MAC 80:86:5b<span>🆎</span>1e:c4, 호스트이름 DESKTOP-9PEA63H</strong> — Q2, Q3, Q4의 답입니다.</li>
+<li><code>MSFT 5.0</code>은 윈도우 2000 이후 모든 윈도우가 보내는 DHCP 벤더 클래스예요. 윈도우 PC라는 근거입니다.</li>
+<li>DHCP 응답에서 <strong>네트워크 정보</strong>도 나옵니다. 대역 10.7.10.0/24(마스크 255.255.255.0), 게이트웨이 10.7.10.1, DNS와 DHCP 서버는 10.7.10.9, 도메인 <code>coolweathercoat.com</code>.</li>
+<li><strong>교차 확인:</strong> 이 PC가 보낸 일반 패킷의 Src MAC도 <code>80:86:5b:ab:1e:c4</code>입니다. NetBIOS(137) 브로드캐스트에도 <code>DESKTOP-9PEA63H</code>와 도메인 <code>COOLWEATHERCOAT</code>가 나옵니다. 출처 두 곳이 같은 값을 주면 확실합니다.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">DHCP가 없을 때</p>
+<p>PC가 이미 IP를 갖고 있던 시점부터 캡처하면 DHCP가 없습니다. 그때는 NetBIOS(udp 137/138 브로드캐스트)의 이름, Kerberos의 <code>$</code>로 끝나는 cname(다음 단계), SMB 세션의 호스트 정보로 찾습니다.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-kerberos">2단계 — DC와 사용자 계정 찾기 (Q5)</h2>
+<p><strong>목적:</strong> 도메인 컨트롤러(DC)의 이름과, 이 PC에 로그인한 <strong>사용자 계정</strong>을 찾습니다.</p>
+<h3 id="ko-dc">DC 찾기 (DNS SRV)</h3>
+<p>윈도우 PC는 로그인할 때 "이 도메인의 DC가 어디야?"를 DNS의 <strong>SRV 레코드</strong>로 물어봅니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>host.dns == _ldap._tcp.dc._msdcs.*
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>host.dns</code></td>
+<td>DNS로 질의한 이름</td>
+</tr>
+<tr>
+<td><code>_ldap._tcp.dc._msdcs.*</code></td>
+<td>"DC의 LDAP 서비스는 어디?"라는 표준 질의. <code>*</code>는 뒤의 도메인 이름 아무거나</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과 (세션 상세의 DNS 응답):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Query   _ldap._tcp.dc._msdcs.coolweathercoat.com  (SRV)
+Answer  SRV  win-s3wt6lgqfvx.coolweathercoat.com
+Query   win-s3wt6lgqfvx.coolweathercoat.com  (A)
+Answer  10.7.10.9
+</code></pre></div></div>
+<p>→ <strong>DC는 10.7.10.9, 이름 WIN-S3WT6LGQFVX.</strong> 이름이 <code>WIN-</code> + 무작위 글자인 건 윈도우 서버를 설치하고 이름을 바꾸지 않았을 때의 기본 형식이에요.</p>
+<h3 id="ko-user">사용자 계정 찾기 (Kerberos)</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.src == 10.7.10.47</code></td>
+<td>감염 의심 PC가 시작한 연결</td>
+</tr>
+<tr>
+<td><code>&amp;&amp;</code></td>
+<td>그리고</td>
+</tr>
+<tr>
+<td><code>protocols == krb5</code></td>
+<td>Kerberos 세션만</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>SPI View → <strong>krb5</strong> → <strong>Load All</strong> (필드 이름만 보이면 필드 이름을 누르거나 Load All).</p>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>cname   desktop-9pea63h$   rwalters
+Realm   COOLWEATHERCOAT.COM
+sname   krbtgt/COOLWEATHERCOAT.COM   ...
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>끝이 <code>$</code>인 <strong><code>desktop-9pea63h$</code>는 컴퓨터 계정</strong>입니다. 1단계의 호스트이름과 같아요.</li>
+<li><code>$</code>가 없는 <strong><code>rwalters</code>가 사용자 계정</strong>입니다. Q5의 답입니다.</li>
+<li>캡처 시작 직후(22:39:23~)에 Kerberos가 26번이나 나오는 것도 1단계의 해석과 맞습니다. PC가 켜지고 <strong>사용자가 로그인하는 장면</strong>이에요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-dns">3단계 — DNS로 수상한 도메인 찾기</h2>
+<p><strong>목적:</strong> PC가 어떤 이름을 조회했는지 보면 어디에 접속하려 했는지 알 수 있습니다. 정상 이름을 걸러내고 남는 것을 찾습니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == dns
+</code></pre></div></div>
+<p>SPI View → <strong>dns</strong> → <code>host.dns</code> 값. Sessions에서 Start Time 오름차순으로 보면 순서도 보입니다.</p>
+<p><strong>실제 결과 (시간 순서):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:23-24  _ldap._tcp... / _kerberos._tcp... SRV, WIN-S3WT6LGQFVX, wpad.coolweathercoat.com  ← AD logon
+22:39:23     dns.msftncsi.com                                      ← Windows "am I online?" check
+22:39:33-34  api.msn.com, assets.msn.com, www.bing.com, r.bing.com, th.bing.com,
+             fp.msedge.net, k-ring.msedge.net, l-ring.msedge.net, wac-ring.msedge.net,
+             fp-as-nocache.azureedge.net, fp-vs.azureedge.net, fp-afd-nocache-ccp.azureedge.net,
+             static-ecst.licdn.com, v20.events.data.microsoft.com,
+             sat09prdapp01-canary-opaph.netmon.azure.com, &lt;hex&gt;.clo.footprintdns.com   ← Windows / Edge start-up
+22:39:44     checkappexec.microsoft.com                            ← SmartScreen
+22:39:46     evoke-windowsservices-tas.msedge.net, client.wns.windows.com   ← Windows services
+22:39:47     623start.site        → 195.161.114.3                  ← ?
+22:39:49     guiatelefonos.com    → 92.118.151.9                   ← ?
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>22:39:33~34에 Microsoft, Bing, MSN, Azure CDN 이름이 쏟아집니다. 로그인 직후 윈도우와 Edge가 시작될 때 나오는 <strong>정상 잡음</strong>이에요. <code>msedge.net</code>, <code>footprintdns.com</code>, <code>azureedge.net</code>은 Microsoft의 연결 품질 측정과 CDN입니다.</li>
+<li><strong><code>checkappexec.microsoft.com</code> (22:39:44)</strong> — Windows Defender <strong>SmartScreen</strong>이 "이 프로그램/파일을 실행해도 되나?"를 Microsoft에 물어보는 주소입니다. 정상 서비스지만, <strong>사용자가 무언가를 실행하려 할 때</strong> 나오는 통신이라 3초 뒤의 수상한 통신과 시점이 맞습니다. (무엇을 검사했는지는 암호화라 모릅니다. 추정)</li>
+<li>남는 두 개, <strong><code>623start.site</code></strong>와 <strong><code>guiatelefonos.com</code></strong>은 회사 PC가 갈 이유가 없는 이름입니다. <code>.site</code>는 저렴하고 악용이 잦은 최상위 도메인이에요. 다음 단계에서 HTTP로 무엇을 했는지 봅니다.</li>
+<li><strong>나중을 위한 메모:</strong> 12432 포트로 간 194.26.135.119는 이 목록에 <strong>없습니다.</strong> DNS 조회 없이 IP로 바로 접속했다는 뜻이에요. 악성코드 안에 IP가 박혀 있는(hard-coded) 경우의 특징입니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-http">4단계 — 평문 HTTP: PowerShell의 보고와 다운로드</h2>
+<p><strong>목적:</strong> HTTP 2개 세션의 내용을 봅니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == http
+</code></pre></div></div>
+<p>SPI View → <strong>http</strong> → Load All, 그리고 Sessions에서 두 세션을 펼쳐 Source / Destination 내용을 봅니다.</p>
+<p><strong>실제 결과 — 세션 1 (195.161.114.3:80):</strong></p>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>GET /?status=start&amp;av=Windows%20Defender HTTP/1.1
+User-Agent: Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.3031
+Host: 623start.site
+Connection: Keep-Alive
+
+GET /?status=install HTTP/1.1
+User-Agent: Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.3031
+Host: 623start.site
+</code></pre></div></div>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>HTTP/1.1 200 OK
+Date: Mon, 10 Jul 2023 22:39:48 GMT
+Content-Type: text/html; charset=UTF-8
+Content-Length: 14
+Server: Apache/2.4.6 (CentOS) PHP/7.4.33
+X-Powered-By: PHP/7.4.33
+
+404 HTTP Error
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>User-Agent에 <code>WindowsPowerShell/5.1</code></strong>이 있습니다. PowerShell의 <code>Invoke-WebRequest</code>나 <code>Invoke-RestMethod</code>가 기본으로 붙이는 값이에요. 사람이 브라우저로 연 게 아니라 <strong>PowerShell 스크립트가 요청</strong>한 것입니다. (User-Agent는 바꿀 수 있지만, 일부러 이 값으로 위장하는 경우는 드물어서 꽤 믿을 만한 단서입니다.)</li>
+<li>URI를 조각내면:</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>/?status=start                 → "the script has started"
+&amp;av=Windows%20Defender         → "the antivirus here is Windows Defender"  (%20 = space; CyberChef URL Decode)
+/?status=install               → "now installing (next stage)"
+</code></pre></div></div>
+<p>감염 PC가 <strong>자기 상태와 백신 종류를 공격자에게 보고</strong>하는 체크인입니다. 공격자는 백신에 따라 다른 페이로드를 줄 수도 있어요.
+- 응답이 이상합니다. <strong>상태 코드는 <code>200 OK</code>(성공)인데 본문은 <code>404 HTTP Error</code></strong>(14바이트)예요. 진짜 "없음"이라면 상태 코드가 404여야 합니다. 보안 장비나 분석가가 대충 봤을 때 "없는 페이지였네" 하고 넘어가게 하려는 위장일 수 있습니다. 어쨌든 <strong>수신 기록용</strong>으로만 쓰이는 서버로 보입니다.</p>
+<p><strong>실제 결과 — 세션 2 (92.118.151.9:80):</strong></p>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>GET /data/czx.jpg HTTP/1.1
+Host: guiatelefonos.com
+Connection: Keep-Alive
+</code></pre></div></div>
+<div class="language-http highlight"><div class="query-block"><pre tabindex="0"><code>HTTP/1.1 301 Moved Permanently
+Server: nginx/1.20.2
+Location: hxxps://guiatelefonos[.]com:443/data/czx.jpg
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>이번 요청에는 <strong>User-Agent가 아예 없습니다.</strong> 브라우저는 항상 User-Agent를 보내요. 헤더가 <code>Host</code>와 <code>Connection</code> 두 줄뿐인 건 <strong>프로그램이 최소한으로 만든 요청</strong>이라는 표시입니다(.NET의 기본 웹 클라이언트 등).</li>
+<li>서버가 <strong>301로 HTTPS 주소로 보내</strong>서, 실제 파일은 암호화된 443 연결로 내려옵니다. 평문에서 파일을 볼 수 없게 됐어요.</li>
+<li>파일 이름이 <code>.jpg</code>지만, PowerShell 체크인 직후에 "이미지"를 받을 이유가 없습니다. <strong>그림으로 위장한 페이로드</strong>로 의심합니다.</li>
+<li>시간 순서: 22:39:47.579 start → 22:39:48.415 install → <strong>0.8초 뒤</strong> 22:39:49.250 czx.jpg. "install"이라고 보고하자마자 페이로드를 받으러 갔어요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-step-5">5단계 — HTTPS 다운로드와 JA3</h2>
+<p><strong>목적:</strong> 301 이후 HTTPS로 무엇을, 얼마나 받았는지 확인합니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == 92.118.151.9 &amp;&amp; port.dst == 443
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 92.118.151.9</code></td>
+<td>guiatelefonos.com의 IP로 간 연결</td>
+</tr>
+<tr>
+<td><code>port.dst == 443</code></td>
+<td>HTTPS 포트</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과 (세션 상세):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Time          2023/07/10 22:39:49.323 - 22:39:49.874 UTC   (0.55 s)
+Src           10.7.10.47:49743   Packets 61    Databytes 413
+Dst           92.118.151.9:443   Packets 263   Databytes 353,715
+TLS           SNI guiatelefonos.com   TLSv1.2   Cipher 0xc02f (ECDHE_RSA_WITH_AES_128_GCM_SHA256)
+              JA3  3b5074b1b5d032e5620f69f9f700ff0e
+              JA3S 389ed42c02ebecc32e73aa31def07e14
+Certificate   Subject CN guiatelefonos.com   SAN guiatelefonos.com, www.guiatelefonos.com
+              Issuer  CN R3, O Let's Encrypt
+              Not Before 2023-07-08 16:17:07 UTC   Not After 2023-10-06
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>서버 → PC 353,715바이트, PC → 서버 413바이트.</strong> 요청 한 번에 약 345KB를 0.5초 만에 받았습니다. 암호화돼서 내용은 못 보지만, 4단계의 <code>czx.jpg</code>를 HTTPS로 다시 요청해서 받은 것입니다. (TLS 암호화 헤더 몫이 더해져서 실제 파일보다 조금 큽니다. Unit 42 해설에 따르면 이 파일은 348,160바이트짜리 RedLine 실행 파일이에요.)</li>
+<li><strong>인증서는 Let's Encrypt 정식 발급</strong>입니다. 자체 서명이 아니어서 인증서만으로는 수상하지 않아요. 요즘 공격자들도 무료 인증서를 쉽게 받습니다. 발급일이 감염 <strong>2일 전</strong>(07-08)이지만, Let's Encrypt 인증서는 원래 90일마다 새로 받으니 이것만으로는 약한 근거입니다. 이 다운로드를 수상하게 보는 근거는 <strong>인증서가 아니라 앞뒤 맥락</strong>(PowerShell 체크인 → User-Agent 없는 요청 → .jpg 위장)입니다.</li>
+</ul>
+<h3 id="ko-ja3">JA3로 보면?</h3>
+<p>이 PCAP은 앞서 나온 "감염 후 JA3가 늘어나면 감염 증거"라는 이야기를 직접 확인해 볼 좋은 예입니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p>SPI View → <strong>tls</strong> → <strong>JA3</strong>:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>JA3                                  count   destinations (SNI)
+6271f898ce5be7dd52b0fc260d0662b3     14      www.bing.com, r.bing.com, th.bing.com, *.msedge.net, *.azureedge.net,
+                                             static-ecst.licdn.com, netmon.azure.com, checkappexec.microsoft.com
+3b5074b1b5d032e5620f69f9f700ff0e      3      evoke-windowsservices-tas.msedge.net (22:39:46), client.wns.windows.com (22:39:46),
+                                             guiatelefonos.com (22:39:49)  ← the payload download
+37f463bf4616ecd445d4a1937da06e19      2      api.msn.com, assets.msn.com
+28a2c9bd18a11de089ef85a160da29e4      1      v20.events.data.microsoft.com
+</code></pre></div></div>
+<ul>
+<li>페이로드 다운로드(<code>guiatelefonos.com</code>)의 JA3는 <strong>윈도우 서비스(WNS 등)가 3초 전에 쓴 것과 같은 값</strong>입니다. PowerShell/.NET이 윈도우 기본 TLS 기능을 쓰기 때문이에요. 그래서 <strong>감염 뒤에 새 JA3가 생기지 않았습니다.</strong></li>
+<li>그리고 C2(12432)는 <strong>TLS가 아니라서 JA3 자체가 없습니다.</strong></li>
+<li>즉 이 사례에서는 "JA3 개수 변화"로 감염을 잡을 수 없었습니다. JA3 변화는 <strong>있으면 강한 정황, 없다고 깨끗하다는 뜻은 아닌</strong> 근거라는 걸 보여 주는 예예요. 반대로 같은 JA3를 쓰더라도 **목적지(SNI)**가 정상 Microsoft 서비스와 전혀 다른 이상한 도메인이라는 점은 눈에 띕니다. JA3는 목적지와 같이 읽어야 합니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-c2-hunt">6단계 — 이상한 포트로 C2 찾기</h2>
+<p><strong>목적:</strong> 0단계에서 본 12432 포트를 정식으로 찾아냅니다. 다른 PCAP에서도 그대로 쓸 수 있는 방법이에요.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; ip.dst != 10.0.0.0/8 &amp;&amp; ip.dst != 224.0.0.0/4 &amp;&amp; port.dst != 80 &amp;&amp; port.dst != 443 &amp;&amp; port.dst != 53
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.src == 10.7.10.47</code></td>
+<td>감염 의심 PC가 시작한 연결</td>
+</tr>
+<tr>
+<td><code>ip.dst != 10.0.0.0/8</code></td>
+<td>목적지가 내부망이 <strong>아닌 것</strong></td>
+</tr>
+<tr>
+<td><code>ip.dst != 224.0.0.0/4</code></td>
+<td>멀티캐스트(224~239) 제외. mDNS·IGMP 같은 잡음</td>
+</tr>
+<tr>
+<td><code>port.dst != 80 &amp;&amp; … != 443 &amp;&amp; … != 53</code></td>
+<td>웹, HTTPS, DNS 제외</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:50.151  10.7.10.47:49744 → 194.26.135.119:12432   tcp   Packets 380/407   Databytes 542,386 / 7,179
+</code></pre></div></div>
+<p>딱 하나 남습니다.</p>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>포트 12432</strong>는 표준 서비스가 쓰지 않는 번호입니다.</li>
+<li>3단계에서 봤듯이 이 IP에 대한 <strong>DNS 조회가 없습니다</strong>. 프로그램 안에 IP가 박혀 있다는 뜻이에요.</li>
+<li>페이로드 다운로드가 끝난 22:39:49.874에서 <strong>0.3초 뒤</strong>(22:39:50.151)에 시작합니다. 받은 파일이 실행되자마자 접속한 것으로 보입니다.</li>
+<li>그리고 무엇보다 <strong>PC가 보낸 데이터(542,386바이트)가 받은 데이터(7,179바이트)보다 75배 많습니다.</strong> 업로드, 즉 <strong>유출</strong>입니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-c2-session">7단계 — C2 세션 읽기: 프로토콜과 흐름</h2>
+<p><strong>목적:</strong> 12432 세션이 어떤 프로토콜을 쓰고, 언제 무엇이 오갔는지 봅니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == 194.26.135.119 &amp;&amp; port.dst == 12432
+</code></pre></div></div>
+<p>세션을 펼칩니다. Arkime에는 이 프로토콜을 해석하는 파서가 없어서 Protocols에 <strong><code>tcp</code>만</strong> 나오고 HTTP·TLS 같은 섹션이 없습니다. 아래쪽 패킷 내용(Source / Destination)을 <code>ascii</code>로 보면 됩니다. 길어서 <strong>Source Raw</strong>로 내려받아 CyberChef <strong>Strings</strong>로 보는 게 편해요.</p>
+<p><strong>실제 결과 — PC가 처음 보낸 내용:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>00 01 00 01 02 02 1f  net.tcp://194.26.135.119:12432/  03 08 0c ...
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>net.tcp://194.26.135.119:12432/
+hxxp://tempuri[.]org/Contract/MSValue1
+Authorization   c75a68098b33270de4b87af925fb5ffd
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><code>net.tcp://</code>로 시작하는 건 <strong>.NET의 WCF(Windows Communication Foundation) net.tcp 프로토콜</strong>입니다. HTTP 대신 TCP 위에서 SOAP 메시지를 이진(binary) 형식으로 주고받아요. 그래서 평문 HTTP처럼 깔끔하게 읽히지는 않지만, 문자열은 그대로 보입니다. RedLine은 .NET으로 만든 악성코드라서 이 방식을 씁니다.</li>
+<li><strong><code>hxxp://tempuri[.]org/</code></strong>는 .NET 개발 도구가 이름 공간을 따로 정하지 않으면 넣는 <strong>기본 자리표시 주소</strong>입니다. 실제 웹사이트에 접속하는 게 아니에요. 정상 프로그램은 배포 전에 보통 바꾸기 때문에, 외부 IP와의 통신에서 <code>tempuri.org</code>가 보이면 대충 만든 .NET 프로그램(악성코드 포함)일 가능성이 큽니다.</li>
+<li><strong><code>MSValue1</code>, <code>MSValue2</code>, <code>MSValue3</code></strong>은 호출하는 함수 이름입니다. 의미를 숨기려고 이름을 바꿔 놨어요.</li>
+<li><strong><code>Authorization c75a6809…</code></strong>는 이 악성코드 빌드를 구분하는 키로 보입니다(추정). 같은 공격자의 다른 감염을 찾을 때 쓸 수 있는 지표예요.</li>
+</ul>
+<p><strong>흐름 (시간 순서):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:50.151  TCP connect (SYN → SYN-ACK → ACK)
+22:39:50.425  PC → server   41 B      net.tcp preamble (address)
+22:39:50.732  server → PC    1 B      preamble ack
+22:39:50.753  PC → server   218 B     MSValue1  (check-in with Authorization key)
+22:39:51.037  server → PC   159 B     MSValue1Response
+22:39:51.042  PC → server   166 B     MSValue2  ("give me my settings")
+22:39:51.347  server → PC   6,899 B   MSValue2Response  ← target list (step 8)
+              ... about 5 seconds: the malware collects data on the PC ...
+22:39:56.522  PC → server   541,961 B MSValue3  ← stolen data (step 9), 373 segments until 22:39:57.806
+22:39:58.311  server → PC   120 B     MSValue3Response (ack)
+</code></pre></div></div>
+<ul>
+<li>**"설정 받기 → 5초 동안 수집 → 한 번에 업로드"**라는 전형적인 인포스틸러 흐름입니다.</li>
+<li>Trickbot처럼 연결을 몇 분씩 붙잡고 있거나 반복 접속하는 <strong>비콘이 없습니다.</strong> 8초 만에 끝나는 <strong>한 번짜리</strong> 연결이에요. 인포스틸러는 "훔치고 바로 빠지는" 경우가 많습니다. 보고서의 C2 칸에는 "single short session, no repeating beacon"이라고 씁니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-scope">10단계 — 범위 확인</h2>
+<p><strong>목적:</strong> 다른 내부 PC로 퍼지려 했는지 확인합니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.7.10.47 &amp;&amp; ip.dst == 10.7.10.0/24 &amp;&amp; ip.dst != 10.7.10.9
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">조각</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip.dst == 10.7.10.0/24</code></td>
+<td>내부망으로 간 연결</td>
+</tr>
+<tr>
+<td><code>ip.dst != 10.7.10.9</code></td>
+<td>DC는 제외</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>실제 결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:23.138  udp 137 → 10.7.10.255:137   (NetBIOS name broadcast)
+22:39:26.828  udp 138 → 10.7.10.255:138   (NetBIOS browser broadcast)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong> 브로드캐스트(<code>.255</code>) 두 개뿐이고 SMB·RPC·RDP로 다른 PC에 간 것은 없습니다. <strong>측면 이동 없음.</strong> 이 PCAP에는 다른 내부 PC가 없어서 "다른 PC도 감염됐나"는 확인할 수 없습니다. 실제 환경이라면 <a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot 사례 18단계</a>처럼 IOC IP 목록으로 다른 PC를 찾아야 합니다.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == [195.161.114.3, 92.118.151.9, 194.26.135.119] &amp;&amp; ip.src != 10.7.10.47
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="ko-conclusion">전체 결론</h2>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>22:39:22  PC boots / user rwalters logs on (DHCP, Kerberos, LDAP)
+22:39:44  SmartScreen check (checkappexec.microsoft.com)
+22:39:47  mystery_file.ps1 runs → PowerShell reports "start, AV = Windows Defender" to 623start.site
+22:39:48  reports "install"
+22:39:49  fetches czx.jpg from guiatelefonos.com → 301 → HTTPS download (~345 KB, RedLine)
+22:39:50  RedLine connects to 194.26.135.119:12432 (net.tcp), gets target list
+22:39:56  uploads screenshot, system info, Edge password, document (~542 KB)
+22:39:58  server acknowledges — done in 11 seconds from first check-in
+</code></pre></div></div>
+</section>
+<section>
+<h2 id="ko-timeline">타임라인</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">UTC (2023-07-10)</th>
+<th scope="col">이벤트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>22:39:22</td>
+<td>DHCP: DESKTOP-9PEA63H가 10.7.10.47을 받음</td>
+</tr>
+<tr>
+<td>22:39:23–24, 22:39:32–33</td>
+<td>도메인 로그온(DNS SRV, LDAP, Kerberos <code>rwalters</code>, SMB/RPC to DC)</td>
+</tr>
+<tr>
+<td>22:39:33–35</td>
+<td>윈도우·Edge 시작 트래픽(MSN, Bing, Microsoft CDN)</td>
+</tr>
+<tr>
+<td>22:39:44</td>
+<td>SmartScreen 확인 <code>checkappexec.microsoft.com</code></td>
+</tr>
+<tr>
+<td>22:39:47.579</td>
+<td>PowerShell → <code>623start[.]site/?status=start&amp;av=Windows%20Defender</code></td>
+</tr>
+<tr>
+<td>22:39:48.415</td>
+<td>PowerShell → <code>623start[.]site/?status=install</code></td>
+</tr>
+<tr>
+<td>22:39:49.250</td>
+<td><code>guiatelefonos[.]com/data/czx.jpg</code> (HTTP, User-Agent 없음) → 301</td>
+</tr>
+<tr>
+<td>22:39:49.323–49.874</td>
+<td>HTTPS로 약 353KB 다운로드</td>
+</tr>
+<tr>
+<td>22:39:50.151</td>
+<td>194.26.135.119:12432 연결(net.tcp)</td>
+</tr>
+<tr>
+<td>22:39:51.347</td>
+<td>서버가 훔칠 대상 목록 전송(6,899B)</td>
+</tr>
+<tr>
+<td>22:39:56.522–57.806</td>
+<td>유출 업로드 541,961B</td>
+</tr>
+<tr>
+<td>22:39:58.311</td>
+<td>서버 수신 확인, 캡처 끝</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-iocs">침해 지표(IOC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">종류</th>
+<th scope="col">지표</th>
+<th scope="col">역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>hxxp://623start[.]site/?status=start&amp;av=</code> , <code>/?status=install</code></td>
+<td>PowerShell 체크인</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>195.161.114[.]3</code></td>
+<td>623start.site</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://guiatelefonos[.]com/data/czx.jpg</code>, <code>hxxps://guiatelefonos[.]com/data/czx.jpg</code></td>
+<td>페이로드</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>92.118.151[.]9</code></td>
+<td>guiatelefonos.com</td>
+</tr>
+<tr>
+<td>IP:포트</td>
+<td><code>194.26.135[.]119:12432</code> (<code>net.tcp://194.26.135[.]119:12432/</code>)</td>
+<td>RedLine C2·유출</td>
+</tr>
+<tr>
+<td>문자열</td>
+<td><code>Authorization c75a68098b33270de4b87af925fb5ffd</code></td>
+<td>빌드/봇 키(추정)</td>
+</tr>
+<tr>
+<td>파일 경로</td>
+<td><code>C:\Users\rwalters\Documents\mystery_file.ps1</code></td>
+<td>초기 실행 스크립트</td>
+</tr>
+<tr>
+<td>User-Agent</td>
+<td><code>Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.19041.3031</code></td>
+<td>PowerShell 다운로더</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>3c42b93801f02696487de64bb623f81cf7baf73a379a46e1459ca19ae7dc2454</code></td>
+<td>RedLine 실행 파일(348,160B)</td>
+</tr>
+<tr>
+<td>SHA256 (Unit 42)</td>
+<td><code>f754d7674a3a74969cccb7d834c99b72b9f79c29dc8d0e9c15854a6bfb1a9c97</code></td>
+<td>PowerShell 실행기 스크립트(800B)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>해시 두 개는 PCAP에서 계산할 수 없어서(HTTPS 다운로드, 스크립트는 네트워크에 없음) Unit 42 해설에서 가져온 값입니다.</p>
+</section>
+<section>
+<h2 id="ko-attack">ATT&amp;CK 매핑</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">기법</th>
+<th scope="col">증거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1204.002 User Execution: Malicious File</td>
+<td>"PowerShell에서 실행" 형태의 명령줄(추정)</td>
+</tr>
+<tr>
+<td>T1059.001 PowerShell</td>
+<td><code>mystery_file.ps1</code>, <code>WindowsPowerShell</code> User-Agent</td>
+</tr>
+<tr>
+<td>T1518.001 Security Software Discovery</td>
+<td><code>av=Windows%20Defender</code> 보고</td>
+</tr>
+<tr>
+<td>T1105 Ingress Tool Transfer</td>
+<td><code>czx.jpg</code> 다운로드</td>
+</tr>
+<tr>
+<td>T1036 Masquerading</td>
+<td>실행 파일을 <code>.jpg</code>로 위장</td>
+</tr>
+<tr>
+<td>T1082 System Information Discovery, T1057 Process Discovery</td>
+<td>업로드된 시스템 정보·프로세스 목록</td>
+</tr>
+<tr>
+<td>T1555.003 Credentials from Web Browsers</td>
+<td>Edge 저장 비밀번호</td>
+</tr>
+<tr>
+<td>T1005 Data from Local System</td>
+<td><code>Top_secret_ducment.docx</code>, 파일 수집 규칙</td>
+</tr>
+<tr>
+<td>T1113 Screen Capture</td>
+<td>PNG 화면 캡처</td>
+</tr>
+<tr>
+<td>T1571 Non-Standard Port, T1095 Non-Application Layer Protocol</td>
+<td>TCP 12432, net.tcp</td>
+</tr>
+<tr>
+<td>T1041 Exfiltration Over C2 Channel</td>
+<td>MSValue3 업로드</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-compare">Trickbot 사례와 비교</h2>
+<p>같은 "정보를 훔쳐 가는" 악성코드라도 네트워크에 남는 모양이 다릅니다. 이 차이를 익혀 두면 다음 PCAP에서 계열을 좁히기 쉬워요.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"><a href="handbook-arkime-only-credential-theft-tls-c2.html">Trickbot (2020)</a></th>
+<th scope="col">RedLine Stealer (2023)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>초기 실행</td>
+<td>스크립트(<code>WinHttp.WinHttpRequest.5</code>)가 EXE 다운로드</td>
+<td>사용자가 <code>.ps1</code> 실행, PowerShell이 체크인</td>
+</tr>
+<tr>
+<td>페이로드 위장</td>
+<td><code>.png</code> 이름의 EXE</td>
+<td><code>.jpg</code> 이름의 EXE, HTTPS로 받음</td>
+</tr>
+<tr>
+<td>C2 프로토콜</td>
+<td>HTTP POST(8082) + TLS(447/449, 자체 서명)</td>
+<td>.NET net.tcp(SOAP), 암호화 없음, 포트 12432</td>
+</tr>
+<tr>
+<td>C2 주소</td>
+<td>IP 직접</td>
+<td>IP 직접(DNS 없음)</td>
+</tr>
+<tr>
+<td>통신 패턴</td>
+<td>몇 분씩 붙잡는 C2 + 모듈 다운로드, 계속 활동</td>
+<td>설정 받기 → 수집 → 한 번에 업로드, <strong>8초 만에 끝</strong></td>
+</tr>
+<tr>
+<td>훔친 것</td>
+<td>브라우저 비밀번호, Firefox 토큰, 정찰 정보(nltest 등)</td>
+<td>화면 캡처, 시스템 정보, 브라우저 비밀번호, 문서, (목록상) 지갑·API 키</td>
+</tr>
+<tr>
+<td>다음 행동</td>
+<td>도메인 정찰, SMB로 측면 이동 시도</td>
+<td>측면 이동 없음</td>
+</tr>
+<tr>
+<td>눈에 띄는 단서</td>
+<td>URI에 호스트이름·봇 ID, 가짜 IE7 UA</td>
+<td><code>WindowsPowerShell</code> UA, <code>tempuri.org</code>, 업로드 ≫ 다운로드</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>공통점도 기억하세요. <strong>IP 직접 접속, 비표준 포트, 위장된 파일 이름, 업로드가 다운로드보다 훨씬 큰 세션</strong>은 두 사례 모두에서 핵심 단서였습니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-official-answers">Unit 42 공식 정답과 대조</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">질문</th>
+<th scope="col">이 분석</th>
+<th scope="col">Unit 42 정답</th>
+<th scope="col">일치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>감염 시작</td>
+<td>2023-07-10 22:39 UTC (22:39:47)</td>
+<td>2023-07-10 22:39 UTC</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>IP</td>
+<td>10.7.10.47</td>
+<td>10.7.10[.]47</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>MAC</td>
+<td>80:86:5b<span>🆎</span>1e:c4</td>
+<td>80:86:5b<span>🆎</span>1e:c4</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>호스트이름</td>
+<td>DESKTOP-9PEA63H</td>
+<td>DESKTOP-9PEA63H</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>사용자</td>
+<td>rwalters</td>
+<td>rwalters</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>훔치려 한 정보</td>
+<td>바탕화면·문서 파일, 브라우저 데이터, 지갑, API 키·자격 증명 + 실제 업로드 내용</td>
+<td>같은 범주(파일, 브라우저, 지갑, API 키·자격 증명)</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>공식 해설은 호스트이름을 NetBIOS로, 계정을 Kerberos로 찾았고, 이 페이지는 DHCP와 Kerberos를 썼습니다. 길은 달라도 답은 같아요. 출처가 두 개 이상이면 더 확실합니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-query-sheet">복사용 쿼리 모음</h2>
+<p><code>&lt;…&gt;</code>를 바꿔서 쓰세요.</p>
+<p><strong>호스트 정보</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>host.dns == _ldap._tcp.dc._msdcs.*
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == krb5
+</code></pre></div></div>
+<p><strong>수상한 통신 찾기</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == dns
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == http
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>http.user-agent == *WindowsPowerShell*
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; protocols == tls
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst != 10.0.0.0/8 &amp;&amp; ip.dst != 172.16.0.0/12 &amp;&amp; ip.dst != 192.168.0.0/16 &amp;&amp; ip.dst != 224.0.0.0/4 &amp;&amp; port.dst != 80 &amp;&amp; port.dst != 443 &amp;&amp; port.dst != 53
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == &lt;C2-IP&gt; &amp;&amp; port.dst == &lt;port&gt;
+</code></pre></div></div>
+<p><strong>업로드가 큰 세션 (유출 후보)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; databytes.src &gt; 100000 &amp;&amp; ip.dst != &lt;internal-CIDR&gt;
+</code></pre></div></div>
+<p><strong>범위</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == &lt;host-IP&gt; &amp;&amp; ip.dst == &lt;internal-CIDR&gt; &amp;&amp; ip.dst != &lt;DC-IP&gt;
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.dst == [&lt;IOC-IP-1&gt;, &lt;IOC-IP-2&gt;, &lt;IOC-IP-3&gt;] &amp;&amp; ip.src != &lt;host-IP&gt;
+</code></pre></div></div>
+<p><strong>사용한 CyberChef 레시피</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">레시피</th>
+<th scope="col">용도</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL Decode</td>
+<td><code>av=Windows%20Defender</code> 같은 URI</td>
+</tr>
+<tr>
+<td>Strings</td>
+<td>Source/Destination Raw로 받은 net.tcp 데이터에서 글자 뽑기</td>
+</tr>
+<tr>
+<td>Extract Files</td>
+<td>업로드 안의 PNG·docx 꺼내기</td>
+</tr>
+<tr>
+<td>Render Image</td>
+<td>꺼낸 화면 캡처 보기</td>
+</tr>
+<tr>
+<td>Unzip</td>
+<td>docx(zip) 안의 <code>word/document.xml</code> 읽기</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-lessons">교훈</h2>
+<ul>
+<li><strong>짧은 PCAP일수록 "모르는 포트 하나"가 바로 보입니다.</strong> 포트 목록을 역할별로 나누면 정상 AD 통신 속에서 12432가 튀어나옵니다.</li>
+<li><strong>DHCP가 있으면 IP·MAC·호스트이름을 한 번에</strong> 얻습니다. 캡처가 DHCP로 시작하면 PC가 켜지는 장면부터 기록된 것입니다.</li>
+<li><strong><code>WindowsPowerShell</code> User-Agent와 User-Agent 없는 요청</strong>은 둘 다 "사람이 아닌 프로그램"의 표시입니다.</li>
+<li><strong>상태 200 + 본문 "404"</strong> 같은 앞뒤가 안 맞는 응답은 위장일 수 있습니다.</li>
+<li><strong>정식 인증서(Let's Encrypt)라고 안전하지 않습니다.</strong> 판단은 맥락으로 합니다.</li>
+<li><strong>JA3 변화가 없다고 깨끗한 게 아닙니다.</strong> 이 사례는 페이로드 다운로드가 윈도우 서비스와 같은 JA3를 썼고, C2는 TLS조차 아니었습니다.</li>
+<li><strong>업로드 ≫ 다운로드인 세션은 유출 후보 1순위</strong>입니다(<code>databytes.src</code>).</li>
+<li><strong>암호화되지 않은 C2는 서버의 지시와 훔친 내용을 다 보여 줍니다.</strong> 서버가 내려 준 목록으로 "무엇을 노렸나"를, 업로드로 "무엇을 잃었나"를 나눠서 보고하세요.</li>
+<li><strong>캡처 손실을 기록하세요.</strong> 빠진 조각 때문에 증거(화면 캡처)가 일부 깨졌다는 사실도 보고서에 남겨야 합니다.</li>
+</ul>
+</section>
+<section>
+<h2 id="ko-references">참고</h2>
+<ul>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-redline-stealer/">Crossing the Line: Unit 42 Wireshark Quiz for RedLine Stealer</a> — 문제와 PCAP 위치</li>
+<li><a href="https://unit42.paloaltonetworks.com/wireshark-quiz-redline-stealer-answers/">Answers to Unit 42 Wireshark Quiz for RedLine Stealer</a> — 공식 정답과 해시</li>
+<li><a href="https://www.malware-traffic-analysis.net/training-exercises.html">malware-traffic-analysis.net 연습 문제 목록</a></li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

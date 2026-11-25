@@ -206,3 +206,21 @@ html[lang="ko"] :is(.guide-header, .guide-toc, .guide-article) {
   background: transparent;
   font-size: .875rem;
 }
+
+.handbook-article :is(.admonition, details) {
+  margin: 1rem 0;
+  border-inline-start: .2rem solid var(--blue);
+  padding: .75rem 1rem;
+  background: var(--surface-subtle);
+}
+
+.handbook-article :is(.admonition-title, summary) {
+  font-weight: 650;
+}
+
+.handbook-article summary { cursor: pointer; }
+.handbook-article .admonition > :last-child { margin-bottom: 0; }
+
+.handbook-article :is(h2, h3, h4)[id] {
+  scroll-margin-top: 1.25rem;
+}

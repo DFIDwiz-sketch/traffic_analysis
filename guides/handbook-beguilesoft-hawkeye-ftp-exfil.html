@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>BEGUILESOFT — HawkEye Keylogger: stolen passwords, keylogs and screenshots over FTP · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase10Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase10Title">BEGUILESOFT — HawkEye Keylogger: stolen passwords, keylogs and screenshots over FTP</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-prep">Step 0 — Before the first query</a></li>
+<li><a href="#en-baseline">Step 1 — Baselining</a></li>
+<li><a href="#en-destinations">Step 2 — Every destination, in time order</a></li>
+<li><a href="#en-ftp">Step 3 — What went over FTP</a></li>
+<li><a href="#en-snort">Step 5 — One Snort rule</a></li>
+<li><a href="#en-query-sheet">Copy-ready queries</a></li>
+<li><a href="#en-lessons">Lessons</a></li>
+<li><a href="#en-references">References</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-prep">0단계 — 첫 쿼리 전에</a></li>
+<li><a href="#ko-baseline">1단계 — 베이스라이닝</a></li>
+<li><a href="#ko-destinations">2단계 — 모든 목적지를 시간 순서로</a></li>
+<li><a href="#ko-ftp">3단계 — FTP로 무엇이 나갔나</a></li>
+<li><a href="#ko-snort">5단계 — Snort 룰 하나</a></li>
+<li><a href="#ko-query-sheet">바로 쓰는 쿼리 모음</a></li>
+<li><a href="#ko-lessons">배운 점</a></li>
+<li><a href="#ko-references">참고</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>Compare five observed uploads across three FTP sessions. Pair each STOR with its data connection using the client, negotiated port and timestamp. Record the category and size of each transfer while keeping credential values and captured keystrokes out of the ticket.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/beguilesoft-hawkeye-ftp-exfil/">DFIR Handbook original</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td><code>2019-05-02-traffic-analysis-exercise.pcap</code> — 2019-05-02 21:35:18 – 22:05:23 UTC (about 30 min)</td>
+</tr>
+<tr>
+<td><strong>Source</strong></td>
+<td><a href="https://malware-traffic-analysis.net/2019/05/02/index.html">malware-traffic-analysis.net 2019-05-02 "BEGUILESOFT"</a></td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Closed network. pcapbox VM: Splunk (<code>index=zeek</code>, case field <code>pcap_case</code>), Arkime (tag = case name), Snort 2.9.20. <strong>No Wireshark.</strong></td>
+</tr>
+<tr>
+<td><strong>Deliverables</strong></td>
+<td>Analysis, one Snort rule</td>
+</tr>
+<tr>
+<td><strong>Related pages</strong></td>
+<td><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass (pcapbox setup, Snort test guide)</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/splunk/spl-cheatsheet/">SPL cheat sheet</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/">Zeek logs</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/playbooks/data-exfiltration/">Playbook: data exfiltration</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-prep">Step 0 — Before the first query</h2>
+<p>The PCAP was dropped into <code>\\10.50.10.60\incoming</code> as <strong><code>20190502_BEGUILESOFT.pcap</code></strong>, so the case name is <code>20190502_BEGUILESOFT</code> (Splunk field <code>pcap_case</code>, Arkime tag). Two things to check before any query:</p>
+<ol>
+<li><strong>Splunk time range = All time.</strong> On pcapbox <code>_time</code> is the packet time (2019), so the default "Last 24 hours" returns nothing.</li>
+<li><strong>Splunk account time zone = UTC</strong> (account menu → Preferences), because <code>strftime</code> prints in your Splunk time zone.</li>
+</ol>
+<p>Setup and ingest are explained in <a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass — Step 0</a>.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-baseline">Step 1 — Baselining</h2>
+<p><strong>Goal:</strong> before looking for anything bad, learn the basics — <strong>when</strong> the capture runs, <strong>which logs</strong> exist, <strong>which internal PCs</strong> talk, and the <strong>host name, MAC, DC and user</strong>. None of this goes into the report except the host details.</p>
+<h3 id="en-log-types">1-1. Capture window and log types</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek pcap_case="20190502_BEGUILESOFT"
+| stats count AS events min(ts) AS first max(ts) AS last BY sourcetype
+| eval first=strftime(first, "%Y-%m-%d %H:%M:%S"), last=strftime(last, "%Y-%m-%d %H:%M:%S")
+| sort - events
+</code></pre></div></div>
+<ul>
+<li><strong>Line 1</strong> takes every Zeek event of this case. <code>pcap_case</code> is the field pcapbox fills with the PCAP file name.</li>
+<li><strong>Line 2</strong> <code>stats</code> works like a pivot table: "group, then calculate". <code>BY sourcetype</code> groups by log type (conn, dns, http…). For each group it counts events (<code>count</code>), finds the earliest time (<code>min(ts)</code>) and the latest (<code>max(ts)</code>). <code>AS</code> names the result column.</li>
+<li><strong>Line 3</strong> <code>eval</code> calculates or overwrites a value. <code>ts</code> is an epoch number such as 1556832918; <code>strftime</code> turns it into a readable date.</li>
+<li><strong>Line 4</strong> <code>sort - events</code> sorts by event count, largest first. <code>-</code> means descending.</li>
+</ul>
+<p>Result (281 events, 15 log types):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>sourcetype          events  first                last
+zeek:conn           99      2019-05-02 21:35:18  2019-05-02 22:05:23
+zeek:dns            49      2019-05-02 21:35:18  2019-05-02 22:01:33
+zeek:kerberos       39      2019-05-02 21:35:18  2019-05-02 22:05:23
+zeek:ldap_search    23      2019-05-02 21:35:18  2019-05-02 21:36:13
+zeek:dce_rpc        15      2019-05-02 21:35:18  2019-05-02 21:36:57
+zeek:ldap           15      2019-05-02 21:35:18  2019-05-02 21:36:13
+zeek:ftp            10      2019-05-02 21:36:35  2019-05-02 22:01:34
+zeek:files          9       2019-05-02 21:35:24  2019-05-02 22:01:35
+zeek:smb_mapping    9       2019-05-02 21:35:18  2019-05-02 22:05:23
+zeek:ntp            4       2019-05-02 21:35:23  2019-05-02 21:52:27
+zeek:weird          3       2019-05-02 21:35:18  2019-05-02 21:36:57
+zeek:http           2       2019-05-02 21:35:26  2019-05-02 21:36:14
+zeek:smb_files      2       2019-05-02 21:35:24  2019-05-02 21:36:13
+zeek:dhcp           1       2019-05-02 21:35:21  2019-05-02 21:35:21
+zeek:software       1       2019-05-02 21:35:26  2019-05-02 21:35:26
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>The <code>zeek:conn</code> first–last is the capture window: <strong>21:35:18 – 22:05:23 UTC, about 30 minutes</strong>.</li>
+<li>kerberos, ldap, dce_rpc and smb are normal <strong>Windows domain</strong> traffic.</li>
+<li><strong><code>zeek:ftp</code> has 10 events (21:36:35 – 22:01:34)</strong>, there is <strong>no <code>zeek:ssl</code> at all</strong>, and HTTP has only 2 events. An office PC rarely uses FTP, while info-stealer malware often sends stolen data over FTP. Not a conclusion yet — but the first place to look after baselining.</li>
+</ul>
+<h3 id="en-dhcp">1-2. DHCP — host name, MAC, domain</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case="20190502_BEGUILESOFT"
+| eval time=strftime(ts, "%Y-%m-%d %H:%M:%S")
+| table time assigned_addr mac host_name domain msg_types
+</code></pre></div></div>
+<ul>
+<li><code>sourcetype=zeek:dhcp</code> takes DHCP logs only.</li>
+<li><code>table</code> shows only the columns you name, in that order.</li>
+<li><code>assigned_addr</code> = IP the DHCP server gave · <code>mac</code> = the PC's MAC · <code>host_name</code> = the name the PC announced (the report HOSTNAME) · <code>domain</code> = domain name from DHCP · <code>msg_types</code> = DHCP message types.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>time                 assigned_addr  mac                host_name       domain           msg_types
+2019-05-02 21:35:21                 84:8f:69:09:86:c0  Breaux-Win7-PC  beguilesoft.com  INFORM ACK
+</code></pre></div></div>
+<div class="admonition note">
+<p class="admonition-title">Why is <code>assigned_addr</code> empty?</p>
+<p><code>msg_types</code> is <strong>INFORM</strong>, not REQUEST. A PC that already has an IP (fixed address, or a lease from before) sends DHCPINFORM to ask only for <strong>settings</strong> such as the domain name. Nothing is "assigned", so the field is empty. The IP comes from the next query (10.0.0.227). Add <code>client_addr</code> to the <code>table</code> to see the IP the PC used to ask.</p>
+</div>
+<h3 id="en-internal-hosts">1-3. Which internal IPs start connections</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="20190502_BEGUILESOFT"
+| where cidrmatch("10.0.0.0/8", id_orig_h) OR cidrmatch("172.16.0.0/12", id_orig_h) OR cidrmatch("192.168.0.0/16", id_orig_h)
+| stats count AS conns dc(id_resp_h) AS dests BY id_orig_h
+| sort - conns
+</code></pre></div></div>
+<ul>
+<li><code>id_orig_h</code> = the IP that <strong>started</strong> the connection.</li>
+<li><code>where</code> keeps only events where the condition is true. <code>cidrmatch("10.0.0.0/8", id_orig_h)</code> asks "is this IP inside 10.0.0.0/8?". With the three private ranges joined by <code>OR</code>, only <strong>internal</strong> IPs stay.</li>
+<li><code>count</code> = connections; <code>dc(id_resp_h)</code> = <strong>distinct count</strong> of destination IPs. <code>BY id_orig_h</code> gives one row per internal IP.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h    conns  dests
+10.0.0.227   99     10
+</code></pre></div></div>
+<p><strong>Only one internal PC starts connections</strong>, to only 10 destinations. 10.0.0.227 is the suspect.</p>
+<h3 id="en-kerberos">1-4. Kerberos — DC and user account</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case="20190502_BEGUILESOFT"
+| stats count BY id_orig_h id_resp_h client
+</code></pre></div></div>
+<p>Kerberos (port 88) is the Windows domain logon. One log gives three facts: <code>id_resp_h</code> = the server that answers = <strong>the DC</strong>, and <code>client</code> = <code>user/DOMAIN</code> = <strong>the logged-on account</strong>.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h    id_resp_h   client                            count
+10.0.0.227   10.0.0.10   /BEGUILESOFT.COM                  15
+10.0.0.227   10.0.0.10   BREAUX-WIN7-PC$/BEGUILESOFT.COM   12
+10.0.0.227   10.0.0.10   adriana.breaux/BEGUILESOFT        2
+10.0.0.227   10.0.0.10   adriana.breaux/BEGUILESOFT.COM    5
+10.0.0.227   10.0.0.10   breaux-win7-pc$/BEGUILESOFT.COM   2
+10.0.0.227   10.0.0.10   breaux-win7-pc$/beguilesoft.com   2
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><strong>DC = 10.0.0.10.</strong></li>
+<li>Names ending in <strong><code>$</code></strong> are <strong>computer accounts</strong> (the PC itself logging on) — they confirm the host name, nothing more.</li>
+<li><strong><code>/BEGUILESOFT.COM</code> with no name (15)</strong> are <strong>TGS requests</strong> (ticket for a service). A TGS request does not carry the user name in readable form, so Zeek leaves it empty.</li>
+<li>What is left is the <strong>user: adriana.breaux</strong>.</li>
+</ul>
+<p>If <code>zeek:kerberos</code> is missing, use <code>sourcetype=zeek:ntlm</code> with <code>BY id_orig_h username hostname domainname</code>.</p>
+<p><strong>Baseline summary:</strong> capture 21:35:18 – 22:05:23 UTC · one PC <strong>10.0.0.227 Breaux-Win7-PC</strong>, MAC 84:8f:69:09:86:c0 · domain beguilesoft.com · DC 10.0.0.10 · user <strong>adriana.breaux</strong>. And FTP is unusual.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-destinations">Step 2 — Every destination, in time order</h2>
+<p>There are only 10 destinations, so look at all of them.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="20190502_BEGUILESOFT"
+| stats count AS conns sum(orig_bytes) AS sent sum(resp_bytes) AS recv min(ts) AS first BY id_resp_h id_resp_p service
+| eval first=strftime(first, "%H:%M:%S")
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>sum()</code> adds up the values in each group. <code>orig_bytes</code> = bytes the PC <strong>sent</strong>, <code>resp_bytes</code> = bytes it <strong>received</strong>. More sent than received points to <strong>data leaving</strong> (exfil).</li>
+<li><code>BY id_resp_h id_resp_p service</code> makes one row per destination IP + port + protocol that Zeek recognised (dns, http, ftp…).</li>
+<li><code>sort first</code> has no <code>-</code>, so it is <strong>ascending</strong> — first contact first, like a timeline.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_resp_h        id_resp_p  service             conns  sent      recv    first
+10.0.0.10        135        dce_rpc             1      496       548     21:35:18
+10.0.0.10        389        ldap_tcp,krb,gssapi 4      11310     14015   21:35:18
+10.0.0.10        445        gssapi,smb,krb      5      20962     7212    21:35:18
+10.0.0.10        53         dns                 21     1307      2354    21:35:18
+10.0.0.10        88         krb_tcp             24     28669     31383   21:35:18
+...              (more DC, broadcast, LLMNR, DHCP, NTP rows)
+204.2.193.137    80         http                1      97        179     21:35:26
+104.16.154.36    80         http                1      71        564     21:36:14
+145.14.145.4     21         ftp                 1      152       540     21:36:33
+145.14.145.4     37280      ftp-data            1      2791      0       21:36:35
+145.14.144.10    21         ftp                 1      205       747     21:46:27
+145.14.144.10    40651      ftp-data            1      891       0       21:46:27
+145.14.144.10    47434      ftp-data            1      2832685   0       21:46:28
+145.14.145.99    21         ftp                 1      206       746     22:01:33
+145.14.145.99    35396      ftp-data            1      2225681   0       22:01:34
+145.14.145.99    36091      ftp-data            1      601       0       22:01:34
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li>Everything at 21:35 to 10.0.0.10 is the domain logon: DNS, Kerberos, LDAP, SMB, RPC. Normal.</li>
+<li>Only <strong>three external groups</strong>: 204.2.193.137 (Windows connectivity check), 104.16.154.36 at 21:36:14, and <strong>three 145.14.x IPs on FTP</strong>.</li>
+<li><strong><code>ftp</code> and <code>ftp-data</code> come in pairs.</strong> Port 21 carries only a few hundred bytes; the high-port <code>ftp-data</code> connections carry up to 2.8 MB — and <strong>received 0 bytes</strong>. That is the shape of an upload.</li>
+<li>Three FTP sessions: <strong>21:36, 21:46, 22:01</strong> (10 and 15 minutes apart).</li>
+</ul>
+<h3 id="en-dns">2-1. DNS — which names are behind those IPs</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case="20190502_BEGUILESOFT"
+| stats count values(answers) AS answers min(ts) AS first BY query
+| eval first=strftime(first, "%H:%M:%S")
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>query</code> = the name the PC asked about.</li>
+<li><code>values(answers)</code> collects every answer for that name <strong>without duplicates</strong> into one cell, so you can match "name → IP" with the conn result.</li>
+</ul>
+<p>Key lines (domain lookups such as <code>_ldap._tcp...</code>, <code>WPAD</code>, <code>isatap</code> are normal Windows noise):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>query                              count  answers                                              first
+beguilesoft-dc.beguilesoft.com     2      10.0.0.10                                            21:35:18
+breaux-win7-pc.beguilesoft.com     2      add: A breaux-win7-pc.beguilesoft.com 10.0.0.227 ... 21:35:26
+www.msftncsi.com                   1      204.2.193.137 204.2.193.138 a1961.g2.akamai.net ...   21:35:26
+whatismyipaddress.com              1      104.16.154.36 104.16.155.36                          21:36:14
+files.000webhost.com               8      145.14.144.10 145.14.145.4 145.14.145.99 us-east-1.route-1000.000webhost.awex.io  21:36:33
+dns.msftncsi.com                   2      131.107.255.255 fd3e:4f5a:5b81::1                    21:41:28
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ul>
+<li><code>breaux-win7-pc.beguilesoft.com</code> with <code>add: A ... 10.0.0.227</code> is the PC <strong>registering its own DNS name</strong> — another confirmation of IP + host name.</li>
+<li><code>www.msftncsi.com</code> / <code>dns.msftncsi.com</code> = Windows "am I online?" checks. Normal.</li>
+<li><strong><code>whatismyipaddress[.]com</code> at 21:36:14</strong> — a "what is my public IP?" service. People rarely visit it; malware uses it to learn where it runs. HawkEye is known for this lookup.</li>
+<li><strong><code>files.000webhost[.]com</code> at 21:36:33</strong>, asked 8 times, answers <strong>three IPs</strong> — exactly the three FTP servers. 000webhost is a <strong>free hosting</strong> service: cheap and anonymous for an attacker to receive stolen data.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-ftp">Step 3 — What went over FTP</h2>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:ftp pcap_case="20190502_BEGUILESOFT"
+| eval time=strftime(ts, "%H:%M:%S")
+| table time id_resp_h user command arg reply_code reply_msg
+</code></pre></div></div>
+<p><code>zeek:ftp</code> has <strong>one line per FTP command</strong>. <code>user</code> = login account · <code>command</code> = the FTP command (<strong>STOR</strong> = upload to the server, <strong>RETR</strong> = download) · <code>arg</code> = its argument (for STOR, the file name) · <code>reply_code</code> = server answer (226 = transfer complete).</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>time      id_resp_h      user         command  arg                                                                          reply_code  reply_msg
+21:36:35  145.14.145.4   snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,145,4,145,160).
+21:36:35  145.14.145.4   snifferzett  STOR     ftp://145.14.145.4/HawkEye_Keylogger_Stealer_Records_BREAUX-WIN7-PC 5.2.2019 9:36:28 PM.txt  421  Idle timeout (30 seconds): closing control connection
+21:46:27  145.14.144.10  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,144,10,158,203).
+21:46:28  145.14.144.10  snifferzett  STOR     ftp://145.14.144.10/HawkEye_Keylogger_Keylog_Records_2_BREAUX-WIN7-PC 5.2.2019 9:46:22 PM.txt  226  0.068 seconds (measured here), 12.72 Kbytes per second
+21:46:28  145.14.144.10  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,144,10,185,74).
+21:46:28  145.14.144.10  snifferzett  STOR     ftp://145.14.144.10/screenshot1_BREAUX-WIN7-PC.jpeg                         421         Idle timeout (30 seconds): closing control connection
+22:01:34  145.14.145.99  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,145,99,138,68).
+22:01:34  145.14.145.99  snifferzett  STOR     ftp://145.14.145.99/HawkEye_Keylogger_Keylog_Records_3_BREAUX-WIN7-PC 5.2.2019 10:01:28 PM.txt  226  0.064 seconds (measured here), 9.12 Kbytes per second
+22:01:34  145.14.145.99  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,145,99,140,251).
+22:01:34  145.14.145.99  snifferzett  STOR     ftp://145.14.145.99/screenshot2_BREAUX-WIN7-PC.jpeg                         421         Idle timeout (30 seconds): closing control connection
+</code></pre></div></div>
+<p><strong>Reading the result:</strong></p>
+<ol>
+<li><strong>The file names give the malware away:</strong> <code>HawkEye_Keylogger_Stealer_Records_...</code>, <code>HawkEye_Keylogger_Keylog_Records_2/3_...</code>, <code>screenshot1/2_...</code>. HawkEye is a well-known info-stealer (keylogger).</li>
+<li><strong>The first upload is "Stealer Records"</strong> — passwords saved in browsers and mail clients. The next two sessions each send one <strong>keylog</strong> (keystrokes) and one <strong>screenshot</strong>.</li>
+<li><strong>Same account <code>snifferzett</code> every time</strong>, three different 000webhost IPs.</li>
+<li>The times in the file names (9:36:28 PM, 9:46:22 PM, 10:01:28 PM) match the UTC times in the capture: <strong>the PC clock is set to UTC</strong>.</li>
+<li>Why does Zeek show <strong>USER/PASS</strong> nowhere? Zeek's <code>ftp.log</code> does not log every command. By default (<code>FTP::logged_commands</code>) it keeps one line only for transfer-related commands (STOR, RETR, APPE, DELE, PASV, PORT, EPSV, EPRT…) and <strong>adds the login to the <code>user</code> and <code>password</code> columns</strong> of those lines. The password is <code>&lt;hidden&gt;</code> by default; the real value is visible in Arkime (Step 4).</li>
+</ol>
+<h3 id="en-pasv-math">3-1. Matching each file to its size (PASV port arithmetic)</h3>
+<p><code>zeek:ftp</code> has no file sizes; the sizes are on the <code>ftp-data</code> lines of <code>conn</code>. Match them with the <strong>PASV reply</strong>: in <code>(h1,h2,h3,h4,p1,p2)</code> the first four numbers are the IP and the data port is <strong>p1 × 256 + p2</strong>.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>(145,14,145,4,145,160)   → 145×256+160 = 37280 → 2,791 B     Stealer_Records
+(145,14,144,10,158,203)  → 158×256+203 = 40651 → 891 B       Keylog_Records_2
+(145,14,144,10,185,74)   → 185×256+74  = 47434 → 2,832,685 B screenshot1
+(145,14,145,99,138,68)   → 138×256+68  = 35396 → 2,225,681 B screenshot2
+(145,14,145,99,140,251)  → 140×256+251 = 36091 → 601 B       Keylog_Records_3
+</code></pre></div></div>
+<p>Total sent on the data channels: <strong>5,062,649 B ≈ 5.06 MB</strong>, received 0. A second check: the 226 reply for Keylog_Records_3 says 0.064 s at 9.12 KB/s ≈ 584 B — close to the 601 bytes on the wire.</p>
+<div class="admonition question">
+<p class="admonition-title">Question: please explain the FTP commands in more detail</p>
+<p><strong>FTP uses two connections.</strong> The <strong>control connection</strong> (port 21) carries only commands and answers ("log me in", "I am sending this file"). The file contents go over a separate <strong>data connection</strong>. That is why <code>conn</code> shows <code>ftp</code> (port 21, a few hundred bytes) next to <code>ftp-data</code> (high port, megabytes). Read the control connection for <strong>what and where</strong>, the data connection for <strong>how much and what content</strong>.</p>
+<p>One upload in this PCAP, as Arkime shows it (<code>C:</code> = infected PC, <code>S:</code> = server):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>S: 220 ProFTPD Server (000webhost.com) [::ffff:145.14.144.10]   ← server greeting
+C: USER snifferzett                         ← account name
+S: 331 User snifferzett OK. Password required
+C: PASS ********                            ← password (clear text!)
+S: 230 OK. Current restricted directory is /
+C: OPTS utf8 on                             ← use UTF-8 for file names
+S: 200 OK, UTF-8 enabled
+C: PWD                                      ← which folder am I in?
+S: 257 "/" is your current location
+C: CWD /                                    ← go to the top folder
+S: 250 OK. Current directory is /
+C: TYPE I                                   ← binary mode
+S: 200 TYPE is now 8-bit binary
+C: PASV                                     ← open a data port for me
+S: 227 Entering Passive Mode (145,14,144,10,158,203).
+C: STOR HawkEye_Keylogger_Keylog_Records_2_BREAUX-WIN7-PC 5.2.2019 9:46:22 PM.txt
+S: 150 Connecting to port 44294             ← send it on the data connection
+   [data connection 10.0.0.227 → 145.14.144.10:40651, 891 B]
+S: 226-File successfully transferred        ← received
+C: TYPE I / PASV / STOR screenshot1_BREAUX-WIN7-PC.jpeg
+   [data connection → :47434, 2,832,685 B]
+S: 226-File successfully transferred
+S: 421 Idle timeout (30 seconds): closing control connection
+</code></pre></div></div>
+<p><strong>Command by command:</strong></p>
+<ul>
+<li><strong>USER / PASS</strong> — login name and password. FTP has no encryption, so the <strong>password crosses the network in clear text</strong>. The attacker builds the FTP account into the malware, so the account is exposed — a good IOC.</li>
+<li><strong>OPTS utf8 on / PWD / CWD /</strong> — set UTF-8 file names, ask the current folder, move to the top folder. Normal FTP client libraries send these automatically.</li>
+<li><strong>TYPE</strong> — transfer mode: <code>TYPE A</code> = text (ASCII), <code>TYPE I</code> = binary (Image). JPEG files are sent with <code>TYPE I</code>.</li>
+<li><strong>PASV</strong> — "Passive mode, open a port for me". The reply <code>227 (h1,h2,h3,h4,p1,p2)</code> gives the IP and the port p1×256+p2.</li>
+<li><strong>STOR</strong> — <strong>upload</strong>: the client stores a file on the server. An internal PC doing STOR to an external server means <strong>exfiltration</strong>. The key command of this case.</li>
+<li><strong>QUIT</strong> — end the session. Here the server closed it first with 421.</li>
+</ul>
+<p><strong>Other commands you will meet:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Command</th>
+<th scope="col">Meaning</th>
+<th scope="col">Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RETR</td>
+<td>Download (server → client)</td>
+<td>Pulling a malicious file from outside</td>
+</tr>
+<tr>
+<td>APPE</td>
+<td>Append to an existing file</td>
+<td>Can be used for exfil like STOR</td>
+</tr>
+<tr>
+<td>PORT / EPRT</td>
+<td>Active mode (the server connects back to the client)</td>
+<td>Rare today because of NAT and firewalls</td>
+</tr>
+<tr>
+<td>EPSV</td>
+<td>Extended PASV (IPv6-ready, port only)</td>
+<td>Reply looks like <code>229 (\|\|\|port\|)</code></td>
+</tr>
+<tr>
+<td>LIST / NLST</td>
+<td>Folder listing</td>
+<td>Reconnaissance</td>
+</tr>
+<tr>
+<td>CWD / MKD / DELE</td>
+<td>Change folder, make folder, delete file</td>
+<td>DELE to clean up</td>
+</tr>
+<tr>
+<td>SYST / FEAT</td>
+<td>Ask server type / features</td>
+<td>Normal clients use them too</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>Why malware almost always uses PASV:</strong> the infected PC is usually behind NAT, so nothing outside can connect in. In passive mode the client connects <strong>out</strong>, which always works.</p>
+<p><strong>Reply codes — the first digit is enough:</strong> 1xx in progress (150 opening data connection), 2xx success (220 greeting, 227 passive mode, 230 logged in, 226 transfer complete), 3xx more information needed (331 password please), 4xx temporary failure (421 closing), 5xx permanent failure (530 login failed, 550 file not found / no permission).</p>
+</div>
+<div class="admonition question">
+<p class="admonition-title">Question: what are PASV and STOR?</p>
+<p>Think of the FTP server as a <strong>parcel depot</strong>, and the infected PC as someone dropping off parcels (stolen files).</p>
+<p>In FTP the <strong>counter</strong> where you talk (commands) and the <strong>door</strong> where parcels go in (files) are separate. The counter is always in the same place (port 21); the door is opened fresh each time. So the PC first says:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>PC:      PASV
+Server:  227 Entering Passive Mode (145,14,144,10,158,203)
+</code></pre></div></div>
+<p>"Please open a door for my parcel." — "Door 40651 at 145.14.144.10 is open, come there." The first four numbers are the IP; the door number is <code>158 × 256 + 203 = 40651</code>. <strong>Passive</strong> means the server just opens the door and waits; the PC walks to it.</p>
+<p>Then the PC says which parcel it is leaving:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>PC:      STOR HawkEye_Keylogger_Keylog_Records_2_BREAUX-WIN7-PC ... .txt
+Server:  150 ...                          ← "OK, put it through that door"
+         [PC sends 891 bytes through door 40651]
+Server:  226 File successfully transferred ← "Received"
+</code></pre></div></div>
+<p><strong>STOR</strong> = Store = <strong>upload</strong> from the PC to the server. The opposite, download, is <strong>RETR</strong> (Retrieve).</p>
+<p>Every upload is a <strong>PASV → STOR</strong> pair: open a door, drop the file, open another door for the next file. That is why PASV and STOR alternate in <code>zeek:ftp</code>. The one thing to remember: <strong>an internal PC doing STOR to an external server = our files left the network.</strong> Five STORs here = five stolen files.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-snort">Step 5 — One Snort rule</h2>
+<p>The easiest version, with no <code>depth</code>/<code>distance</code>:</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 21 (msg:"HawkEye Keylogger FTP upload - Sung"; content:"HawkEye_Keylogger"; nocase; sid:1000021; rev:1;)
+</code></pre></div></div>
+<p><strong>Header</strong> (which packets to look at):</p>
+<ul>
+<li><code>alert</code> — raise an alert when it matches.</li>
+<li><code>tcp</code> — TCP only.</li>
+<li><code>$HOME_NET any</code> — from the internal network, any source port.</li>
+<li><code>-&gt;</code> — direction: inside to outside.</li>
+<li><code>$EXTERNAL_NET 21</code> — to an external host on port 21 (FTP control).</li>
+</ul>
+<p><strong>Options</strong> (what to find inside the packet):</p>
+<ul>
+<li><code>msg</code> — the text shown in the alert.</li>
+<li><code>content:"HawkEye_Keylogger"</code> — this text appears in the packet.</li>
+<li><code>nocase</code> — ignore case (<code>hawkeye_keylogger</code> matches too).</li>
+<li><code>sid</code> — rule number; own rules use 1000000+.</li>
+<li><code>rev</code> — rule version.</li>
+</ul>
+<div class="admonition question">
+<p class="admonition-title">Question: can the rule be written without <code>depth</code> or <code>distance</code>?</p>
+<p>Yes — the rule above. <code>depth</code> and <code>distance</code> say <strong>where</strong> in the packet the text must be, to cut false positives and speed things up. Here the text <code>HawkEye_Keylogger</code> is so unusual that normal FTP traffic will not contain it, so position does not matter. The <code>STOR</code> condition was dropped for the same reason: this file name going to port 21 is practically always an upload. <code>flow</code> and <code>classtype</code> were dropped too; the <code>-&gt;</code> and port 21 in the header already fix the direction.</p>
+</div>
+<p><strong>Expected result:</strong> put it in <code>\\10.50.10.60\rules\local.rules</code> and run <code>snort-test 20190502_BEGUILESOFT</code> → <strong>3 alerts</strong> (the three STORs with HawkEye_Keylogger in the name: Stealer_Records, Keylog_Records_2, Keylog_Records_3). The two screenshot STORs do not contain the text. The full testing guide is in <a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass — 6-3</a>.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-query-sheet">Copy-ready queries</h2>
+<p>Replace <code>&lt;case&gt;</code> with your case name. Drop <code>pcap_case</code>/<code>tags</code> on a live network.</p>
+<p><strong>Splunk (Zeek)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek pcap_case="&lt;case&gt;" | stats count AS events min(ts) AS first max(ts) AS last BY sourcetype | eval first=strftime(first, "%Y-%m-%d %H:%M:%S"), last=strftime(last, "%Y-%m-%d %H:%M:%S") | sort - events
+index=zeek sourcetype=zeek:dhcp pcap_case="&lt;case&gt;" | eval time=strftime(ts, "%Y-%m-%d %H:%M:%S") | table time client_addr assigned_addr mac host_name domain msg_types
+index=zeek sourcetype=zeek:conn pcap_case="&lt;case&gt;" | where cidrmatch("10.0.0.0/8", id_orig_h) OR cidrmatch("172.16.0.0/12", id_orig_h) OR cidrmatch("192.168.0.0/16", id_orig_h) | stats count AS conns dc(id_resp_h) AS dests BY id_orig_h | sort - conns
+index=zeek sourcetype=zeek:kerberos pcap_case="&lt;case&gt;" | stats count BY id_orig_h id_resp_h client
+index=zeek sourcetype=zeek:conn pcap_case="&lt;case&gt;" | stats count AS conns sum(orig_bytes) AS sent sum(resp_bytes) AS recv min(ts) AS first BY id_resp_h id_resp_p service | eval first=strftime(first, "%H:%M:%S") | sort first
+index=zeek sourcetype=zeek:dns pcap_case="&lt;case&gt;" | stats count values(answers) AS answers min(ts) AS first BY query | eval first=strftime(first, "%H:%M:%S") | sort first
+index=zeek sourcetype=zeek:ftp pcap_case="&lt;case&gt;" | eval time=strftime(ts, "%H:%M:%S") | table time id_resp_h user command arg reply_code reply_msg
+index=zeek sourcetype=zeek:ftp id_orig_h=10.0.0.227 command=STOR
+index=zeek sourcetype=zeek:conn id_orig_h=10.0.0.227 id_resp_h IN (145.14.145.4, 145.14.144.10, 145.14.145.99)
+</code></pre></div></div>
+<ul>
+<li><code>command=STOR</code> keeps uploads only. <code>id_resp_h IN (a, b, c)</code> matches any of the three — the same as three <code>OR</code>s.</li>
+</ul>
+<p><strong>Arkime</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tags == &lt;case&gt; &amp;&amp; ip.src == 10.0.0.227 &amp;&amp; port.dst == 21
+tags == &lt;case&gt; &amp;&amp; ip.src == 10.0.0.227 &amp;&amp; (ip.dst == 145.14.145.4 || ip.dst == 145.14.144.10 || ip.dst == 145.14.145.99)
+tags == &lt;case&gt; &amp;&amp; ip.src == 10.0.0.227 &amp;&amp; port.dst == 37280
+tags == &lt;case&gt; &amp;&amp; user == snifferzett
+huntName == hawkeye_ftp
+</code></pre></div></div>
+<p><strong>Snort</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 21 (msg:"HawkEye Keylogger FTP upload - Sung"; content:"HawkEye_Keylogger"; nocase; sid:1000021; rev:1;)
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="en-lessons">Lessons</h2>
+<ol>
+<li><strong>The log-type list is already a clue.</strong> FTP on an office PC with no TLS at all pointed straight at the exfil channel.</li>
+<li><strong>DHCP INFORM has no assigned address.</strong> Take the IP from <code>conn</code>, the name and MAC from DHCP.</li>
+<li><strong>Bytes sent vs received tell the direction.</strong> <code>ftp-data</code> with megabytes sent and 0 received = upload.</li>
+<li><strong>PASV arithmetic links files to sizes.</strong> p1 × 256 + p2 = the <code>ftp-data</code> port.</li>
+<li><strong>Zeek pairs a command with the last reply.</strong> Check the raw session before calling an upload failed.</li>
+<li><strong>Clear-text protocols hand you the evidence.</strong> FTP showed the attacker's account and every stolen file.</li>
+<li><strong>Name the family carefully.</strong> "HawkEye" comes from file names the malware itself wrote — strong, but still not a sample analysis.</li>
+<li><strong>Keep victim passwords out of reports.</strong> Write "see evidence".</li>
+</ol>
+</section>
+<section>
+<h2 id="en-references">References</h2>
+<ul>
+<li><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass — pcapbox setup and Snort test guide</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/splunk/spl-cheatsheet/">SPL cheat sheet</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/">Zeek logs</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/conn-log/">conn.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/files-log/">files.log</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/playbooks/data-exfiltration/">Playbook: data exfiltration</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/playbooks/account-compromise/">Playbook: account compromise</a></li>
+<li>Original exercise: <a href="https://malware-traffic-analysis.net/2019/05/02/index.html">malware-traffic-analysis.net — 2019-05-02 BEGUILESOFT</a></li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>FTP 세션 세 건의 업로드 다섯 개를 비교합니다. 클라이언트, 협상된 포트, 시각으로 각 STOR와 데이터 연결을 짝짓습니다. 티켓에는 전송된 데이터의 종류와 크기를 기록합니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/beguilesoft-hawkeye-ftp-exfil/">DFIR Handbook 원문</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td><code>2019-05-02-traffic-analysis-exercise.pcap</code> — 2019-05-02 21:35:18 – 22:05:23 UTC (약 30분)</td>
+</tr>
+<tr>
+<td><strong>출처</strong></td>
+<td><a href="https://malware-traffic-analysis.net/2019/05/02/index.html">malware-traffic-analysis.net 2019-05-02 "BEGUILESOFT"</a></td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>폐쇄망. pcapbox VM: Splunk(<code>index=zeek</code>, 케이스 필드 <code>pcap_case</code>), Arkime(태그 = 케이스 이름), Snort 2.9.20. <strong>Wireshark 사용 안 함.</strong></td>
+</tr>
+<tr>
+<td><strong>결과물</strong></td>
+<td>분석, Snort 룰 하나</td>
+</tr>
+<tr>
+<td><strong>관련 페이지</strong></td>
+<td><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석(pcapbox 설정, Snort 테스트 가이드)</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/splunk/spl-cheatsheet/">SPL 치트시트</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/">Zeek 로그</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/playbooks/data-exfiltration/">플레이북: 데이터 유출</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-prep">0단계 — 첫 쿼리 전에</h2>
+<p>PCAP을 <strong><code>20190502_BEGUILESOFT.pcap</code></strong>이라는 이름으로 <code>\\10.50.10.60\incoming</code>에 넣었어요. 그래서 케이스 이름은 <code>20190502_BEGUILESOFT</code>예요(Splunk 필드 <code>pcap_case</code>, Arkime 태그). 쿼리 전에 두 가지를 확인해요.</p>
+<ol>
+<li><strong>Splunk 시간 범위 = All time.</strong> pcapbox에서는 <code>_time</code>이 패킷 시간(2019년)이라서, 기본값 "Last 24 hours"로 두면 결과가 하나도 안 나와요.</li>
+<li><strong>Splunk 계정 시간대 = UTC</strong> (계정 메뉴 → Preferences). <code>strftime</code>은 Splunk 계정 시간대로 출력하기 때문이에요.</li>
+</ol>
+<p>설치와 넣는 방법은 <a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석 — 0단계</a>에 있어요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-baseline">1단계 — 베이스라이닝</h2>
+<p><strong>목적:</strong> 나쁜 것을 찾기 전에 기본부터 알아 둬요. 캡처가 <strong>언제</strong> 시작하고 끝나는지, <strong>어떤 로그</strong>가 있는지, <strong>어떤 내부 PC</strong>가 통신하는지, 그리고 <strong>호스트명, MAC, DC, 사용자</strong>예요. 호스트 정보 말고는 보고서에 넣지 않아요.</p>
+<h3 id="ko-log-types">1-1. 캡처 시간과 로그 종류</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek pcap_case="20190502_BEGUILESOFT"
+| stats count AS events min(ts) AS first max(ts) AS last BY sourcetype
+| eval first=strftime(first, "%Y-%m-%d %H:%M:%S"), last=strftime(last, "%Y-%m-%d %H:%M:%S")
+| sort - events
+</code></pre></div></div>
+<ul>
+<li><strong>1줄</strong>은 이 케이스의 Zeek 이벤트를 모두 가져와요. <code>pcap_case</code>는 pcapbox가 PCAP 파일 이름을 넣어 둔 필드예요.</li>
+<li><strong>2줄</strong> <code>stats</code>는 엑셀의 피벗처럼 "묶어서 계산"하는 명령이에요. <code>BY sourcetype</code>은 로그 종류(conn, dns, http…)별로 묶으라는 뜻이고, 묶음마다 <code>count</code>(개수), <code>min(ts)</code>(가장 이른 시간), <code>max(ts)</code>(가장 늦은 시간)를 구해요. <code>AS</code>는 결과 칼럼 이름을 정해요.</li>
+<li><strong>3줄</strong> <code>eval</code>은 새 값을 계산하거나 덮어써요. <code>ts</code>는 1556832918 같은 epoch 숫자라서, <code>strftime</code>으로 사람이 읽을 수 있는 날짜로 바꿔요.</li>
+<li><strong>4줄</strong> <code>sort - events</code>는 개수가 많은 순서로 정렬해요. <code>-</code>가 내림차순이에요.</li>
+</ul>
+<p>결과(이벤트 281개, 로그 종류 15개):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>sourcetype          events  first                last
+zeek:conn           99      2019-05-02 21:35:18  2019-05-02 22:05:23
+zeek:dns            49      2019-05-02 21:35:18  2019-05-02 22:01:33
+zeek:kerberos       39      2019-05-02 21:35:18  2019-05-02 22:05:23
+zeek:ldap_search    23      2019-05-02 21:35:18  2019-05-02 21:36:13
+zeek:dce_rpc        15      2019-05-02 21:35:18  2019-05-02 21:36:57
+zeek:ldap           15      2019-05-02 21:35:18  2019-05-02 21:36:13
+zeek:ftp            10      2019-05-02 21:36:35  2019-05-02 22:01:34
+zeek:files          9       2019-05-02 21:35:24  2019-05-02 22:01:35
+zeek:smb_mapping    9       2019-05-02 21:35:18  2019-05-02 22:05:23
+zeek:ntp            4       2019-05-02 21:35:23  2019-05-02 21:52:27
+zeek:weird          3       2019-05-02 21:35:18  2019-05-02 21:36:57
+zeek:http           2       2019-05-02 21:35:26  2019-05-02 21:36:14
+zeek:smb_files      2       2019-05-02 21:35:24  2019-05-02 21:36:13
+zeek:dhcp           1       2019-05-02 21:35:21  2019-05-02 21:35:21
+zeek:software       1       2019-05-02 21:35:26  2019-05-02 21:35:26
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><code>zeek:conn</code>의 first~last가 캡처 시간이에요. <strong>21:35:18 – 22:05:23 UTC, 약 30분</strong>이에요.</li>
+<li>kerberos, ldap, dce_rpc, smb는 정상적인 <strong>윈도우 도메인</strong> 트래픽이에요.</li>
+<li><strong><code>zeek:ftp</code>가 10건(21:36:35 – 22:01:34)</strong> 있고, <strong><code>zeek:ssl</code>은 아예 없고</strong>, HTTP는 2건뿐이에요. 일반 사무실 PC가 FTP를 쓰는 일은 드물어요. 그런데 정보 탈취형 악성코드(인포스틸러)는 훔친 데이터를 FTP로 보내는 경우가 많아요. 아직 결론은 아니지만, 베이스라이닝 다음에 가장 먼저 볼 곳이에요.</li>
+</ul>
+<h3 id="ko-dhcp">1-2. DHCP — 호스트명, MAC, 도메인</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dhcp pcap_case="20190502_BEGUILESOFT"
+| eval time=strftime(ts, "%Y-%m-%d %H:%M:%S")
+| table time assigned_addr mac host_name domain msg_types
+</code></pre></div></div>
+<ul>
+<li><code>sourcetype=zeek:dhcp</code>는 DHCP 로그만 가져와요.</li>
+<li><code>table</code>은 원하는 칼럼만 원하는 순서로 보여 줘요.</li>
+<li><code>assigned_addr</code>는 DHCP 서버가 준 IP, <code>mac</code>은 PC의 MAC, <code>host_name</code>은 PC가 스스로 알린 이름(보고서의 HOSTNAME), <code>domain</code>은 DHCP가 알려 준 도메인 이름, <code>msg_types</code>는 DHCP 메시지 종류예요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>time                 assigned_addr  mac                host_name       domain           msg_types
+2019-05-02 21:35:21                 84:8f:69:09:86:c0  Breaux-Win7-PC  beguilesoft.com  INFORM ACK
+</code></pre></div></div>
+<div class="admonition note">
+<p class="admonition-title"><code>assigned_addr</code>가 왜 비어 있나요?</p>
+<p><code>msg_types</code>가 REQUEST가 아니라 <strong>INFORM</strong>이에요. INFORM은 IP를 이미 가진 PC(고정 IP나 예전에 받은 주소)가 도메인 이름 같은 <strong>설정만</strong> 물어보는 메시지예요. 새로 "배정된" IP가 없으니 칸이 비어요. IP는 다음 쿼리에서 나와요(10.0.0.227). <code>table</code>에 <code>client_addr</code>를 추가하면 PC가 요청할 때 쓴 IP도 볼 수 있어요.</p>
+</div>
+<h3 id="ko-internal-hosts">1-3. 어떤 내부 IP가 통신을 시작하나</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="20190502_BEGUILESOFT"
+| where cidrmatch("10.0.0.0/8", id_orig_h) OR cidrmatch("172.16.0.0/12", id_orig_h) OR cidrmatch("192.168.0.0/16", id_orig_h)
+| stats count AS conns dc(id_resp_h) AS dests BY id_orig_h
+| sort - conns
+</code></pre></div></div>
+<ul>
+<li><code>id_orig_h</code>는 연결을 <strong>시작한</strong> 쪽 IP예요.</li>
+<li><code>where</code>는 조건이 참인 이벤트만 남기는 필터예요. <code>cidrmatch("10.0.0.0/8", id_orig_h)</code>는 "이 IP가 10.0.0.0/8 대역 안에 있는가?"를 묻는 함수예요. 사설 대역 3개를 <code>OR</code>로 이어서 <strong>내부</strong> IP만 남겨요.</li>
+<li><code>count</code>는 연결 수, <code>dc(id_resp_h)</code>는 "distinct count", 즉 서로 다른 목적지 IP 수예요. <code>BY id_orig_h</code>라서 내부 IP 하나당 한 줄이 나와요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h    conns  dests
+10.0.0.227   99     10
+</code></pre></div></div>
+<p><strong>통신을 시작하는 내부 PC는 하나뿐</strong>이고, 목적지도 10개뿐이에요. 분석 대상은 10.0.0.227이에요.</p>
+<h3 id="ko-kerberos">1-4. Kerberos — DC와 사용자 계정</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case="20190502_BEGUILESOFT"
+| stats count BY id_orig_h id_resp_h client
+</code></pre></div></div>
+<p>Kerberos(포트 88)는 윈도우 도메인 로그인 인증이에요. 이 로그 하나로 세 가지를 알 수 있어요. <code>id_resp_h</code>는 요청을 받은 서버, 즉 <strong>DC</strong>이고, <code>client</code>는 <code>사용자명/도메인</code> 형태의 <strong>로그인한 계정</strong>이에요.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h    id_resp_h   client                            count
+10.0.0.227   10.0.0.10   /BEGUILESOFT.COM                  15
+10.0.0.227   10.0.0.10   BREAUX-WIN7-PC$/BEGUILESOFT.COM   12
+10.0.0.227   10.0.0.10   adriana.breaux/BEGUILESOFT        2
+10.0.0.227   10.0.0.10   adriana.breaux/BEGUILESOFT.COM    5
+10.0.0.227   10.0.0.10   breaux-win7-pc$/BEGUILESOFT.COM   2
+10.0.0.227   10.0.0.10   breaux-win7-pc$/beguilesoft.com   2
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><strong>DC = 10.0.0.10</strong>이에요.</li>
+<li><strong><code>$</code>로 끝나는 이름</strong>은 사람이 아니라 <strong>컴퓨터 계정</strong>이에요(PC 자신의 로그인). 호스트명을 확인해 주는 정도예요.</li>
+<li><strong>이름 없이 <code>/BEGUILESOFT.COM</code>만 있는 15건</strong>은 <strong>TGS 요청</strong>(서비스 티켓 요청)이에요. TGS 요청에는 사용자 이름이 읽을 수 있는 형태로 들어 있지 않아서 Zeek이 비워 둬요.</li>
+<li>남는 것이 <strong>사용자 adriana.breaux</strong>예요.</li>
+</ul>
+<p><code>zeek:kerberos</code>가 없으면 <code>sourcetype=zeek:ntlm</code>으로 바꾸고 <code>BY id_orig_h username hostname domainname</code>으로 보세요.</p>
+<p><strong>베이스라인 요약:</strong> 캡처 21:35:18 – 22:05:23 UTC · PC 한 대 <strong>10.0.0.227 Breaux-Win7-PC</strong>, MAC 84:8f:69:09:86:c0 · 도메인 beguilesoft.com · DC 10.0.0.10 · 사용자 <strong>adriana.breaux</strong>. 그리고 FTP가 수상해요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-destinations">2단계 — 모든 목적지를 시간 순서로</h2>
+<p>목적지가 10개뿐이라 전부 봐요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="20190502_BEGUILESOFT"
+| stats count AS conns sum(orig_bytes) AS sent sum(resp_bytes) AS recv min(ts) AS first BY id_resp_h id_resp_p service
+| eval first=strftime(first, "%H:%M:%S")
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>sum()</code>은 묶음 안의 값을 모두 더해요. <code>orig_bytes</code>는 PC가 <strong>보낸</strong> 바이트, <code>resp_bytes</code>는 <strong>받은</strong> 바이트예요. 보낸 양이 받은 양보다 크면 <strong>데이터 유출</strong>(exfil)을 의심해요.</li>
+<li><code>BY id_resp_h id_resp_p service</code>는 목적지 IP + 포트 + Zeek이 알아낸 프로토콜(dns, http, ftp…) 조합마다 한 줄씩 만들어요.</li>
+<li><code>sort first</code>는 <code>-</code>가 없으니 <strong>오름차순</strong>이에요. 처음 연락한 순서대로 보여 줘서 타임라인처럼 읽을 수 있어요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_resp_h        id_resp_p  service             conns  sent      recv    first
+10.0.0.10        135        dce_rpc             1      496       548     21:35:18
+10.0.0.10        389        ldap_tcp,krb,gssapi 4      11310     14015   21:35:18
+10.0.0.10        445        gssapi,smb,krb      5      20962     7212    21:35:18
+10.0.0.10        53         dns                 21     1307      2354    21:35:18
+10.0.0.10        88         krb_tcp             24     28669     31383   21:35:18
+...              (DC, 브로드캐스트, LLMNR, DHCP, NTP 줄 더 있음)
+204.2.193.137    80         http                1      97        179     21:35:26
+104.16.154.36    80         http                1      71        564     21:36:14
+145.14.145.4     21         ftp                 1      152       540     21:36:33
+145.14.145.4     37280      ftp-data            1      2791      0       21:36:35
+145.14.144.10    21         ftp                 1      205       747     21:46:27
+145.14.144.10    40651      ftp-data            1      891       0       21:46:27
+145.14.144.10    47434      ftp-data            1      2832685   0       21:46:28
+145.14.145.99    21         ftp                 1      206       746     22:01:33
+145.14.145.99    35396      ftp-data            1      2225681   0       22:01:34
+145.14.145.99    36091      ftp-data            1      601       0       22:01:34
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li>21:35에 10.0.0.10으로 가는 것은 모두 도메인 로그인이에요. DNS, Kerberos, LDAP, SMB, RPC로 정상이에요.</li>
+<li>외부는 <strong>세 무리</strong>뿐이에요. 204.2.193.137(윈도우 인터넷 연결 확인), 21:36:14의 104.16.154.36, 그리고 <strong>FTP로 접속한 145.14.x IP 세 개</strong>예요.</li>
+<li><strong><code>ftp</code>와 <code>ftp-data</code>가 짝으로 나와요.</strong> 포트 21은 수백 바이트뿐인데, 높은 포트의 <code>ftp-data</code>는 최대 2.8 MB를 보냈고 <strong>받은 건 0바이트</strong>예요. 업로드의 전형적인 모양이에요.</li>
+<li>FTP 접속은 <strong>21:36, 21:46, 22:01</strong> 세 번이에요(10분, 15분 간격).</li>
+</ul>
+<h3 id="ko-dns">2-1. DNS — 그 IP 뒤에 있는 이름</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case="20190502_BEGUILESOFT"
+| stats count values(answers) AS answers min(ts) AS first BY query
+| eval first=strftime(first, "%H:%M:%S")
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>query</code>는 PC가 물어본 도메인 이름이에요.</li>
+<li><code>values(answers)</code>는 그 이름의 응답을 <strong>중복 없이 모두</strong> 한 칸에 모아요. 그래서 "이름 → IP"를 conn 결과와 맞춰 볼 수 있어요.</li>
+</ul>
+<p>중요한 줄만 추렸어요(<code>_ldap._tcp...</code>, <code>WPAD</code>, <code>isatap</code> 같은 건 정상적인 윈도우 잡음이에요):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>query                              count  answers                                              first
+beguilesoft-dc.beguilesoft.com     2      10.0.0.10                                            21:35:18
+breaux-win7-pc.beguilesoft.com     2      add: A breaux-win7-pc.beguilesoft.com 10.0.0.227 ... 21:35:26
+www.msftncsi.com                   1      204.2.193.137 204.2.193.138 a1961.g2.akamai.net ...   21:35:26
+whatismyipaddress.com              1      104.16.154.36 104.16.155.36                          21:36:14
+files.000webhost.com               8      145.14.144.10 145.14.145.4 145.14.145.99 us-east-1.route-1000.000webhost.awex.io  21:36:33
+dns.msftncsi.com                   2      131.107.255.255 fd3e:4f5a:5b81::1                    21:41:28
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ul>
+<li><code>breaux-win7-pc.beguilesoft.com</code>의 <code>add: A ... 10.0.0.227</code>은 PC가 <strong>자기 DNS 이름을 등록</strong>한 거예요. IP와 호스트명을 한 번 더 확인해 줘요.</li>
+<li><code>www.msftncsi.com</code> / <code>dns.msftncsi.com</code>은 윈도우의 "인터넷 되나?" 확인이에요. 정상이에요.</li>
+<li><strong>21:36:14 <code>whatismyipaddress[.]com</code></strong>은 "내 공인 IP가 뭐지?"를 알려 주는 서비스예요. 사람은 잘 안 들어가지만, 악성코드는 자기가 어디서 돌고 있는지 알려고 써요. HawkEye가 이 조회를 하는 것으로 알려져 있어요.</li>
+<li><strong>21:36:33 <code>files.000webhost[.]com</code></strong>을 8번 물었고 답은 <strong>IP 세 개</strong>예요. 바로 그 FTP 서버 세 개예요. 000webhost는 <strong>무료 호스팅</strong> 서비스라서, 공격자가 훔친 데이터를 싸고 익명으로 받기 좋아요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-ftp">3단계 — FTP로 무엇이 나갔나</h2>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:ftp pcap_case="20190502_BEGUILESOFT"
+| eval time=strftime(ts, "%H:%M:%S")
+| table time id_resp_h user command arg reply_code reply_msg
+</code></pre></div></div>
+<p><code>zeek:ftp</code>는 <strong>FTP 명령 하나당 한 줄</strong>이에요. <code>user</code>는 로그인 계정, <code>command</code>는 FTP 명령(<strong>STOR</strong>는 서버로 업로드, <strong>RETR</strong>는 다운로드), <code>arg</code>는 명령의 인자(STOR라면 파일 이름), <code>reply_code</code>는 서버 응답 코드(226이면 전송 완료)예요.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>time      id_resp_h      user         command  arg                                                                          reply_code  reply_msg
+21:36:35  145.14.145.4   snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,145,4,145,160).
+21:36:35  145.14.145.4   snifferzett  STOR     ftp://145.14.145.4/HawkEye_Keylogger_Stealer_Records_BREAUX-WIN7-PC 5.2.2019 9:36:28 PM.txt  421  Idle timeout (30 seconds): closing control connection
+21:46:27  145.14.144.10  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,144,10,158,203).
+21:46:28  145.14.144.10  snifferzett  STOR     ftp://145.14.144.10/HawkEye_Keylogger_Keylog_Records_2_BREAUX-WIN7-PC 5.2.2019 9:46:22 PM.txt  226  0.068 seconds (measured here), 12.72 Kbytes per second
+21:46:28  145.14.144.10  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,144,10,185,74).
+21:46:28  145.14.144.10  snifferzett  STOR     ftp://145.14.144.10/screenshot1_BREAUX-WIN7-PC.jpeg                         421         Idle timeout (30 seconds): closing control connection
+22:01:34  145.14.145.99  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,145,99,138,68).
+22:01:34  145.14.145.99  snifferzett  STOR     ftp://145.14.145.99/HawkEye_Keylogger_Keylog_Records_3_BREAUX-WIN7-PC 5.2.2019 10:01:28 PM.txt  226  0.064 seconds (measured here), 9.12 Kbytes per second
+22:01:34  145.14.145.99  snifferzett  PASV                                                                                 227         Entering Passive Mode (145,14,145,99,140,251).
+22:01:34  145.14.145.99  snifferzett  STOR     ftp://145.14.145.99/screenshot2_BREAUX-WIN7-PC.jpeg                         421         Idle timeout (30 seconds): closing control connection
+</code></pre></div></div>
+<p><strong>결과 읽기:</strong></p>
+<ol>
+<li><strong>파일 이름이 악성코드를 알려 줘요.</strong> <code>HawkEye_Keylogger_Stealer_Records_...</code>, <code>HawkEye_Keylogger_Keylog_Records_2/3_...</code>, <code>screenshot1/2_...</code>. HawkEye는 잘 알려진 정보 탈취형 악성코드(키로거)예요.</li>
+<li>**첫 업로드가 "Stealer Records"**예요. 브라우저와 메일 프로그램에 저장된 비밀번호를 훔친 기록이에요. 그다음 두 번은 <strong>키로그</strong>(키 입력)와 <strong>스크린샷</strong>을 하나씩 올렸어요.</li>
+<li><strong>계정은 매번 <code>snifferzett</code></strong>이고, 000webhost IP만 세 번 다 달라요.</li>
+<li>파일 이름의 시간(9:36:28 PM, 9:46:22 PM, 10:01:28 PM)이 캡처의 UTC 시간과 같아요. <strong>PC 시계가 UTC로 맞춰져 있어요.</strong></li>
+<li>왜 <strong>USER/PASS</strong> 줄이 따로 없을까요? Zeek ftp.log는 모든 명령을 기록하지 않아요. 기본 설정(<code>FTP::logged_commands</code>)으로는 파일 전송과 관련된 명령(STOR, RETR, APPE, DELE, PASV, PORT, EPSV, EPRT 등)만 한 줄씩 남기고, <strong>로그인 정보는 그 줄의 <code>user</code>, <code>password</code> 칸에</strong> 붙여 넣어요. 비밀번호는 기본으로 <code>&lt;hidden&gt;</code>이라서, 실제 값은 Arkime에서 봐요(4단계).</li>
+</ol>
+<h3 id="ko-pasv-math">3-1. 파일과 크기 짝짓기 (PASV 포트 계산)</h3>
+<p><code>zeek:ftp</code>에는 파일 크기가 없어요. 크기는 <code>conn</code>의 <code>ftp-data</code> 줄에 있어요. <strong>PASV 응답</strong>으로 짝을 지어요. <code>(h1,h2,h3,h4,p1,p2)</code>에서 앞의 4개가 IP이고, 데이터 포트는 <strong>p1 × 256 + p2</strong>예요.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>(145,14,145,4,145,160)   → 145×256+160 = 37280 → 2,791 B     Stealer_Records
+(145,14,144,10,158,203)  → 158×256+203 = 40651 → 891 B       Keylog_Records_2
+(145,14,144,10,185,74)   → 185×256+74  = 47434 → 2,832,685 B screenshot1
+(145,14,145,99,138,68)   → 138×256+68  = 35396 → 2,225,681 B screenshot2
+(145,14,145,99,140,251)  → 140×256+251 = 36091 → 601 B       Keylog_Records_3
+</code></pre></div></div>
+<p>데이터 연결로 보낸 합계는 <strong>5,062,649 B ≈ 5.06 MB</strong>이고 받은 건 0이에요. 한 번 더 확인할 수도 있어요. Keylog_Records_3의 226 응답은 0.064초에 9.12 KB/s라서 약 584 B인데, 실제 전송량 601 B와 거의 같아요.</p>
+<div class="admonition question">
+<p class="admonition-title">질문: FTP 명령어들을 좀 더 설명해 주세요</p>
+<p><strong>FTP는 연결을 두 개 써요.</strong> <strong>제어 연결</strong>(포트 21)로는 "로그인할게", "이 파일 올릴게" 같은 명령과 응답만 오가요. 파일 내용은 <strong>데이터 연결</strong>로 따로 가요. 그래서 conn 결과에 <code>ftp</code>(포트 21, 수백 바이트)와 <code>ftp-data</code>(높은 포트, 수 MB)가 나란히 나와요. 분석할 때는 제어 연결에서 "무슨 파일을 어디로"를 보고, 데이터 연결에서 "얼마나, 무슨 내용"을 봐요.</p>
+<p>이 PCAP의 업로드 하나를 Arkime로 보면 이래요(<code>C:</code> = 감염 PC, <code>S:</code> = 서버):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>S: 220 ProFTPD Server (000webhost.com) [::ffff:145.14.144.10]   ← 서버 인사
+C: USER snifferzett                         ← 계정 이름
+S: 331 User snifferzett OK. Password required
+C: PASS ********                            ← 비밀번호 (평문!)
+S: 230 OK. Current restricted directory is /
+C: OPTS utf8 on                             ← 파일 이름을 UTF-8로
+S: 200 OK, UTF-8 enabled
+C: PWD                                      ← 지금 어느 폴더?
+S: 257 "/" is your current location
+C: CWD /                                    ← 최상위 폴더로 이동
+S: 250 OK. Current directory is /
+C: TYPE I                                   ← 바이너리 모드
+S: 200 TYPE is now 8-bit binary
+C: PASV                                     ← 데이터용 포트 열어 줘
+S: 227 Entering Passive Mode (145,14,144,10,158,203).
+C: STOR HawkEye_Keylogger_Keylog_Records_2_BREAUX-WIN7-PC 5.2.2019 9:46:22 PM.txt
+S: 150 Connecting to port 44294             ← 데이터 연결로 보내라
+   [데이터 연결 10.0.0.227 → 145.14.144.10:40651 으로 891 B]
+S: 226-File successfully transferred        ← 받기 완료
+C: TYPE I / PASV / STOR screenshot1_BREAUX-WIN7-PC.jpeg
+   [데이터 연결 → :47434 으로 2,832,685 B]
+S: 226-File successfully transferred
+S: 421 Idle timeout (30 seconds): closing control connection
+</code></pre></div></div>
+<p><strong>명령 하나씩 보기:</strong></p>
+<ul>
+<li><strong>USER / PASS</strong>는 로그인 아이디와 비밀번호예요. FTP는 암호화가 없어서 <strong>비밀번호가 평문으로</strong> 네트워크를 지나가요. 공격자가 악성코드 안에 FTP 계정을 박아 두기 때문에, 그 계정이 그대로 노출돼요. 좋은 IOC예요.</li>
+<li>**OPTS utf8 on / PWD / CWD /**는 파일 이름을 UTF-8로 쓰겠다는 설정, 현재 폴더 묻기, 최상위 폴더로 이동이에요. 정상 FTP 클라이언트 라이브러리가 자동으로 보내는 명령이에요.</li>
+<li><strong>TYPE</strong>은 전송 방식이에요. <code>TYPE A</code>는 텍스트(ASCII), <code>TYPE I</code>는 바이너리(Image)예요. jpeg 같은 파일은 보통 <code>TYPE I</code>로 보내요.</li>
+<li><strong>PASV</strong>는 "Passive 모드로 할게, 서버가 포트를 열어 줘"라는 뜻이에요. 응답 <code>227 (h1,h2,h3,h4,p1,p2)</code>에서 IP와 포트(p1×256+p2)를 알 수 있어요.</li>
+<li><strong>STOR</strong>은 <strong>업로드</strong>예요. 클라이언트가 서버에 파일을 저장(store)해요. 내부 PC가 외부로 STOR를 했다면 바로 <strong>데이터 유출</strong>을 의심해요. 이 케이스의 핵심 명령이에요.</li>
+<li><strong>QUIT</strong>는 접속 종료예요. 이번에는 클라이언트가 QUIT하기 전에 서버가 421로 먼저 끊었어요.</li>
+</ul>
+<p><strong>자주 보는 다른 명령들:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">명령</th>
+<th scope="col">뜻</th>
+<th scope="col">분석 포인트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RETR</td>
+<td>다운로드 (서버 → 클라이언트)</td>
+<td>외부에서 악성 파일을 받아 올 때</td>
+</tr>
+<tr>
+<td>APPE</td>
+<td>기존 파일 뒤에 이어 붙이기</td>
+<td>STOR처럼 유출에 쓰일 수 있음</td>
+</tr>
+<tr>
+<td>PORT / EPRT</td>
+<td>Active 모드 (서버가 클라이언트로 접속해 옴)</td>
+<td>NAT·방화벽 때문에 요즘은 드묾</td>
+</tr>
+<tr>
+<td>EPSV</td>
+<td>PASV의 확장판 (IPv6 지원, 포트만 알려 줌)</td>
+<td><code>229 (\|\|\|포트\|)</code> 형태</td>
+</tr>
+<tr>
+<td>LIST / NLST</td>
+<td>폴더 목록 보기</td>
+<td>정찰</td>
+</tr>
+<tr>
+<td>CWD / MKD / DELE</td>
+<td>폴더 이동, 폴더 생성, 파일 삭제</td>
+<td>흔적 지우기에 DELE</td>
+</tr>
+<tr>
+<td>SYST / FEAT</td>
+<td>서버 종류, 지원 기능 묻기</td>
+<td>정상 클라이언트도 씀</td>
+</tr>
+</tbody>
+</table>
+</div><p><strong>악성코드가 거의 항상 PASV를 쓰는 이유:</strong> 감염 PC는 보통 NAT 뒤에 있어서 밖에서 안으로 접속할 수 없어요. Passive 모드는 클라이언트가 <strong>밖으로</strong> 나가서 연결하니까 늘 성공해요.</p>
+<p><strong>응답 코드는 첫 자리만 알아도 돼요:</strong> 1xx 진행 중(150 데이터 연결 연다), 2xx 성공(220 인사, 227 Passive 모드, 230 로그인 OK, 226 전송 완료), 3xx 추가 정보 필요(331 비밀번호 달라), 4xx 일시적 실패(421 서비스 종료), 5xx 영구 실패(530 로그인 실패, 550 파일 없음/권한 없음).</p>
+</div>
+<div class="admonition question">
+<p class="admonition-title">질문: PASV와 STOR이 뭔가요?</p>
+<p>FTP 서버를 <strong>택배 회사 창고</strong>라고 생각해 보세요. 감염된 PC가 창고에 물건(훔친 파일)을 맡기러 가는 상황이에요.</p>
+<p>FTP에서는 말(명령)을 주고받는 <strong>창구</strong>와 물건(파일)을 넣는 <strong>문</strong>이 따로 있어요. 창구는 항상 같은 곳(포트 21)이지만, 물건 넣는 문은 그때그때 새로 열어요. 그래서 PC가 먼저 이렇게 말해요.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>PC:     PASV
+서버:   227 Entering Passive Mode (145,14,144,10,158,203)
+</code></pre></div></div>
+<p>PC가 "물건 넣을 문 하나 열어 주세요"라고 하면, 서버가 "145.14.144.10의 40651번 문을 열었어요, 거기로 오세요"라고 답하는 거예요. 앞의 숫자 네 개가 IP이고, 문 번호는 <code>158 × 256 + 203 = 40651</code>이에요. <strong>Passive</strong>(수동)는 서버는 문만 열고 가만히 기다리고, PC가 그 문으로 찾아간다는 뜻이에요.</p>
+<p>문이 열리면 PC가 어떤 파일을 맡길지 말해요.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>PC:     STOR HawkEye_Keylogger_Keylog_Records_2_BREAUX-WIN7-PC ... .txt
+서버:   150 ...                           ← "네, 그 문으로 넣으세요"
+        [PC가 40651번 문으로 파일 내용 891바이트를 보냄]
+서버:   226 File successfully transferred  ← "잘 받았어요"
+</code></pre></div></div>
+<p><strong>STOR</strong>는 <strong>Store</strong>(저장하다)의 줄임말이에요. 내 PC에서 서버로 파일을 <strong>올리는(업로드)</strong> 명령이에요. 반대로 <strong>내려받는(다운로드)</strong> 명령은 <strong>RETR</strong>(Retrieve, 가져오다)예요.</p>
+<p>파일 하나를 올릴 때마다 항상 <strong>PASV → STOR</strong>가 짝으로 나와요. 문을 열고 파일을 넣고, 다음 파일이 있으면 또 문을 열고 넣어요. 그래서 zeek:ftp 결과에 PASV와 STOR가 번갈아 나왔던 거예요. 기억할 것은 하나예요. <strong>내부 PC가 외부 서버로 STOR를 했다 = 우리 쪽 파일이 밖으로 나갔다.</strong> 이번에는 STOR가 5번이니까 파일 5개가 나간 거예요.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-snort">5단계 — Snort 룰 하나</h2>
+<p><code>depth</code>나 <code>distance</code> 없이 가장 쉬운 버전이에요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 21 (msg:"HawkEye Keylogger FTP upload - Sung"; content:"HawkEye_Keylogger"; nocase; sid:1000021; rev:1;)
+</code></pre></div></div>
+<p><strong>괄호 앞(헤더)</strong> — 어떤 패킷을 볼지:</p>
+<ul>
+<li><code>alert</code>는 조건에 맞으면 알림을 낸다는 뜻이에요.</li>
+<li><code>tcp</code>는 TCP 패킷만 봐요.</li>
+<li><code>$HOME_NET any</code>는 출발지가 내부망이고, 출발지 포트는 아무거나예요.</li>
+<li><code>-&gt;</code>는 방향이에요. 내부에서 밖으로 나가는 패킷이에요.</li>
+<li><code>$EXTERNAL_NET 21</code>은 목적지가 외부이고 포트 21(FTP 명령 포트)이라는 뜻이에요.</li>
+</ul>
+<p><strong>괄호 안(옵션)</strong> — 패킷 안에서 무엇을 찾을지:</p>
+<ul>
+<li><code>msg</code>는 알림이 뜰 때 보이는 이름이에요.</li>
+<li><code>content:"HawkEye_Keylogger"</code>는 패킷 내용에 이 글자가 있는지 찾아요.</li>
+<li><code>nocase</code>는 대소문자를 구분하지 않아요. <code>hawkeye_keylogger</code>도 잡혀요.</li>
+<li><code>sid</code>는 룰 번호예요. 직접 만든 룰은 1000000 이상을 써요.</li>
+<li><code>rev</code>는 룰 버전이에요.</li>
+</ul>
+<div class="admonition question">
+<p class="admonition-title">질문: depth나 distance 없이 룰을 쓸 수 있나요?</p>
+<p>네, 위 룰이에요. <code>depth</code>와 <code>distance</code>는 "글자가 패킷의 <strong>어디쯤</strong>에 있는지"를 지정해서 오탐을 줄이고 속도를 높여요. 하지만 <code>HawkEye_Keylogger</code>라는 글자 자체가 아주 특이해서, 정상 FTP 트래픽에서 나올 일이 거의 없어요. 그래서 위치를 지정하지 않아도 충분해요. <code>STOR</code> 조건을 뺀 것도 같은 이유예요. 포트 21로 이 파일 이름이 나가는 경우는 사실상 업로드뿐이에요. <code>flow</code>와 <code>classtype</code>도 뺐어요. 방향은 헤더의 <code>-&gt;</code>와 포트 21이 이미 정해 주니까요.</p>
+</div>
+<p><strong>예상 결과:</strong> <code>\\10.50.10.60\rules\local.rules</code>에 넣고 <code>snort-test 20190502_BEGUILESOFT</code>를 돌리면 <strong>알림 3건</strong>이에요. HawkEye_Keylogger가 들어간 STOR가 3번이었거든요(Stealer_Records, Keylog_Records_2, Keylog_Records_3). 스크린샷 STOR 2번은 파일 이름에 그 글자가 없어서 안 잡혀요. 자세한 테스트 방법은 <a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석 — 6-3</a>에 있어요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-query-sheet">바로 쓰는 쿼리 모음</h2>
+<p><code>&lt;case&gt;</code>를 케이스 이름으로 바꾸세요. 실제 망에서는 <code>pcap_case</code>/<code>tags</code>를 빼요.</p>
+<p><strong>Splunk (Zeek)</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek pcap_case="&lt;case&gt;" | stats count AS events min(ts) AS first max(ts) AS last BY sourcetype | eval first=strftime(first, "%Y-%m-%d %H:%M:%S"), last=strftime(last, "%Y-%m-%d %H:%M:%S") | sort - events
+index=zeek sourcetype=zeek:dhcp pcap_case="&lt;case&gt;" | eval time=strftime(ts, "%Y-%m-%d %H:%M:%S") | table time client_addr assigned_addr mac host_name domain msg_types
+index=zeek sourcetype=zeek:conn pcap_case="&lt;case&gt;" | where cidrmatch("10.0.0.0/8", id_orig_h) OR cidrmatch("172.16.0.0/12", id_orig_h) OR cidrmatch("192.168.0.0/16", id_orig_h) | stats count AS conns dc(id_resp_h) AS dests BY id_orig_h | sort - conns
+index=zeek sourcetype=zeek:kerberos pcap_case="&lt;case&gt;" | stats count BY id_orig_h id_resp_h client
+index=zeek sourcetype=zeek:conn pcap_case="&lt;case&gt;" | stats count AS conns sum(orig_bytes) AS sent sum(resp_bytes) AS recv min(ts) AS first BY id_resp_h id_resp_p service | eval first=strftime(first, "%H:%M:%S") | sort first
+index=zeek sourcetype=zeek:dns pcap_case="&lt;case&gt;" | stats count values(answers) AS answers min(ts) AS first BY query | eval first=strftime(first, "%H:%M:%S") | sort first
+index=zeek sourcetype=zeek:ftp pcap_case="&lt;case&gt;" | eval time=strftime(ts, "%H:%M:%S") | table time id_resp_h user command arg reply_code reply_msg
+index=zeek sourcetype=zeek:ftp id_orig_h=10.0.0.227 command=STOR
+index=zeek sourcetype=zeek:conn id_orig_h=10.0.0.227 id_resp_h IN (145.14.145.4, 145.14.144.10, 145.14.145.99)
+</code></pre></div></div>
+<ul>
+<li><code>command=STOR</code>는 FTP 명령 중 업로드만 골라요. <code>id_resp_h IN (a, b, c)</code>는 목적지 IP가 셋 중 하나면 다 잡아요. <code>OR</code>를 세 번 쓰는 것과 같아요.</li>
+</ul>
+<p><strong>Arkime</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tags == &lt;case&gt; &amp;&amp; ip.src == 10.0.0.227 &amp;&amp; port.dst == 21
+tags == &lt;case&gt; &amp;&amp; ip.src == 10.0.0.227 &amp;&amp; (ip.dst == 145.14.145.4 || ip.dst == 145.14.144.10 || ip.dst == 145.14.145.99)
+tags == &lt;case&gt; &amp;&amp; ip.src == 10.0.0.227 &amp;&amp; port.dst == 37280
+tags == &lt;case&gt; &amp;&amp; user == snifferzett
+huntName == hawkeye_ftp
+</code></pre></div></div>
+<p><strong>Snort</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 21 (msg:"HawkEye Keylogger FTP upload - Sung"; content:"HawkEye_Keylogger"; nocase; sid:1000021; rev:1;)
+</code></pre></div></div>
+<hr>
+</section>
+<section>
+<h2 id="ko-lessons">배운 점</h2>
+<ol>
+<li><strong>로그 종류 목록이 이미 단서예요.</strong> TLS가 하나도 없는 사무실 PC에 FTP가 있다는 것만으로 유출 경로가 보였어요.</li>
+<li><strong>DHCP INFORM에는 배정 주소가 없어요.</strong> IP는 <code>conn</code>에서, 이름과 MAC은 DHCP에서 가져와요.</li>
+<li><strong>보낸 양과 받은 양이 방향을 알려 줘요.</strong> 보낸 게 MB 단위이고 받은 게 0인 <code>ftp-data</code> = 업로드.</li>
+<li><strong>PASV 계산으로 파일과 크기를 이어요.</strong> p1 × 256 + p2 = <code>ftp-data</code> 포트.</li>
+<li><strong>Zeek은 명령에 마지막 응답을 붙여요.</strong> 업로드 실패라고 하기 전에 원본 세션을 봐요.</li>
+<li><strong>평문 프로토콜은 증거를 그대로 줘요.</strong> FTP에서 공격자 계정과 훔친 파일 전부가 보였어요.</li>
+<li><strong>악성코드 이름은 조심해서 붙여요.</strong> "HawkEye"는 악성코드가 스스로 쓴 파일 이름에서 나온 거라 강한 근거지만, 샘플 분석은 아니에요.</li>
+<li><strong>피해자 비밀번호는 보고서에 적지 않아요.</strong> "증거 참고"라고 써요.</li>
+</ol>
+</section>
+<section>
+<h2 id="ko-references">참고</h2>
+<ul>
+<li><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석 — pcapbox 설정과 Snort 테스트 가이드</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/splunk/spl-cheatsheet/">SPL 치트시트</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/">Zeek 로그</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/conn-log/">conn.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/files-log/">files.log</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/playbooks/data-exfiltration/">플레이북: 데이터 유출</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/playbooks/account-compromise/">플레이북: 계정 침해</a></li>
+<li>원본 연습 문제: <a href="https://malware-traffic-analysis.net/2019/05/02/index.html">malware-traffic-analysis.net — 2019-05-02 BEGUILESOFT</a></li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

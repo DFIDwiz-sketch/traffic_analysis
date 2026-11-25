@@ -67,6 +67,9 @@
 <div lang="en" data-guide-language>
 <h2>How far did each SMB connection get?</h2>
 <p>Mondogreek provides a capture from an Active Directory network and asks for an incident report. In the original PCAP, <code>10.3.11.194</code> reads a policy file from DC <code>10.3.11.3</code>, then later contacts multiple internal systems on TCP/445. Two peer workstations complete TCP handshakes and reset their connections directly after SMB1 Negotiate requests. Compare those peer attempts with the working policy session.</p>
+<p><strong>Related handbook analysis</strong></p>
+<ul><li><a href="handbook-arkime-only-credential-theft-tls-c2.html">Arkime only — script downloader to credential theft and TLS C2</a></li></ul>
+
 
 <p><strong>Capture metadata (directly measured)</strong></p>
 
@@ -83,6 +86,9 @@
 <div lang="ko" data-guide-language hidden>
 <h2>각 연결은 SMB의 어느 단계까지 진행됐는가?</h2>
 <p>Mondogreek 실습은 Active Directory 네트워크 캡처를 바탕으로 사고 보고서를 작성하는 사례입니다. 원본에서 <code>10.3.11.194</code>는 DC <code>10.3.11.3</code>의 정책 파일을 읽고, 이후 내부 시스템 여러 곳의 TCP/445에 접속합니다. 동료 워크스테이션 두 곳은 TCP 핸드셰이크 뒤 SMB1 Negotiate 요청을 받고 곧바로 리셋을 보냅니다. 이 시도들을 정상적으로 진행된 정책 세션과 비교합니다.</p>
+<p><strong>DFIR Handbook 관련 분석</strong></p>
+<ul><li><a href="handbook-arkime-only-credential-theft-tls-c2.html">Arkime만으로 — 스크립트 다운로더에서 비밀번호 탈취와 TLS C2까지</a></li></ul>
+
 
 <p><strong>캡처 메타데이터 (직접 확인)</strong></p>
 

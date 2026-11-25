@@ -1,0 +1,1986 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>PCAP Lab 07 — Webmail to AutoIt downloader and multi-C2 traffic · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase2Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase2Title">PCAP Lab 07 — Webmail to AutoIt downloader and multi-C2 traffic</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-questions">The questions</a></li>
+<li><a href="#en-answers">Answers at a glance</a></li>
+<li><a href="#en-step-0">Step 0 — Set up and generate the Zeek logs</a></li>
+<li><a href="#en-step-1">Step 1 — The big picture</a></li>
+<li><a href="#en-identity">Step 2 — IP, MAC and hostname (Q1–3)</a></li>
+<li><a href="#en-os">Step 3 — Operating system (Q4)</a></li>
+<li><a href="#en-http-timeline">Step 4 — The HTTP timeline (Q5, Q6, Q10)</a></li>
+<li><a href="#en-files">Step 5 — The downloaded files (Q5–Q8) and why there are no hashes</a></li>
+<li><a href="#en-ssl">Step 6 — Zeek notices and HTTPS destinations</a></li>
+<li><a href="#en-unknown-service">Step 7 — Connections Zeek could not identify (Q9)</a></li>
+<li><a href="#en-download-tool">Step 8 — What started the downloads? (Q10)</a></li>
+<li><a href="#en-timeline">Timeline</a></li>
+<li><a href="#en-iocs">Indicators of compromise</a></li>
+<li><a href="#en-attack">ATT&amp;CK mapping</a></li>
+<li><a href="#en-report">Report (Q11)</a></li>
+<li><a href="#en-detection">Detection ideas</a></li>
+<li><a href="#en-lessons">Lessons learned</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-questions">질문</a></li>
+<li><a href="#ko-answers">답 한눈에 보기</a></li>
+<li><a href="#ko-step-0">0단계 — 준비와 Zeek 로그 만들기</a></li>
+<li><a href="#ko-step-1">1단계 — 전체 그림</a></li>
+<li><a href="#ko-identity">2단계 — IP, MAC, 호스트 이름 (1~3번)</a></li>
+<li><a href="#ko-os">3단계 — 운영체제 (4번)</a></li>
+<li><a href="#ko-http-timeline">4단계 — HTTP 타임라인 (5, 6, 10번)</a></li>
+<li><a href="#ko-files">5단계 — 받은 파일 (5~8번)과 해시가 없는 이유</a></li>
+<li><a href="#ko-ssl">6단계 — Zeek 경고와 HTTPS 목적지</a></li>
+<li><a href="#ko-unknown-service">7단계 — Zeek이 알아보지 못한 연결 (9번)</a></li>
+<li><a href="#ko-download-tool">8단계 — 무엇이 다운로드를 시작했나 (10번)</a></li>
+<li><a href="#ko-timeline">타임라인</a></li>
+<li><a href="#ko-iocs">침해 지표 (IOC)</a></li>
+<li><a href="#ko-attack">ATT&amp;CK 매핑</a></li>
+<li><a href="#ko-report">보고서 (11번)</a></li>
+<li><a href="#ko-detection">탐지 아이디어</a></li>
+<li><a href="#ko-lessons">교훈</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>The webmail session precedes the downloads. Use the timestamps and user-agent changes to test the connection, and record the capture gaps that prevented reliable file hashing.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/pcap-lab-07-autoit-downloader-multi-c2/">DFIR Handbook original</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td><code>Phase1_PCAP_7.pcap</code>, 2017-11-20 23:58:00 – 2017-11-21 00:16:33 UTC (18.5 min)</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Offline Linux analysis VM, Zeek 4.x, tshark, no internet</td>
+</tr>
+<tr>
+<td><strong>Main tool</strong></td>
+<td>Zeek logs + <code>zeek-cut</code>, <code>awk</code>, <code>grep</code>; tshark for TTL and DHCP options</td>
+</tr>
+<tr>
+<td><strong>Lab guide</strong></td>
+<td><a href="https://dfidwiz-sketch.github.io/dfir-handbook/training/pcap-ir-labs/lab-guide/#lab-7">Training → PCAP IR Labs → Lab 7</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-questions">The questions</h2>
+<p>The host is <strong>not</strong> assumed to be Windows.</p>
+<ol>
+<li>IP address of the compromised host.</li>
+<li>MAC address.</li>
+<li>Hostname.</li>
+<li>Operating system.</li>
+<li>What was downloaded, and how many files.</li>
+<li>Where each file was downloaded from.</li>
+<li>Did the files come from an internal or an external source?</li>
+<li>Information that could help further investigation.</li>
+<li>Did anything else happen after the downloads?</li>
+<li>What started the downloads?</li>
+<li>Explanation of the compromise.</li>
+</ol>
+</section>
+<section>
+<h2 id="en-answers">Answers at a glance</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">Answer</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>10.192.1.157</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>50:46:5d:d5:24:3b</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>WIN-D5243B</strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Windows 7</strong> (User-Agent <code>Windows NT 6.1</code>, DHCP <code>MSFT 5.0</code>, TTL 128)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Two 32-bit Windows EXEs</strong>: <code>jjjj.exe</code> (3,061,200 bytes) and <code>zugu.exe</code> (5,895,226 bytes)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>hxxp://lucrecianos[.]com[.]ar/imagen/1/2/jjjj.exe</code> (170.231.127.136) and <code>hxxp://virtualsmsonline[.]site/zugu.exe</code> (104.31.92.140)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>External</strong>: public IPs on the internet, fetched over HTTP</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>8</td>
+<td>URLs, IPs, sizes, compile time, C2 hosts, User-Agents, SMTP; <strong>no hashes</strong> (capture loss)</td>
+<td>See <a href="#en-iocs">IOCs</a></td>
+</tr>
+<tr>
+<td>9</td>
+<td>Second download, public IP check, C2 to four destinations, ~4 KB over SMTPS</td>
+<td>Traffic confirmed; families and exfiltration inferred</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Not the browser: first request had <strong>no User-Agent</strong>; second came from <strong>AutoIt</strong></td>
+<td>Partly confirmed</td>
+</tr>
+<tr>
+<td>11</td>
+<td>See the <a href="#en-report">report</a></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-step-0">Step 0 — Set up and generate the Zeek logs</h2>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>cd ~/Investigation_7
+sha256sum Phase1_PCAP_7.pcap | tee pcap.sha256
+mkdir zeek_full &amp;&amp; cd zeek_full
+zeek -C -r ../Phase1_PCAP_7.pcap local \
+     frameworks/files/extract-all-files \
+     policy/protocols/conn/mac-logging 2&gt;/dev/null
+ll
+</code></pre></div></div>
+<p>The options are explained in <a href="handbook-pcap-lab-06-invoice-macro-c2.html">Lab 06, step 0</a>. This time, <strong>the list of logs is already evidence</strong>:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>capture_loss.log  conn.log  dhcp.log  dns.log  extract_files/  files.log  http.log
+loaded_scripts.log  notice.log  packet_filter.log  pe.log  reporter.log  ssl.log
+stats.log  x509.log
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">What you see</th>
+<th scope="col">What it tells you</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>no <code>kerberos.log</code>, no <code>smb_*.log</code></td>
+<td>No domain logons: a <strong>stand-alone PC</strong>, not part of Active Directory (inferred). There is no account question in this lab</td>
+</tr>
+<tr>
+<td><code>pe.log</code></td>
+<td>Zeek parsed at least one <strong>Windows executable</strong> in the traffic</td>
+</tr>
+<tr>
+<td><code>notice.log</code></td>
+<td>Zeek flagged something worth a look</td>
+</tr>
+<tr>
+<td><code>capture_loss.log</code></td>
+<td>Zeek keeps packet-loss statistics. It matters in <a href="#en-capture-loss">step 5</a></td>
+</tr>
+<tr>
+<td>no <code>software.log</code></td>
+<td>This install's <code>local</code> policy does not log software versions (or found none). Read User-Agents from <code>http.log</code> instead</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-step-1">Step 1 — The big picture</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts &lt; conn.log | sort | sed -n '1p;$p'
+zeek-cut id.orig_h &lt; conn.log | grep -E "^10\.|^172\.|^192\.168\." | sort | uniq -c | sort -rn
+zeek-cut service &lt; conn.log | sort | uniq -c | sort -rn
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:58:00+0000
+2017-11-21T00:16:33+0000
+
+    575 10.192.1.157
+
+    254 -
+    163 dns
+    119 ssl
+     31 http
+     10 dhcp
+</code></pre></div></div>
+<ul>
+<li>18.5 minutes of traffic and <strong>one internal host</strong>, the only candidate.</li>
+<li><code>service</code> is the protocol Zeek recognised in each connection. Only DNS, TLS, HTTP and DHCP, so the downloads are not over FTP, SMB or TFTP.</li>
+<li><strong>254 connections with service <code>-</code></strong>: Zeek could not identify the protocol. That is usually because the connection never got far enough to show any content. They are examined in <a href="#en-unknown-service">step 7</a>.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark alternative</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -q -z io,phs
+</code></pre></div></div>
+<p><code>-z io,phs</code> prints the <strong>Protocol Hierarchy</strong> (Wireshark <em>Statistics → Protocol Hierarchy</em>). It also lists protocols Zeek writes no log for, such as ARP, LLMNR, NBNS, mDNS and TFTP. That is useful when the download protocol is unknown.</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-identity">Step 2 — IP, MAC and hostname (Q1–3)</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts client_addr mac host_name &lt; dhcp.log
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:58:00+0000   10.192.1.157   50:46:5d:d5:24:3b   -
+2017-11-20T23:58:04+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:08:27+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:13:01+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:13:28+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:14:46+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:15:48+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+</code></pre></div></div>
+<ul>
+<li><strong>10.192.1.157 · 50:46:5d:d5:24:3b · WIN-D5243B</strong> (Q1–3, confirmed).</li>
+<li>The first line has no hostname: the very first DHCP message did not carry option 12. That is normal.</li>
+<li><code>WIN-</code> + six characters is the shape of the random name Windows gives itself at install time. It is a hint, not proof, of the OS.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark alternative (when DHCP has no name)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "nbns || llmnr || mdns" \
+       -T fields -e ip.src -e eth.src -e nbns.name -e dns.qry.name | sort | uniq -c
+</code></pre></div></div>
+<p>Non-Windows hosts often send no DHCP hostname but announce themselves with NBNS, LLMNR or mDNS (<code>name.local</code>). Zeek writes no NBNS log, so tshark is the easy way here. In this capture DHCP already gave the name.</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-os">Step 3 — Operating system (Q4)</h2>
+<h3 id="en-user-agents">User-Agents</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut user_agent &lt; http.log | sort | uniq -c | sort -rn
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>     15 Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko
+      8 Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Trident/7.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)
+      7 Mozilla/4.08 (Charon; Inferno)
+      3 Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko/20100101 Firefox/12.0
+      2 AutoIt
+      1 Microsoft NCSI
+      1 -
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Count</th>
+<th scope="col">User-Agent</th>
+<th scope="col">Reading</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>15</td>
+<td>IE 11, <code>Windows NT 6.1</code></td>
+<td>The user's real browser on <strong>Windows 7</strong></td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>Microsoft NCSI</code></td>
+<td>Windows' "am I online?" check, sent only by Windows</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>MSIE 7.0 … .NET CLR …</code></td>
+<td>IE 7 on a 2017 Windows 7 host is not plausible: a string hard-coded in a program</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>Mozilla/4.08 (Charon; Inferno)</code></td>
+<td>Not a browser. A hard-coded string widely associated with <strong>LokiBot</strong></td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>NT 6.3 … like Gecko/20100101 Firefox/12.0</code></td>
+<td>A malformed mix of IE and Firefox. It only went to an ad network (<a href="#en-http-timeline">step 4</a>), so it is probably an ad script, not malware</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>AutoIt</code></td>
+<td>The default User-Agent of <strong>AutoIt</strong>, a Windows automation language often used to build malware</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>-</code></td>
+<td>A request with <strong>no</strong> User-Agent: not a browser</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">User-Agents need context</p>
+<p>The malformed Firefox string looked malicious on its own. The destinations show it was advertising traffic. Always read a User-Agent <strong>together with where it went and when</strong>.</p>
+</div>
+<h3 id="en-ttl-vendor">TTL and DHCP vendor class (tshark)</h3>
+<p>Zeek records neither the IP TTL nor the DHCP vendor class. tshark reads both directly:</p>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "ip.src==10.192.1.157" -T fields -e ip.ttl | sort | uniq -c
+tshark -r ../Phase1_PCAP_7.pcap -Y "dhcp.option.vendor_class_id" \
+       -T fields -e eth.src -e dhcp.option.vendor_class_id | sort -u
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>     10 1
+   6809 128
+
+50:46:5d:d5:24:3b    MSFT 5.0
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Evidence</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTL <strong>128</strong> on 6,809 packets</td>
+<td>Windows' default initial TTL (Linux/macOS/Android use 64, network devices 255). Captured on the LAN, so the value is unchanged</td>
+</tr>
+<tr>
+<td>TTL <strong>1</strong> on 10 packets</td>
+<td>Link-local multicast such as LLMNR (224.0.0.252) or IGMP. TTL 1 keeps them inside the LAN; this says nothing about the OS</td>
+</tr>
+<tr>
+<td><code>MSFT 5.0</code></td>
+<td>The DHCP vendor class sent by every Windows version since 2000</td>
+</tr>
+</tbody>
+</table>
+</div>
+<details class="note">
+<summary>Which packets have TTL 1?</summary>
+<p></p><div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "ip.src==10.192.1.157 &amp;&amp; ip.ttl==1" \
+       -T fields -e ip.dst -e _ws.col.Protocol | sort | uniq -c
+</code></pre></div></div>
+<code>_ws.col.Protocol</code> is Wireshark's <em>Protocol</em> column.<p></p>
+</details>
+<p><strong>Answer 4: Windows 7.</strong> The browser User-Agent (<code>NT 6.1</code>), the DHCP vendor class (<code>MSFT 5.0</code>) and TTL 128 all agree, and NCSI plus the <code>WIN-</code> hostname fit as well. The lack of <code>WOW64</code>/<code>Win64</code> in the IE string suggests 32-bit Windows 7 (inferred).</p>
+<hr>
+</section>
+<section>
+<h2 id="en-http-timeline">Step 4 — The HTTP timeline (Q5, Q6, Q10)</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts id.resp_h host method uri status_code resp_mime_types user_agent &lt; http.log
+</code></pre></div></div>
+<p>Condensed (dates trimmed, UTC):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>23:58:11  63.146.14.19     www.msftncsi.com       GET  /ncsi.txt                                    200  text/plain    Microsoft NCSI
+23:58:41  131.253.33.200   www.bing.com           GET  /favicon.ico                                 200  image/png     IE 11
+23:58:49  13.107.13.80     api.bing.com           GET  /qsml.aspx?query=m&amp;...                       -    -             IE 11
+23:58:49  13.107.13.80     api.bing.com           GET  /qsml.aspx?query=ma&amp;...                      -    -             IE 11
+   ...    (query=mai, mail, mail., mail.y, mail.ya ... one request per keystroke)
+23:58:51  13.107.13.80     api.bing.com           GET  /qsml.aspx?query=mail.yahoo.com&amp;...          200  application/xml  IE 11
+23:58:56  162.208.20.184   geo-um.btrll.com       GET  /v1/map/68e4318f0f7098c3/...             302  -             NT 6.3 ... Firefox/12.0
+23:58:56  52.84.14.115     cache.btrll.com        GET  /default/Pix-1x1.gif                         200  image/gif     NT 6.3 ... Firefox/12.0
+23:59:35  170.231.127.136  lucrecianos.com.ar     GET  /imagen/1/2/jjjj.exe                         200  application/x-dosexec  -
+00:13:28  104.31.92.140    virtualsmsonline.site  GET  /zugu.exe                                    200  application/x-dosexec  AutoIt
+00:13:38  104.20.17.242    icanhazip.com          GET  /                                            200  text/plain    AutoIt
+00:13:59  185.118.166.155  tcoolonline.mobi       POST /wp-admin/css/colors/blue/Panel/five/fre.php 404  text/plain    Mozilla/4.08 (Charon; Inferno)
+00:14:04  37.48.82.212     www.harddomainname.biz GET  /wordpress/wp-admin/css/colors/blue/panel/config.jpg 200 image/jpeg MSIE 7.0 ...
+00:14:06  5.255.255.55     yandex.ru              GET  /                                            302  -             MSIE 7.0 ...
+00:14:07  37.48.82.212     www.harddomainname.biz POST /wordpress/wp-admin/css/colors/blue/panel/gate.php 200 -     MSIE 7.0 ...
+00:15:01  ... tcoolonline.mobi POST .../fre.php (404, Charon; Inferno)
+00:15:07  ... harddomainname.biz GET .../config.jpg (304), 00:15:08 POST .../gate.php (200)
+00:16:08  ... harddomainname.biz GET .../config.jpg (304), POST .../gate.php (200)
+00:16:29–31  ... tcoolonline.mobi POST .../fre.php x3 (404)
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Time</th>
+<th scope="col">What happened</th>
+<th scope="col">Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>23:58:49–51</td>
+<td><code>api.bing.com/qsml.aspx?query=m</code>, <code>ma</code>, <code>mai</code>, … <code>mail.yahoo.com</code></td>
+<td>IE's address bar sends Bing autosuggest on <strong>each keystroke</strong>: the user <strong>typed mail.yahoo.com</strong>. Yahoo Mail itself is HTTPS, so the mail is not visible</td>
+</tr>
+<tr>
+<td>23:58:56</td>
+<td><code>btrll.com</code> 302 + 1×1 GIF</td>
+<td>Advertising pixels on the Yahoo page (BrightRoll, a Yahoo ad network)</td>
+</tr>
+<tr>
+<td><strong>23:59:35</strong></td>
+<td><strong><code>jjjj.exe</code></strong> from <code>lucrecianos.com.ar</code>, <strong>no User-Agent</strong></td>
+<td>First executable, requested by something that is <strong>not</strong> a browser</td>
+</tr>
+<tr>
+<td><em>14-minute gap</em></td>
+<td>Only benign HTTPS (see <a href="#en-ssl">step 6</a>)</td>
+<td>First stage waiting or working quietly (inferred)</td>
+</tr>
+<tr>
+<td><strong>00:13:28</strong></td>
+<td><strong><code>zugu.exe</code></strong> from <code>virtualsmsonline.site</code>, User-Agent <strong>AutoIt</strong></td>
+<td>Second executable, downloaded by an <strong>AutoIt-based program</strong></td>
+</tr>
+<tr>
+<td>00:13:38</td>
+<td><code>icanhazip.com</code> (AutoIt)</td>
+<td>Public IP check</td>
+</tr>
+<tr>
+<td>00:13:59 →</td>
+<td>POST <code>…/Panel/five/fre.php</code>, <code>Charon; Inferno</code>, about every minute</td>
+<td>C2 #1. <code>fre.php</code> + this User-Agent is the classic <strong>LokiBot</strong> pattern; LokiBot panels often answer 404 on purpose</td>
+</tr>
+<tr>
+<td>00:14:04 →</td>
+<td>GET <code>…/panel/config.jpg</code>, POST <code>…/panel/gate.php</code>, MSIE 7 UA, every ~60 s</td>
+<td>C2 #2, a separate bot/stealer panel (family not determined)</td>
+</tr>
+<tr>
+<td>00:14:06</td>
+<td><code>yandex.ru</code> (MSIE 7 UA)</td>
+<td>Connectivity check by the same program</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark alternative</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "http.request" -T fields \
+       -e frame.time_utc -e ip.dst -e http.host -e http.request.method -e http.request.uri -e http.user_agent
+</code></pre></div></div>
+<p>Requests only, without the response type. Zeek's single line per request/response is easier here; use tshark when long Zeek lines are hard to read.</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-files">Step 5 — The downloaded files (Q5–Q8) and why there are no hashes</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts tx_hosts rx_hosts source mime_type filename seen_bytes fuid &lt; files.log \
+  | grep -v -i -E "x509|pkix"
+</code></pre></div></div>
+<p><code>grep -v</code> hides lines that match: every HTTPS session puts its certificates in <code>files.log</code>, and they are not downloads. Two lines are executables:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:59:36+0000  170.231.127.136  10.192.1.157  HTTP  application/x-dosexec  -  2870222  FwavXQ2AM4W84BhH44
+2017-11-21T00:13:29+0000  104.31.92.140    10.192.1.157  HTTP  application/x-dosexec  -  5812128  FuT2N64AuTHxEdqVil
+</code></pre></div></div>
+<p>The rest are small web objects and the C2 exchanges. When <code>tx_hosts</code> is the infected PC, the "file" is a POST body the PC <strong>sent</strong>: 204 and 177 bytes to 185.118.166.155, 345 bytes to 37.48.82.212. One stands out: <code>config.jpg</code>, <strong>81,393 bytes</strong> of <code>image/jpeg</code> from the C2 panel path. It may hide configuration or data inside an image (inferred).</p>
+<h3 id="en-pe">PE header details</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts id machine os compile_ts is_exe is_64bit &lt; pe.log
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:59:36+0000  FwavXQ2AM4W84BhH44  I386  Windows 95 or NT 4.0          2017-11-20T15:10:13+0000  T  F
+2017-11-21T00:13:29+0000  FuT2N64AuTHxEdqVil  I386  Windows Vista or Server 2008  2017-07-31T15:19:47+0000  T  F
+</code></pre></div></div>
+<ul>
+<li>Both are <strong>32-bit (<code>I386</code>) EXEs</strong> (<code>is_exe T</code>, <code>is_64bit F</code>).</li>
+<li><code>os</code> is the <em>minimum</em> Windows version the file declares, not the victim's OS.</li>
+<li><code>jjjj.exe</code> was <strong>compiled about 9 hours before it was downloaded</strong>, a freshly built sample. Compile times can be faked, so treat this as supporting detail.</li>
+</ul>
+<h3 id="en-capture-loss">Why MD5 and SHA1 are empty: capture loss</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut fuid mime_type md5 sha1 &lt; files.log | grep dosexec
+zeek-cut &lt; files.log | grep dosexec        # all columns
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>FwavXQ2AM4W84BhH44   application/x-dosexec   -   -
+FuT2N64AuTHxEdqVil   application/x-dosexec   -   -
+</code></pre></div></div>
+<p>The full line for <code>jjjj.exe</code>, read against the Zeek 4 <code>files.log</code> column order:</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Field</th>
+<th scope="col">Value</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conn_uids</code></td>
+<td><code>CJ9NTy1RmcRnZRVcma</code></td>
+<td>The connection that carried the file</td>
+</tr>
+<tr>
+<td><code>analyzers</code></td>
+<td><code>EXTRACT,MD5,SHA1,PE</code></td>
+<td>Hashing <strong>was attempted</strong></td>
+</tr>
+<tr>
+<td><code>seen_bytes</code></td>
+<td>2,870,222</td>
+<td>Bytes present in the capture</td>
+</tr>
+<tr>
+<td><code>total_bytes</code></td>
+<td><strong>3,061,200</strong></td>
+<td>Real size announced by the server (<code>Content-Length</code>)</td>
+</tr>
+<tr>
+<td><code>missing_bytes</code></td>
+<td><strong>190,978</strong></td>
+<td>Bytes the capture never saw</td>
+</tr>
+<tr>
+<td><code>md5</code> / <code>sha1</code></td>
+<td><code>-</code></td>
+<td>Not calculated</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code>zugu.exe</code>: total <strong>5,895,226</strong>, seen 5,812,128, missing <strong>83,098</strong>.</p>
+<p>A hash covers every byte, and one missing byte changes it completely. Zeek therefore <strong>refuses to produce a wrong hash</strong>. For the same reason, <code>sha256sum</code> on the extracted file, or on a tshark export, is <strong>not</strong> the real file's hash and must not be reported as one.</p>
+<div class="admonition danger">
+<p class="admonition-title">Report <code>total_bytes</code>, not <code>seen_bytes</code></p>
+<p>The file size is the <strong>declared</strong> size: 3,061,200 and 5,895,226 bytes. <code>seen_bytes</code> is only what the capture contained. This walkthrough first answered Q5 with <code>seen_bytes</code> and corrected it after checking <code>missing_bytes</code>.</p>
+</div>
+<p>Confirm the loss:</p>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts peer gaps acks percent_lost &lt; capture_loss.log
+zeek-cut uid id.resp_h missed_bytes history &lt; conn.log | grep -E "CJ9NTy1RmcRnZRVcma|CtsW3u4avJGUQUma66"
+zeek-cut fuid seen_bytes total_bytes missing_bytes &lt; files.log | grep -E "FwavXQ2AM4W84BhH44|FuT2N64AuTHxEdqVil"
+</code></pre></div></div>
+<ul>
+<li><code>percent_lost</code> above 0 means the sensor missed packets.</li>
+<li><code>missed_bytes</code> in <code>conn.log</code> should roughly match <code>missing_bytes</code>.</li>
+<li>In <code>history</code>, a <code>g</code>/<code>G</code> marks a content gap.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark alternative</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "tcp.analysis.lost_segment || tcp.analysis.ack_lost_segment" | wc -l
+mkdir objs &amp;&amp; tshark -r ../Phase1_PCAP_7.pcap -q --export-objects http,objs &amp;&amp; ls -l objs/*.exe
+</code></pre></div></div>
+<p>The first line counts packets where Wireshark noticed a missing TCP segment. The export saves files <strong>under their URL names</strong> (<code>jjjj.exe</code>, <code>zugu.exe</code>), which is handy. With capture loss they are incomplete, though, so do not hash them for the report.</p>
+</div>
+</div>
+</div>
+<h3 id="en-direction">Q7 — internal or external?</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts tx_hosts rx_hosts mime_type seen_bytes &lt; files.log | grep dosexec
+zeek-cut -u ts query answers &lt; dns.log | grep -E "lucrecianos|virtualsmsonline"
+</code></pre></div></div>
+<p><code>tx_hosts</code> (sender) is 170.231.127.136 and 104.31.92.140. Both are public addresses outside 10/8, 172.16/12 and 192.168/16, reached by internet domain names. <code>rx_hosts</code> is the victim, so the direction is <strong>external → internal</strong>. The stand-alone PC has no internal servers, and it was the only internal host starting connections.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-ssl">Step 6 — Zeek notices and HTTPS destinations</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts note msg src dst &lt; notice.log
+zeek-cut -u ts id.resp_h server_name &lt; ssl.log | awk -F'\t' '$1 &gt;= "2017-11-20T23:59:30+0000"'
+</code></pre></div></div>
+<p><strong>notice.log</strong>: eleven <code>SSL::Invalid_Server_Cert … unable to get local issuer certificate</code> notices, mostly for large cloud and CDN providers such as Google (172.217.x) and Amazon (52.x, 34.x). That is <strong>noise</strong>: Zeek could not complete the chain for an old capture. <strong>The last one is different</strong>:</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-21T00:13:39+0000  SSL::Invalid_Server_Cert  SSL certificate validation failed with (certificate has expired)  10.192.1.157  5.189.170.24
+</code></pre></div></div>
+<p><strong>ssl.log</strong> (<code>server_name</code> is the SNI, the hostname the client sends in clear text even though the content is encrypted):</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Time</th>
+<th scope="col">Server</th>
+<th scope="col">Reading</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>23:59:41</td>
+<td><code>ieonline.microsoft.com</code></td>
+<td>IE housekeeping, benign</td>
+</tr>
+<tr>
+<td>00:08:34</td>
+<td><code>update.googleapis.com</code></td>
+<td>Google updater, benign</td>
+</tr>
+<tr>
+<td><strong>00:13:39 – 00:16:08</strong></td>
+<td><strong><code>idea.bsit.pk</code></strong> (5.189.170.24), in bursts every 30–50 s</td>
+<td><strong>Expired certificate</strong>, starts right after <code>zugu.exe</code> → <strong>HTTPS C2 #3</strong> (inferred)</td>
+</tr>
+<tr>
+<td><strong>00:14:14</strong></td>
+<td><strong><code>smtp.aol.com</code></strong> (152.163.0.69)</td>
+<td>Outbound <strong>mail submission</strong> from a PC whose user uses webmail</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The 14-minute gap contains only benign HTTPS, so the first stage was waiting, or working without network traffic, until 00:13 (inferred).</p>
+<h3 id="en-smtp">SMTP: how much was sent?</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts id.resp_h id.resp_p service duration orig_bytes resp_bytes &lt; conn.log | grep 152.163.0.69
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-21T00:14:14+0000  152.163.0.69  465  ssl  2.435390  4380  5804
+2017-11-21T00:14:16+0000  152.163.0.69  465  -    3.016734  0     0
+2017-11-21T00:14:25+0000  152.163.0.69  465  -    -         -     -
+</code></pre></div></div>
+<ul>
+<li>Port <strong>465</strong> is SMTPS (SMTP inside TLS from the start), so the content is not visible.</li>
+<li><code>orig_bytes</code> 4,380 is what the PC <strong>sent</strong>. The TLS handshake takes 1–2 KB, which leaves a few KB of mail, enough for a list of stolen credentials.</li>
+<li>The user read mail in a browser, so a desktop-style SMTP session is out of place. <strong>Probable exfiltration of stolen data</strong> (inferred).</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-unknown-service">Step 7 — Connections Zeek could not identify (Q9)</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut id.resp_h id.resp_p proto service conn_state &lt; conn.log \
+  | awk -F'\t' '$4=="-" {print $1, $2, $3, $5}' | sort | uniq -c | sort -rn | head -20
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>    231 213.183.58.34 5552 tcp REJ
+      6 64.94.116.170 443 tcp S0
+      3 64.94.116.170 443 tcp RSTRH
+      3 181.215.247.234 1031 tcp REJ
+      2 64.12.88.133 465 tcp S0
+      2 172.217.0.227 443 tcp OTH
+      2 152.163.0.69 465 tcp S0
+      1 213.183.58.34 5552 tcp S0
+      1 131.253.33.200 80 tcp RSTR
+      1 13.107.13.80 80 tcp RSTR
+      1 10.192.1.157 49322 tcp OTH
+      1 10.192.1.157 49304 tcp OTH
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"><code>conn_state</code></th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SF</code></td>
+<td>Normal open and close</td>
+</tr>
+<tr>
+<td><code>S0</code></td>
+<td>SYN sent, no reply</td>
+</tr>
+<tr>
+<td><code>REJ</code></td>
+<td>Rejected (the server answered with RST)</td>
+</tr>
+<tr>
+<td><code>RSTR</code> / <code>RSTRH</code></td>
+<td>The responder reset the connection</td>
+</tr>
+<tr>
+<td><code>OTH</code></td>
+<td>Zeek did not see the start (mid-stream)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>213.183.58.34:5552, 232 attempts, all refused.</strong> A program retrying the same server and port again and again is malware trying to reach its C2. REJ means the port was closed, so the server was probably already down (inferred). <strong>TCP 5552 is njRAT's default port</strong> (weak inference from the port only).</li>
+<li><strong>181.215.247.234:1031</strong> (REJ ×3) and <strong>64.94.116.170:443</strong> (S0/RST): more failed outbound attempts to unknown hosts, worth listing as indicators.</li>
+<li><strong>64.12.88.133:465</strong>: two more failed SMTPS attempts (an AOL-range address, inferred).</li>
+<li>The <code>OTH</code> lines toward 10.192.1.157 are fragments of connections whose start was not captured. They are not inbound attacks.</li>
+<li>Zeek shows <code>service -</code> because these connections never carried data it could recognise.</li>
+</ul>
+<p>When did the 5552 attempts start?</p>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>zeek-cut -u ts id.resp_h id.resp_p conn_state &lt; conn.log | awk -F'\t' '$3==5552' | sed -n '1p;$p'
+</code></pre></div></div>
+<p><code>awk -F'\t' '$3==5552'</code> keeps rows whose third column (destination port) is 5552; <code>sed -n '1p;$p'</code> prints the first and the last.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-download-tool">Step 8 — What started the downloads? (Q10)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Evidence</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jjjj.exe</code> was requested with <strong>no User-Agent</strong>. Browsers always send one, so a script or program fetched it. PowerShell's <code>Net.WebClient</code>, for example, sends none by default</td>
+<td>Confirmed (no UA); tool inferred</td>
+</tr>
+<tr>
+<td><code>zugu.exe</code> and the <code>icanhazip.com</code> check carry the User-Agent <strong><code>AutoIt</code></strong></td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>The user opened <strong>Yahoo Mail</strong> about 45 seconds before the first download</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td><code>strings</code> on <code>jjjj.exe</code> found <strong>no</strong> <code>AutoIt</code> / <code>AU3!</code> markers</td>
+<td>Not confirmed: the file may be packed, incomplete (capture loss), or may have dropped the AutoIt component</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>strings -n 6 extract_files/*FwavXQ2AM4W84BhH44 | grep -i -E "autoit|AU3!" | sort | uniq -c | head
+</code></pre></div></div>
+<p>Conclusion: <strong>the browser did not download the executables.</strong> A non-browser program fetched the first one, and an <strong>AutoIt-based program</strong> fetched the second. A malicious email opened in Yahoo Mail is the likely starting point, but the mail is encrypted (HTTPS), so it cannot be confirmed from this capture.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-timeline">Timeline</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">UTC</th>
+<th scope="col">Event</th>
+<th scope="col">Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2017-11-20 23:58:00</td>
+<td>Capture starts; DHCP for WIN-D5243B (10.192.1.157)</td>
+<td>dhcp.log</td>
+</tr>
+<tr>
+<td>23:58:11</td>
+<td>Windows NCSI check</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>23:58:49–51</td>
+<td>User types <code>mail.yahoo.com</code> in IE (Bing autosuggest)</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>23:58:56</td>
+<td>Yahoo page ad pixels (btrll.com)</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td><strong>23:59:35</strong></td>
+<td><code>jjjj.exe</code> downloaded from lucrecianos.com.ar, no User-Agent</td>
+<td>http.log, files.log, pe.log</td>
+</tr>
+<tr>
+<td>23:59:41 – 00:08:34</td>
+<td>Only benign HTTPS (Microsoft, Google)</td>
+<td>ssl.log</td>
+</tr>
+<tr>
+<td><strong>00:13:28</strong></td>
+<td><code>zugu.exe</code> downloaded from virtualsmsonline.site, User-Agent AutoIt</td>
+<td>http.log, files.log, pe.log</td>
+</tr>
+<tr>
+<td>00:13:38</td>
+<td>Public IP check, icanhazip.com</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>00:13:39 →</td>
+<td>HTTPS to idea.bsit.pk (expired certificate), in bursts</td>
+<td>ssl.log, notice.log</td>
+</tr>
+<tr>
+<td>00:13:59 →</td>
+<td>POST <code>fre.php</code> to tcoolonline.mobi (<code>Charon; Inferno</code>), about every minute</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>00:14:04 →</td>
+<td><code>config.jpg</code> / <code>gate.php</code> on harddomainname.biz (MSIE 7 UA), every ~60 s</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>00:14:14</td>
+<td>SMTPS to smtp.aol.com, ~4.4 KB sent</td>
+<td>conn.log, ssl.log</td>
+</tr>
+<tr>
+<td>during capture</td>
+<td>232 refused connections to 213.183.58.34:5552</td>
+<td>conn.log</td>
+</tr>
+<tr>
+<td>00:16:33</td>
+<td>Capture ends</td>
+<td>conn.log</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-iocs">Indicators of compromise</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Type</th>
+<th scope="col">Indicator</th>
+<th scope="col">Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>hxxp://lucrecianos[.]com[.]ar/imagen/1/2/jjjj.exe</code></td>
+<td>First EXE (3,061,200 bytes, compiled 2017-11-20 15:10:13 UTC)</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>170.231.127[.]136</code></td>
+<td>lucrecianos.com.ar</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://virtualsmsonline[.]site/zugu.exe</code></td>
+<td>Second EXE (5,895,226 bytes)</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>104.31.92[.]140</code></td>
+<td>virtualsmsonline.site</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://tcoolonline[.]mobi/wp-admin/css/colors/blue/Panel/five/fre.php</code></td>
+<td>C2 #1 (LokiBot-style)</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>185.118.166[.]155</code></td>
+<td>tcoolonline.mobi</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://www.harddomainname[.]biz/wordpress/wp-admin/css/colors/blue/panel/gate.php</code>, <code>…/config.jpg</code></td>
+<td>C2 #2</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>37.48.82[.]212</code></td>
+<td>harddomainname.biz</td>
+</tr>
+<tr>
+<td>Domain / IP</td>
+<td><code>idea.bsit[.]pk</code> / <code>5.189.170[.]24</code></td>
+<td>HTTPS C2 #3, expired certificate</td>
+</tr>
+<tr>
+<td>IP:port</td>
+<td><code>213.183.58[.]34:5552</code></td>
+<td>Failed C2 (possible njRAT)</td>
+</tr>
+<tr>
+<td>IP:port</td>
+<td><code>181.215.247[.]234:1031</code>, <code>64.94.116[.]170:443</code></td>
+<td>Failed outbound attempts</td>
+</tr>
+<tr>
+<td>Host</td>
+<td><code>smtp.aol[.]com</code> (<code>152.163.0[.]69:465</code>), <code>64.12.88[.]133:465</code></td>
+<td>SMTPS, probable exfiltration</td>
+</tr>
+<tr>
+<td>User-Agent</td>
+<td><code>AutoIt</code> · <code>Mozilla/4.08 (Charon; Inferno)</code> · <code>Mozilla/4.0 (compatible; MSIE 7.0; …)</code></td>
+<td>Malware programs</td>
+</tr>
+<tr>
+<td>Hashes</td>
+<td>Not available</td>
+<td>Capture loss (<code>missing_bytes</code> &gt; 0)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-attack">ATT&amp;CK mapping</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Technique</th>
+<th scope="col">Evidence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1566 Phishing</td>
+<td>Downloads began right after Yahoo Mail was opened (inferred)</td>
+</tr>
+<tr>
+<td>T1105 Ingress Tool Transfer</td>
+<td><code>jjjj.exe</code>, <code>zugu.exe</code></td>
+</tr>
+<tr>
+<td>T1059.010 Command and Scripting Interpreter: AutoHotKey &amp; AutoIT</td>
+<td><code>AutoIt</code> User-Agent</td>
+</tr>
+<tr>
+<td>T1016.001 Internet Connection Discovery</td>
+<td><code>icanhazip.com</code>, <code>yandex.ru</code> checks</td>
+</tr>
+<tr>
+<td>T1071.001 Application Layer Protocol: Web Protocols</td>
+<td><code>fre.php</code>, <code>gate.php</code>, HTTPS C2</td>
+</tr>
+<tr>
+<td>T1571 Non-Standard Port</td>
+<td>TCP 5552, 1031</td>
+</tr>
+<tr>
+<td>T1048.002 Exfiltration Over Asymmetric Encrypted Non-C2 Protocol</td>
+<td>SMTPS to AOL (inferred)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-report">Report (Q11)</h2>
+<blockquote>
+<p>On 2017-11-20 at 23:59 UTC, the Windows 7 host WIN-D5243B (10.192.1.157) downloaded jjjj.exe from lucrecianos.com.ar, shortly after the user opened Yahoo Mail. At 00:13, an AutoIt-based program downloaded a second EXE, zugu.exe. The host then checked its public IP and contacted several C2 servers. One pattern matches LokiBot (not confirmed). It sent about 4 KB over encrypted SMTP to AOL, likely stolen data. It also kept trying a possible njRAT server on port 5552. The host should be isolated and rebuilt, and all saved passwords changed.</p>
+</blockquote>
+</section>
+<section>
+<h2 id="en-detection">Detection ideas</h2>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>Zeek</label><label>Snort 2</label><label>Splunk</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code># Non-browser User-Agents that fetch executables
+zeek-cut -u ts id.orig_h host uri user_agent resp_mime_types &lt; http.log | grep dosexec
+# Known-bad / impossible User-Agents
+zeek-cut id.orig_h host user_agent &lt; http.log | grep -E "AutoIt|Charon; Inferno|MSIE 7\.0" | sort | uniq -c
+# Hosts hammering one closed port (many REJ to the same destination)
+zeek-cut id.orig_h id.resp_h id.resp_p conn_state &lt; conn.log | awk -F'\t' '$4=="REJ"' | sort | uniq -c | sort -rn | head
+# Workstations talking SMTP(S) directly
+zeek-cut -u ts id.orig_h id.resp_h id.resp_p orig_bytes &lt; conn.log | awk -F'\t' '$4==25 || $4==465 || $4==587'
+</code></pre></div></div>
+</div>
+<div class="tabbed-block">
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"LOCAL LokiBot-style User-Agent Charon Inferno"; flow:established,to_server; content:"Charon|3B| Inferno"; http_header; classtype:trojan-activity; sid:1000701; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"LOCAL AutoIt User-Agent"; flow:established,to_server; content:"User-Agent|3A| AutoIt|0D 0A|"; http_header; classtype:policy-violation; sid:1000702; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 5552 (msg:"LOCAL Outbound TCP 5552 (njRAT default port)"; flags:S; threshold:type both, track by_src, count 10, seconds 60; classtype:trojan-activity; sid:1000703; rev:1;)
+</code></pre></div></div>
+</div>
+<div class="tabbed-block">
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http (user_agent="AutoIt" OR user_agent="*Charon; Inferno*" OR resp_mime_types="*dosexec*")
+| table _time id.orig_h host uri user_agent resp_mime_types
+| sort _time
+</code></pre></div></div>
+<p>Adjust index and sourcetype to your ingestion. <code>|3B|</code> and <code>|3A|</code> in the Snort rules are hex for <code>;</code> and <code>:</code>.</p>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2 id="en-lessons">Lessons learned</h2>
+<ul>
+<li><strong>The log list is evidence.</strong> No <code>kerberos.log</code> means no domain; <code>pe.log</code> means executables crossed the wire.</li>
+<li><strong>Check <code>missing_bytes</code> before hashing.</strong> With capture loss, Zeek leaves <code>md5</code>/<code>sha1</code> empty, and hashing a carved file gives a wrong answer. Report <code>total_bytes</code> as the size and state why there is no hash.</li>
+<li><strong>Read User-Agents with their destinations.</strong> The odd Firefox string was ad traffic; <code>AutoIt</code> and <code>Charon; Inferno</code> were malware.</li>
+<li><strong><code>service -</code> hides the loudest signal.</strong> 232 refused connections to one port only showed up by summarising unknown-service connections.</li>
+<li><strong>An encrypted SMTP session from a webmail user is out of place</strong> and worth reporting as possible exfiltration, while saying the content cannot be seen.</li>
+<li><strong>tshark fills Zeek's gaps:</strong> TTL, DHCP vendor class, protocol hierarchy, NBNS names and lost-segment counts.</li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>웹메일 세션은 다운로드보다 앞섭니다. 타임스탬프와 User-Agent 변화로 두 활동의 관계를 검토하고, 신뢰할 수 있는 파일 해시를 계산하지 못한 캡처 공백을 기록합니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/pcap-lab-07-autoit-downloader-multi-c2/">DFIR Handbook 원문</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td><code>Phase1_PCAP_7.pcap</code>, 2017-11-20 23:58:00 – 2017-11-21 00:16:33 UTC (18.5분)</td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>인터넷이 막힌 리눅스 분석 VM, Zeek 4.x, tshark</td>
+</tr>
+<tr>
+<td><strong>주 도구</strong></td>
+<td>Zeek 로그 + <code>zeek-cut</code>, <code>awk</code>, <code>grep</code>. TTL과 DHCP 옵션은 tshark</td>
+</tr>
+<tr>
+<td><strong>실습 안내</strong></td>
+<td><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/training/pcap-ir-labs/lab-guide/#lab-7">트레이닝 → PCAP 침해사고 분석 실습 → 실습 7</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-questions">질문</h2>
+<p>감염 PC가 윈도우라고 <strong>가정하지 않습니다</strong>.</p>
+<ol>
+<li>감염 호스트의 IP 주소</li>
+<li>MAC 주소</li>
+<li>호스트 이름</li>
+<li>운영체제</li>
+<li>무엇을, 몇 개 받았나</li>
+<li>각 파일을 어디서 받았나</li>
+<li>파일을 내부에서 받았나, 외부에서 받았나</li>
+<li>추가 조사에 도움이 될 정보</li>
+<li>다운로드 이후에 다른 일이 있었나</li>
+<li>무엇이 다운로드를 시작했나</li>
+<li>침해 설명</li>
+</ol>
+</section>
+<section>
+<h2 id="ko-answers">답 한눈에 보기</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">#</th>
+<th scope="col">답</th>
+<th scope="col">상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>10.192.1.157</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>50:46:5d:d5:24:3b</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>WIN-D5243B</strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>Windows 7</strong> (User-Agent <code>Windows NT 6.1</code>, DHCP <code>MSFT 5.0</code>, TTL 128)</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>32비트 윈도우 EXE 2개</strong>: <code>jjjj.exe</code> (3,061,200 바이트), <code>zugu.exe</code> (5,895,226 바이트)</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>hxxp://lucrecianos[.]com[.]ar/imagen/1/2/jjjj.exe</code> (170.231.127.136), <code>hxxp://virtualsmsonline[.]site/zugu.exe</code> (104.31.92.140)</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>외부</strong>: 인터넷의 공인 IP에서 HTTP로 받음</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>8</td>
+<td>URL, IP, 크기, 컴파일 시각, C2 호스트, User-Agent, SMTP. <strong>해시는 없음</strong>(캡처 손실)</td>
+<td><a href="#ko-iocs">IOC</a> 참고</td>
+</tr>
+<tr>
+<td>9</td>
+<td>두 번째 다운로드, 공인 IP 확인, C2 4곳, SMTPS로 약 4KB</td>
+<td>통신은 확인됨, 계열과 유출은 추정</td>
+</tr>
+<tr>
+<td>10</td>
+<td>브라우저가 아님: 첫 요청은 <strong>User-Agent 없음</strong>, 두 번째는 <strong>AutoIt</strong></td>
+<td>일부 확인됨</td>
+</tr>
+<tr>
+<td>11</td>
+<td><a href="#ko-report">보고서</a> 참고</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-step-0">0단계 — 준비와 Zeek 로그 만들기</h2>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>cd ~/Investigation_7
+sha256sum Phase1_PCAP_7.pcap | tee pcap.sha256
+mkdir zeek_full &amp;&amp; cd zeek_full
+zeek -C -r ../Phase1_PCAP_7.pcap local \
+     frameworks/files/extract-all-files \
+     policy/protocols/conn/mac-logging 2&gt;/dev/null
+ll
+</code></pre></div></div>
+<p>옵션 설명은 <a href="handbook-pcap-lab-06-invoice-macro-c2.html">실습 06의 0단계</a>와 같습니다. 이번에는 <strong>생긴 로그 목록 자체가 증거</strong>입니다.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>capture_loss.log  conn.log  dhcp.log  dns.log  extract_files/  files.log  http.log
+loaded_scripts.log  notice.log  packet_filter.log  pe.log  reporter.log  ssl.log
+stats.log  x509.log
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">보이는 것</th>
+<th scope="col">의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kerberos.log</code>, <code>smb_*.log</code> 없음</td>
+<td>도메인 로그인이 없습니다. Active Directory에 속하지 않은 <strong>단독 PC</strong>입니다(추정). 이번 실습에 계정 질문이 없는 것과도 맞습니다</td>
+</tr>
+<tr>
+<td><code>pe.log</code></td>
+<td>트래픽에서 <strong>윈도우 실행 파일</strong>을 하나 이상 분석했다는 뜻입니다</td>
+</tr>
+<tr>
+<td><code>notice.log</code></td>
+<td>Zeek이 살펴볼 만한 것을 표시했습니다</td>
+</tr>
+<tr>
+<td><code>capture_loss.log</code></td>
+<td>패킷 손실 통계입니다. <a href="#ko-capture-loss">5단계</a>에서 중요해집니다</td>
+</tr>
+<tr>
+<td><code>software.log</code> 없음</td>
+<td>이 환경의 <code>local</code> 설정이 소프트웨어 버전을 기록하지 않거나, 찾은 것이 없습니다. User-Agent는 <code>http.log</code>에서 직접 봅니다</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-step-1">1단계 — 전체 그림</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts &lt; conn.log | sort | sed -n '1p;$p'
+zeek-cut id.orig_h &lt; conn.log | grep -E "^10\.|^172\.|^192\.168\." | sort | uniq -c | sort -rn
+zeek-cut service &lt; conn.log | sort | uniq -c | sort -rn
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:58:00+0000
+2017-11-21T00:16:33+0000
+
+    575 10.192.1.157
+
+    254 -
+    163 dns
+    119 ssl
+     31 http
+     10 dhcp
+</code></pre></div></div>
+<ul>
+<li>18.5분 분량이고 <strong>내부 호스트는 하나</strong>뿐입니다. 감염 후보는 이 PC입니다.</li>
+<li><code>service</code>는 Zeek이 연결 내용을 보고 알아낸 프로토콜입니다. DNS, TLS, HTTP, DHCP뿐이므로 다운로드는 FTP, SMB, TFTP가 아닙니다.</li>
+<li><strong>service가 <code>-</code>인 연결 254개</strong>: Zeek이 프로토콜을 알아보지 못한 연결입니다. 보통 연결이 내용을 주고받을 만큼 진행되지 못했다는 뜻입니다. <a href="#ko-unknown-service">7단계</a>에서 봅니다.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark 대안</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -q -z io,phs
+</code></pre></div></div>
+<p><code>-z io,phs</code>는 <strong>프로토콜 계층 통계</strong>(Wireshark <em>Statistics → Protocol Hierarchy</em>)입니다. ARP, LLMNR, NBNS, mDNS, TFTP처럼 Zeek이 로그를 따로 만들지 않는 프로토콜도 보여 줍니다. 다운로드 프로토콜을 모를 때 먼저 보면 좋습니다.</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-identity">2단계 — IP, MAC, 호스트 이름 (1~3번)</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts client_addr mac host_name &lt; dhcp.log
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:58:00+0000   10.192.1.157   50:46:5d:d5:24:3b   -
+2017-11-20T23:58:04+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:08:27+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:13:01+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:13:28+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:14:46+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+2017-11-21T00:15:48+0000   10.192.1.157   50:46:5d:d5:24:3b   WIN-D5243B
+</code></pre></div></div>
+<ul>
+<li><strong>10.192.1.157 · 50:46:5d:d5:24:3b · WIN-D5243B</strong> (1~3번, 확인됨)</li>
+<li>첫 줄에 이름이 없는 것은 맨 처음 DHCP 메시지에 옵션 12(호스트 이름)가 없었기 때문입니다. 정상입니다.</li>
+<li><code>WIN-</code> + 6글자는 윈도우가 설치될 때 스스로 붙이는 임의 이름의 모양입니다. OS의 힌트일 뿐 증거는 아닙니다.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark 대안 (DHCP에 이름이 없을 때)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "nbns || llmnr || mdns" \
+       -T fields -e ip.src -e eth.src -e nbns.name -e dns.qry.name | sort | uniq -c
+</code></pre></div></div>
+<p>윈도우가 아닌 PC는 DHCP에 이름을 안 보내기도 합니다. 대신 NBNS, LLMNR, mDNS(<code>이름.local</code>)로 자기 이름을 알립니다. Zeek은 NBNS 로그를 만들지 않으므로 이때는 tshark가 쉽습니다. 이번 캡처는 DHCP에 이름이 있었습니다.</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-os">3단계 — 운영체제 (4번)</h2>
+<h3 id="ko-user-agents">User-Agent</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut user_agent &lt; http.log | sort | uniq -c | sort -rn
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>     15 Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko
+      8 Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Trident/7.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; .NET4.0C; .NET4.0E)
+      7 Mozilla/4.08 (Charon; Inferno)
+      3 Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko/20100101 Firefox/12.0
+      2 AutoIt
+      1 Microsoft NCSI
+      1 -
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">횟수</th>
+<th scope="col">User-Agent</th>
+<th scope="col">판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>15</td>
+<td>IE 11, <code>Windows NT 6.1</code></td>
+<td><strong>윈도우 7</strong>의 진짜 브라우저</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>Microsoft NCSI</code></td>
+<td>윈도우의 "인터넷 연결됐나?" 확인. 윈도우만 보냄</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>MSIE 7.0 … .NET CLR …</code></td>
+<td>2017년 윈도우 7에서 IE 7은 말이 안 됨 → 프로그램에 박혀 있는 문자열</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>Mozilla/4.08 (Charon; Inferno)</code></td>
+<td>브라우저가 아님. <strong>LokiBot</strong>과 연관된 것으로 널리 알려진 고정 문자열</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>NT 6.3 … like Gecko/20100101 Firefox/12.0</code></td>
+<td>IE와 Firefox가 섞인 이상한 문자열. 하지만 광고 네트워크로만 갔으므로(<a href="#ko-http-timeline">4단계</a>) 악성이 아니라 광고 스크립트일 가능성이 높음</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>AutoIt</code></td>
+<td>윈도우 자동화 언어 <strong>AutoIt</strong>의 기본 User-Agent. 악성코드를 만드는 데 자주 쓰임</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>-</code></td>
+<td>User-Agent가 <strong>없는</strong> 요청 → 브라우저가 아님</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">User-Agent는 맥락과 함께 봅니다</p>
+<p>이상한 Firefox 문자열만 보면 악성처럼 보였습니다. 하지만 목적지를 보니 광고 통신이었습니다. User-Agent는 항상 <strong>어디로, 언제</strong> 갔는지와 같이 판단합니다.</p>
+</div>
+<h3 id="ko-ttl-vendor">TTL과 DHCP 벤더 클래스 (tshark)</h3>
+<p>Zeek은 IP TTL과 DHCP 벤더 클래스를 기록하지 않습니다. tshark는 둘 다 바로 읽습니다.</p>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "ip.src==10.192.1.157" -T fields -e ip.ttl | sort | uniq -c
+tshark -r ../Phase1_PCAP_7.pcap -Y "dhcp.option.vendor_class_id" \
+       -T fields -e eth.src -e dhcp.option.vendor_class_id | sort -u
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>     10 1
+   6809 128
+
+50:46:5d:d5:24:3b    MSFT 5.0
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">증거</th>
+<th scope="col">의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>6,809개 패킷의 TTL <strong>128</strong></td>
+<td>윈도우의 기본 TTL(리눅스·맥·안드로이드는 64, 네트워크 장비는 255). LAN 안에서 캡처했으므로 값이 그대로입니다</td>
+</tr>
+<tr>
+<td>10개 패킷의 TTL <strong>1</strong></td>
+<td>LLMNR(224.0.0.252)이나 IGMP 같은 근거리 멀티캐스트. TTL 1은 LAN 밖으로 못 나가게 하려는 것이고 OS와는 상관없음</td>
+</tr>
+<tr>
+<td><code>MSFT 5.0</code></td>
+<td>윈도우 2000 이후 모든 윈도우가 보내는 DHCP 벤더 클래스</td>
+</tr>
+</tbody>
+</table>
+</div>
+<details class="note">
+<summary>TTL 1인 패킷은 무엇인가?</summary>
+<p></p><div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "ip.src==10.192.1.157 &amp;&amp; ip.ttl==1" \
+       -T fields -e ip.dst -e _ws.col.Protocol | sort | uniq -c
+</code></pre></div></div>
+<code>_ws.col.Protocol</code>은 Wireshark 화면의 <em>Protocol</em> 열입니다.<p></p>
+</details>
+<p><strong>4번 답: Windows 7.</strong> 브라우저 User-Agent(<code>NT 6.1</code>), DHCP 벤더 클래스(<code>MSFT 5.0</code>), TTL 128이 모두 같은 결론입니다. NCSI 요청과 <code>WIN-</code> 호스트 이름도 맞습니다. IE 문자열에 <code>WOW64</code>나 <code>Win64</code>가 없어서 32비트 윈도우 7로 보입니다(추정).</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-http-timeline">4단계 — HTTP 타임라인 (5, 6, 10번)</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts id.resp_h host method uri status_code resp_mime_types user_agent &lt; http.log
+</code></pre></div></div>
+<p>간추린 결과(날짜 생략, UTC):</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>23:58:11  63.146.14.19     www.msftncsi.com       GET  /ncsi.txt                                    200  text/plain    Microsoft NCSI
+23:58:41  131.253.33.200   www.bing.com           GET  /favicon.ico                                 200  image/png     IE 11
+23:58:49  13.107.13.80     api.bing.com           GET  /qsml.aspx?query=m&amp;...                       -    -             IE 11
+23:58:49  13.107.13.80     api.bing.com           GET  /qsml.aspx?query=ma&amp;...                      -    -             IE 11
+   ...    (query=mai, mail, mail., mail.y, mail.ya ... 글자를 칠 때마다 한 번씩)
+23:58:51  13.107.13.80     api.bing.com           GET  /qsml.aspx?query=mail.yahoo.com&amp;...          200  application/xml  IE 11
+23:58:56  162.208.20.184   geo-um.btrll.com       GET  /v1/map/68e4318f0f7098c3/...             302  -             NT 6.3 ... Firefox/12.0
+23:58:56  52.84.14.115     cache.btrll.com        GET  /default/Pix-1x1.gif                         200  image/gif     NT 6.3 ... Firefox/12.0
+23:59:35  170.231.127.136  lucrecianos.com.ar     GET  /imagen/1/2/jjjj.exe                         200  application/x-dosexec  -
+00:13:28  104.31.92.140    virtualsmsonline.site  GET  /zugu.exe                                    200  application/x-dosexec  AutoIt
+00:13:38  104.20.17.242    icanhazip.com          GET  /                                            200  text/plain    AutoIt
+00:13:59  185.118.166.155  tcoolonline.mobi       POST /wp-admin/css/colors/blue/Panel/five/fre.php 404  text/plain    Mozilla/4.08 (Charon; Inferno)
+00:14:04  37.48.82.212     www.harddomainname.biz GET  /wordpress/wp-admin/css/colors/blue/panel/config.jpg 200 image/jpeg MSIE 7.0 ...
+00:14:06  5.255.255.55     yandex.ru              GET  /                                            302  -             MSIE 7.0 ...
+00:14:07  37.48.82.212     www.harddomainname.biz POST /wordpress/wp-admin/css/colors/blue/panel/gate.php 200 -     MSIE 7.0 ...
+00:15:01  ... tcoolonline.mobi POST .../fre.php (404, Charon; Inferno)
+00:15:07  ... harddomainname.biz GET .../config.jpg (304), 00:15:08 POST .../gate.php (200)
+00:16:08  ... harddomainname.biz GET .../config.jpg (304), POST .../gate.php (200)
+00:16:29–31  ... tcoolonline.mobi POST .../fre.php x3 (404)
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">시각</th>
+<th scope="col">일어난 일</th>
+<th scope="col">의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>23:58:49~51</td>
+<td><code>api.bing.com/qsml.aspx?query=m</code>, <code>ma</code>, <code>mai</code>, … <code>mail.yahoo.com</code></td>
+<td>IE 주소창은 <strong>글자를 칠 때마다</strong> Bing 자동완성을 요청합니다. 사용자가 <strong>mail.yahoo.com을 입력</strong>했습니다. Yahoo 메일 자체는 HTTPS라서 메일 내용은 안 보입니다</td>
+</tr>
+<tr>
+<td>23:58:56</td>
+<td><code>btrll.com</code> 302 + 1×1 GIF</td>
+<td>Yahoo 페이지의 광고 픽셀(BrightRoll, Yahoo 계열 광고 네트워크)</td>
+</tr>
+<tr>
+<td><strong>23:59:35</strong></td>
+<td><code>lucrecianos.com.ar</code>에서 <strong><code>jjjj.exe</code></strong>, <strong>User-Agent 없음</strong></td>
+<td>첫 번째 실행 파일. <strong>브라우저가 아닌</strong> 것이 요청함</td>
+</tr>
+<tr>
+<td><em>14분 공백</em></td>
+<td>정상 HTTPS만 있음(<a href="#ko-ssl">6단계</a>)</td>
+<td>1단계 악성코드가 기다리거나 조용히 동작한 시간(추정)</td>
+</tr>
+<tr>
+<td><strong>00:13:28</strong></td>
+<td><code>virtualsmsonline.site</code>에서 <strong><code>zugu.exe</code></strong>, User-Agent <strong>AutoIt</strong></td>
+<td>두 번째 실행 파일. <strong>AutoIt 기반 프로그램</strong>이 받음</td>
+</tr>
+<tr>
+<td>00:13:38</td>
+<td><code>icanhazip.com</code> (AutoIt)</td>
+<td>공인 IP 확인</td>
+</tr>
+<tr>
+<td>00:13:59 →</td>
+<td><code>…/Panel/five/fre.php</code>로 POST, <code>Charon; Inferno</code>, 약 1분마다</td>
+<td>C2 #1. <code>fre.php</code> + 이 User-Agent는 전형적인 <strong>LokiBot</strong> 패턴. LokiBot 패널은 일부러 404로 답하는 경우가 많음</td>
+</tr>
+<tr>
+<td>00:14:04 →</td>
+<td><code>…/panel/config.jpg</code> GET, <code>…/panel/gate.php</code> POST, MSIE 7 UA, 약 60초마다</td>
+<td>C2 #2. 별도의 봇/정보 탈취 패널(계열은 정하지 못함)</td>
+</tr>
+<tr>
+<td>00:14:06</td>
+<td><code>yandex.ru</code> (MSIE 7 UA)</td>
+<td>같은 프로그램의 인터넷 연결 확인</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark 대안</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "http.request" -T fields \
+       -e frame.time_utc -e ip.dst -e http.host -e http.request.method -e http.request.uri -e http.user_agent
+</code></pre></div></div>
+<p>요청만 나오고 응답 종류는 없습니다. 요청과 응답을 한 줄로 보여 주는 Zeek이 여기서는 더 편합니다. Zeek 줄이 길어 읽기 어려울 때 보조로 씁니다.</p>
+</div>
+</div>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-files">5단계 — 받은 파일 (5~8번)과 해시가 없는 이유</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts tx_hosts rx_hosts source mime_type filename seen_bytes fuid &lt; files.log \
+  | grep -v -i -E "x509|pkix"
+</code></pre></div></div>
+<p><code>grep -v</code>는 맞는 줄을 <strong>빼고</strong> 보여 줍니다. HTTPS 연결마다 서버 인증서가 <code>files.log</code>에 기록되는데, 그것은 다운로드가 아니므로 뺍니다. 실행 파일은 두 줄입니다.</p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:59:36+0000  170.231.127.136  10.192.1.157  HTTP  application/x-dosexec  -  2870222  FwavXQ2AM4W84BhH44
+2017-11-21T00:13:29+0000  104.31.92.140    10.192.1.157  HTTP  application/x-dosexec  -  5812128  FuT2N64AuTHxEdqVil
+</code></pre></div></div>
+<p>나머지는 작은 웹 파일과 C2 통신입니다. <code>tx_hosts</code>가 감염 PC인 줄은 PC가 <strong>보낸</strong> POST 본문입니다. 185.118.166.155로 204·177바이트, 37.48.82.212로 345바이트를 보냈습니다. 눈에 띄는 것은 <code>config.jpg</code>입니다. C2 패널 경로에서 받은 <strong>81,393바이트</strong>짜리 <code>image/jpeg</code>입니다. 그림 안에 설정이나 데이터를 숨겼을 수 있습니다(추정).</p>
+<h3 id="ko-pe">PE 헤더 정보</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts id machine os compile_ts is_exe is_64bit &lt; pe.log
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-20T23:59:36+0000  FwavXQ2AM4W84BhH44  I386  Windows 95 or NT 4.0          2017-11-20T15:10:13+0000  T  F
+2017-11-21T00:13:29+0000  FuT2N64AuTHxEdqVil  I386  Windows Vista or Server 2008  2017-07-31T15:19:47+0000  T  F
+</code></pre></div></div>
+<ul>
+<li>둘 다 <strong>32비트(<code>I386</code>) EXE</strong>입니다(<code>is_exe T</code>, <code>is_64bit F</code>).</li>
+<li><code>os</code>는 그 파일이 요구하는 <em>최소</em> 윈도우 버전입니다. 감염 PC의 OS가 아닙니다.</li>
+<li><code>jjjj.exe</code>는 <strong>다운로드되기 약 9시간 전에 컴파일</strong>됐습니다. 갓 만든 샘플입니다. 컴파일 시각은 조작할 수 있으므로 보조 정보로만 씁니다.</li>
+</ul>
+<h3 id="ko-capture-loss">MD5와 SHA1이 비어 있는 이유: 캡처 손실</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut fuid mime_type md5 sha1 &lt; files.log | grep dosexec
+zeek-cut &lt; files.log | grep dosexec        # 모든 칸
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>FwavXQ2AM4W84BhH44   application/x-dosexec   -   -
+FuT2N64AuTHxEdqVil   application/x-dosexec   -   -
+</code></pre></div></div>
+<p><code>jjjj.exe</code>의 전체 줄을 Zeek 4 <code>files.log</code> 칸 순서에 맞춰 읽으면 이렇습니다.</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">칸</th>
+<th scope="col">값</th>
+<th scope="col">의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>conn_uids</code></td>
+<td><code>CJ9NTy1RmcRnZRVcma</code></td>
+<td>파일이 지나간 연결</td>
+</tr>
+<tr>
+<td><code>analyzers</code></td>
+<td><code>EXTRACT,MD5,SHA1,PE</code></td>
+<td>해시 계산을 <strong>시도함</strong></td>
+</tr>
+<tr>
+<td><code>seen_bytes</code></td>
+<td>2,870,222</td>
+<td>캡처에 실제로 있는 바이트</td>
+</tr>
+<tr>
+<td><code>total_bytes</code></td>
+<td><strong>3,061,200</strong></td>
+<td>서버가 알려 준 진짜 크기(<code>Content-Length</code>)</td>
+</tr>
+<tr>
+<td><code>missing_bytes</code></td>
+<td><strong>190,978</strong></td>
+<td>캡처에 없는 바이트</td>
+</tr>
+<tr>
+<td><code>md5</code> / <code>sha1</code></td>
+<td><code>-</code></td>
+<td>계산 안 됨</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><code>zugu.exe</code>: 전체 <strong>5,895,226</strong>, 본 것 5,812,128, 빠진 것 <strong>83,098</strong>.</p>
+<p>해시는 모든 바이트로 계산하고, 한 바이트만 빠져도 완전히 다른 값이 됩니다. 그래서 Zeek은 <strong>틀린 해시를 만들지 않습니다</strong>. 같은 이유로 추출된 파일이나 tshark로 꺼낸 파일에 <code>sha256sum</code>을 돌린 값은 진짜 파일의 해시가 <strong>아니므로</strong> 보고하면 안 됩니다.</p>
+<div class="admonition danger">
+<p class="admonition-title">크기는 <code>seen_bytes</code>가 아니라 <code>total_bytes</code>로</p>
+<p>파일 크기는 서버가 <strong>알려 준</strong> 크기인 3,061,200바이트와 5,895,226바이트입니다. <code>seen_bytes</code>는 캡처에 들어 있던 양일 뿐입니다. 이 풀이도 처음에는 5번을 <code>seen_bytes</code>로 답했다가, <code>missing_bytes</code>를 확인한 뒤 고쳤습니다.</p>
+</div>
+<p>손실 확인:</p>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts peer gaps acks percent_lost &lt; capture_loss.log
+zeek-cut uid id.resp_h missed_bytes history &lt; conn.log | grep -E "CJ9NTy1RmcRnZRVcma|CtsW3u4avJGUQUma66"
+zeek-cut fuid seen_bytes total_bytes missing_bytes &lt; files.log | grep -E "FwavXQ2AM4W84BhH44|FuT2N64AuTHxEdqVil"
+</code></pre></div></div>
+<ul>
+<li><code>percent_lost</code>가 0보다 크면 센서가 패킷을 놓쳤다는 뜻입니다.</li>
+<li><code>conn.log</code>의 <code>missed_bytes</code>는 <code>missing_bytes</code>와 비슷해야 합니다.</li>
+<li><code>history</code>에 <code>g</code>나 <code>G</code>가 있으면 내용 중간에 빈틈이 있었다는 표시입니다.</li>
+</ul>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>tshark 대안</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">TShark</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tshark -r ../Phase1_PCAP_7.pcap -Y "tcp.analysis.lost_segment || tcp.analysis.ack_lost_segment" | wc -l
+mkdir objs &amp;&amp; tshark -r ../Phase1_PCAP_7.pcap -q --export-objects http,objs &amp;&amp; ls -l objs/*.exe
+</code></pre></div></div>
+<p>첫 줄은 Wireshark가 "이전 TCP 조각을 못 봤다"고 표시한 패킷 수입니다. 두 번째 줄은 파일을 <strong>URL 이름 그대로</strong>(<code>jjjj.exe</code>, <code>zugu.exe</code>) 꺼내서 찾기 편합니다. 하지만 캡처 손실이 있으면 파일이 불완전하므로 보고용 해시를 구하면 안 됩니다.</p>
+</div>
+</div>
+</div>
+<h3 id="ko-direction">7번 — 내부인가 외부인가</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts tx_hosts rx_hosts mime_type seen_bytes &lt; files.log | grep dosexec
+zeek-cut -u ts query answers &lt; dns.log | grep -E "lucrecianos|virtualsmsonline"
+</code></pre></div></div>
+<p><code>tx_hosts</code>(보낸 쪽)는 170.231.127.136과 104.31.92.140입니다. 둘 다 10/8, 172.16/12, 192.168/16 밖의 공인 주소이고, 인터넷 도메인 이름으로 접속했습니다. <code>rx_hosts</code>가 피해 PC이므로 방향은 <strong>외부 → 내부</strong>입니다. 단독 PC라서 내부 서버도 없고, 연결을 시작한 내부 호스트도 이 PC 하나뿐입니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-ssl">6단계 — Zeek 경고와 HTTPS 목적지</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts note msg src dst &lt; notice.log
+zeek-cut -u ts id.resp_h server_name &lt; ssl.log | awk -F'\t' '$1 &gt;= "2017-11-20T23:59:30+0000"'
+</code></pre></div></div>
+<p><strong>notice.log</strong>: <code>SSL::Invalid_Server_Cert … unable to get local issuer certificate</code> 경고가 11개 있습니다. 대부분 Google(172.217.x), Amazon(52.x, 34.x) 같은 큰 클라우드·CDN입니다. 오래된 캡처라 Zeek이 인증서 체인을 끝까지 확인하지 못한 것이고, <strong>잡음</strong>입니다. <strong>마지막 한 줄만 다릅니다.</strong></p>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-21T00:13:39+0000  SSL::Invalid_Server_Cert  SSL certificate validation failed with (certificate has expired)  10.192.1.157  5.189.170.24
+</code></pre></div></div>
+<p><strong>ssl.log</strong> (<code>server_name</code>은 SNI입니다. 내용은 암호화돼도 접속할 도메인 이름은 평문으로 보냅니다):</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">시각</th>
+<th scope="col">서버</th>
+<th scope="col">판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>23:59:41</td>
+<td><code>ieonline.microsoft.com</code></td>
+<td>IE의 정상 통신</td>
+</tr>
+<tr>
+<td>00:08:34</td>
+<td><code>update.googleapis.com</code></td>
+<td>구글 업데이트, 정상</td>
+</tr>
+<tr>
+<td><strong>00:13:39 – 00:16:08</strong></td>
+<td><strong><code>idea.bsit.pk</code></strong> (5.189.170.24), 30~50초 간격으로 몰아서 접속</td>
+<td><strong>인증서 만료</strong>, <code>zugu.exe</code> 직후 시작 → <strong>HTTPS C2 #3</strong>(추정)</td>
+</tr>
+<tr>
+<td><strong>00:14:14</strong></td>
+<td><strong><code>smtp.aol.com</code></strong> (152.163.0.69)</td>
+<td>웹메일 사용자의 PC에서 나간 <strong>메일 보내기</strong> 연결</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>14분 공백에는 정상 HTTPS만 있습니다. 1단계 악성코드가 00:13까지 기다렸거나 네트워크 없이 동작했을 가능성이 있습니다(추정).</p>
+<h3 id="ko-smtp">SMTP: 얼마나 보냈나</h3>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts id.resp_h id.resp_p service duration orig_bytes resp_bytes &lt; conn.log | grep 152.163.0.69
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>2017-11-21T00:14:14+0000  152.163.0.69  465  ssl  2.435390  4380  5804
+2017-11-21T00:14:16+0000  152.163.0.69  465  -    3.016734  0     0
+2017-11-21T00:14:25+0000  152.163.0.69  465  -    -         -     -
+</code></pre></div></div>
+<ul>
+<li><strong>465번 포트는 SMTPS</strong>(처음부터 TLS로 감싼 SMTP)입니다. 내용은 볼 수 없습니다.</li>
+<li><code>orig_bytes</code> 4,380은 PC가 <strong>보낸</strong> 양입니다. TLS 연결 설정에 1~2KB가 쓰이므로, 몇 KB의 메일을 보낼 양이 남습니다. 훔친 계정 목록을 보내기에 충분합니다.</li>
+<li>사용자는 브라우저로 메일을 봤습니다. 그런데 메일 프로그램처럼 SMTP에 직접 접속한 것은 어울리지 않습니다. <strong>훔친 데이터 유출일 가능성</strong>이 큽니다(추정).</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-unknown-service">7단계 — Zeek이 알아보지 못한 연결 (9번)</h2>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut id.resp_h id.resp_p proto service conn_state &lt; conn.log \
+  | awk -F'\t' '$4=="-" {print $1, $2, $3, $5}' | sort | uniq -c | sort -rn | head -20
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>    231 213.183.58.34 5552 tcp REJ
+      6 64.94.116.170 443 tcp S0
+      3 64.94.116.170 443 tcp RSTRH
+      3 181.215.247.234 1031 tcp REJ
+      2 64.12.88.133 465 tcp S0
+      2 172.217.0.227 443 tcp OTH
+      2 152.163.0.69 465 tcp S0
+      1 213.183.58.34 5552 tcp S0
+      1 131.253.33.200 80 tcp RSTR
+      1 13.107.13.80 80 tcp RSTR
+      1 10.192.1.157 49322 tcp OTH
+      1 10.192.1.157 49304 tcp OTH
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"><code>conn_state</code></th>
+<th scope="col">의미</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SF</code></td>
+<td>정상적으로 열리고 닫힘</td>
+</tr>
+<tr>
+<td><code>S0</code></td>
+<td>SYN을 보냈지만 응답 없음</td>
+</tr>
+<tr>
+<td><code>REJ</code></td>
+<td>거부됨(서버가 RST로 응답)</td>
+</tr>
+<tr>
+<td><code>RSTR</code> / <code>RSTRH</code></td>
+<td>응답 쪽이 연결을 끊음</td>
+</tr>
+<tr>
+<td><code>OTH</code></td>
+<td>Zeek이 연결의 시작을 못 봄(중간부터)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<ul>
+<li><strong>213.183.58.34:5552, 232번 시도, 모두 거부.</strong> 같은 서버와 포트에 계속 다시 연결하는 것은 C2에 붙으려는 악성코드의 모습입니다. REJ는 포트가 닫혀 있었다는 뜻이므로, 서버가 이미 꺼졌을 가능성이 있습니다(추정). <strong>TCP 5552는 njRAT의 기본 포트</strong>입니다(포트만 보고 한 약한 추정).</li>
+<li><strong>181.215.247.234:1031</strong>(REJ ×3)과 <strong>64.94.116.170:443</strong>(S0/RST): 모르는 호스트로 나간 다른 실패 시도들입니다. 지표로 적어 둡니다.</li>
+<li><strong>64.12.88.133:465</strong>: SMTPS 실패 시도 2번(AOL 대역 주소로 보임, 추정).</li>
+<li>10.192.1.157을 향한 <code>OTH</code> 줄은 시작 부분이 캡처되지 않은 연결 조각입니다. 들어오는 공격이 아닙니다.</li>
+<li>Zeek이 <code>service -</code>로 둔 것은 이 연결들이 알아볼 만한 데이터를 한 번도 주고받지 못했기 때문입니다.</li>
+</ul>
+<p>5552 접속은 언제 시작됐나:</p>
+<div class="language-bash highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Zeek</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>zeek-cut -u ts id.resp_h id.resp_p conn_state &lt; conn.log | awk -F'\t' '$3==5552' | sed -n '1p;$p'
+</code></pre></div></div>
+<p><code>awk -F'\t' '$3==5552'</code>는 세 번째 칸(목적지 포트)이 5552인 줄만 남기고, <code>sed -n '1p;$p'</code>는 첫 줄과 마지막 줄만 보여 줍니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-download-tool">8단계 — 무엇이 다운로드를 시작했나 (10번)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">증거</th>
+<th scope="col">상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>jjjj.exe</code> 요청에 <strong>User-Agent가 없음</strong>. 브라우저는 항상 보내므로 스크립트나 프로그램이 받은 것. 예를 들어 PowerShell의 <code>Net.WebClient</code>는 기본으로 User-Agent를 보내지 않음</td>
+<td>UA 없음은 확인됨, 도구는 추정</td>
+</tr>
+<tr>
+<td><code>zugu.exe</code>와 <code>icanhazip.com</code> 요청의 User-Agent가 <strong><code>AutoIt</code></strong></td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td>첫 다운로드 약 45초 전에 사용자가 <strong>Yahoo 메일</strong>을 염</td>
+<td>확인됨</td>
+</tr>
+<tr>
+<td><code>jjjj.exe</code>에 <code>strings</code>를 돌렸지만 <code>AutoIt</code> / <code>AU3!</code> 표시가 <strong>없음</strong></td>
+<td>확인 안 됨: 파일이 압축·암호화됐거나, 캡처 손실로 일부가 없거나, AutoIt 부분을 다른 파일로 만들어 냈을 수 있음</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>strings -n 6 extract_files/*FwavXQ2AM4W84BhH44 | grep -i -E "autoit|AU3!" | sort | uniq -c | head
+</code></pre></div></div>
+<p>결론: <strong>실행 파일을 받은 것은 브라우저가 아닙니다.</strong> 첫 번째는 브라우저가 아닌 프로그램이, 두 번째는 <strong>AutoIt 기반 프로그램</strong>이 받았습니다. Yahoo 메일에서 연 악성 메일이 시작점일 가능성이 높습니다. 하지만 메일은 HTTPS로 암호화돼 있어서 이 캡처로는 확정할 수 없습니다.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-timeline">타임라인</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">UTC</th>
+<th scope="col">이벤트</th>
+<th scope="col">출처</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2017-11-20 23:58:00</td>
+<td>캡처 시작. WIN-D5243B(10.192.1.157) DHCP</td>
+<td>dhcp.log</td>
+</tr>
+<tr>
+<td>23:58:11</td>
+<td>윈도우 NCSI 확인</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>23:58:49~51</td>
+<td>사용자가 IE에 <code>mail.yahoo.com</code> 입력(Bing 자동완성)</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>23:58:56</td>
+<td>Yahoo 페이지 광고 픽셀(btrll.com)</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td><strong>23:59:35</strong></td>
+<td>lucrecianos.com.ar에서 <code>jjjj.exe</code> 다운로드, User-Agent 없음</td>
+<td>http.log, files.log, pe.log</td>
+</tr>
+<tr>
+<td>23:59:41 – 00:08:34</td>
+<td>정상 HTTPS만(Microsoft, Google)</td>
+<td>ssl.log</td>
+</tr>
+<tr>
+<td><strong>00:13:28</strong></td>
+<td>virtualsmsonline.site에서 <code>zugu.exe</code> 다운로드, User-Agent AutoIt</td>
+<td>http.log, files.log, pe.log</td>
+</tr>
+<tr>
+<td>00:13:38</td>
+<td>공인 IP 확인, icanhazip.com</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>00:13:39 →</td>
+<td>idea.bsit.pk로 HTTPS(인증서 만료), 몰아서 접속</td>
+<td>ssl.log, notice.log</td>
+</tr>
+<tr>
+<td>00:13:59 →</td>
+<td>tcoolonline.mobi로 <code>fre.php</code> POST(<code>Charon; Inferno</code>), 약 1분마다</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>00:14:04 →</td>
+<td>harddomainname.biz의 <code>config.jpg</code> / <code>gate.php</code>(MSIE 7 UA), 약 60초마다</td>
+<td>http.log</td>
+</tr>
+<tr>
+<td>00:14:14</td>
+<td>smtp.aol.com으로 SMTPS, 약 4.4KB 보냄</td>
+<td>conn.log, ssl.log</td>
+</tr>
+<tr>
+<td>캡처 동안</td>
+<td>213.183.58.34:5552로 232번 접속, 모두 거부</td>
+<td>conn.log</td>
+</tr>
+<tr>
+<td>00:16:33</td>
+<td>캡처 끝</td>
+<td>conn.log</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-iocs">침해 지표 (IOC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">종류</th>
+<th scope="col">지표</th>
+<th scope="col">역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL</td>
+<td><code>hxxp://lucrecianos[.]com[.]ar/imagen/1/2/jjjj.exe</code></td>
+<td>첫 번째 EXE(3,061,200 바이트, 2017-11-20 15:10:13 UTC 컴파일)</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>170.231.127[.]136</code></td>
+<td>lucrecianos.com.ar</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://virtualsmsonline[.]site/zugu.exe</code></td>
+<td>두 번째 EXE(5,895,226 바이트)</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>104.31.92[.]140</code></td>
+<td>virtualsmsonline.site</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://tcoolonline[.]mobi/wp-admin/css/colors/blue/Panel/five/fre.php</code></td>
+<td>C2 #1(LokiBot 유형)</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>185.118.166[.]155</code></td>
+<td>tcoolonline.mobi</td>
+</tr>
+<tr>
+<td>URL</td>
+<td><code>hxxp://www.harddomainname[.]biz/wordpress/wp-admin/css/colors/blue/panel/gate.php</code>, <code>…/config.jpg</code></td>
+<td>C2 #2</td>
+</tr>
+<tr>
+<td>IP</td>
+<td><code>37.48.82[.]212</code></td>
+<td>harddomainname.biz</td>
+</tr>
+<tr>
+<td>도메인 / IP</td>
+<td><code>idea.bsit[.]pk</code> / <code>5.189.170[.]24</code></td>
+<td>HTTPS C2 #3, 인증서 만료</td>
+</tr>
+<tr>
+<td>IP:포트</td>
+<td><code>213.183.58[.]34:5552</code></td>
+<td>실패한 C2(njRAT 가능성)</td>
+</tr>
+<tr>
+<td>IP:포트</td>
+<td><code>181.215.247[.]234:1031</code>, <code>64.94.116[.]170:443</code></td>
+<td>실패한 외부 접속 시도</td>
+</tr>
+<tr>
+<td>호스트</td>
+<td><code>smtp.aol[.]com</code> (<code>152.163.0[.]69:465</code>), <code>64.12.88[.]133:465</code></td>
+<td>SMTPS, 유출 가능성</td>
+</tr>
+<tr>
+<td>User-Agent</td>
+<td><code>AutoIt</code> · <code>Mozilla/4.08 (Charon; Inferno)</code> · <code>Mozilla/4.0 (compatible; MSIE 7.0; …)</code></td>
+<td>악성 프로그램</td>
+</tr>
+<tr>
+<td>해시</td>
+<td>없음</td>
+<td>캡처 손실(<code>missing_bytes</code> &gt; 0)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-attack">ATT&amp;CK 매핑</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">기법</th>
+<th scope="col">근거</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T1566 Phishing</td>
+<td>Yahoo 메일을 연 직후 다운로드 시작(추정)</td>
+</tr>
+<tr>
+<td>T1105 Ingress Tool Transfer</td>
+<td><code>jjjj.exe</code>, <code>zugu.exe</code></td>
+</tr>
+<tr>
+<td>T1059.010 Command and Scripting Interpreter: AutoHotKey &amp; AutoIT</td>
+<td><code>AutoIt</code> User-Agent</td>
+</tr>
+<tr>
+<td>T1016.001 Internet Connection Discovery</td>
+<td><code>icanhazip.com</code>, <code>yandex.ru</code> 확인</td>
+</tr>
+<tr>
+<td>T1071.001 Application Layer Protocol: Web Protocols</td>
+<td><code>fre.php</code>, <code>gate.php</code>, HTTPS C2</td>
+</tr>
+<tr>
+<td>T1571 Non-Standard Port</td>
+<td>TCP 5552, 1031</td>
+</tr>
+<tr>
+<td>T1048.002 Exfiltration Over Asymmetric Encrypted Non-C2 Protocol</td>
+<td>AOL로 SMTPS(추정)</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-report">보고서 (11번)</h2>
+<blockquote>
+<p>On 2017-11-20 at 23:59 UTC, the Windows 7 host WIN-D5243B (10.192.1.157) downloaded jjjj.exe from lucrecianos.com.ar, shortly after the user opened Yahoo Mail. At 00:13, an AutoIt-based program downloaded a second EXE, zugu.exe. The host then checked its public IP and contacted several C2 servers. One pattern matches LokiBot (not confirmed). It sent about 4 KB over encrypted SMTP to AOL, likely stolen data. It also kept trying a possible njRAT server on port 5552. The host should be isolated and rebuilt, and all saved passwords changed.</p>
+</blockquote>
+</section>
+<section>
+<h2 id="ko-detection">탐지 아이디어</h2>
+<div class="tabbed-set tabbed-alternate"><div class="tabbed-labels"><label>Zeek</label><label>Snort 2</label><label>Splunk</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code># 실행 파일을 받은 요청과 그 User-Agent
+zeek-cut -u ts id.orig_h host uri user_agent resp_mime_types &lt; http.log | grep dosexec
+# 알려진 악성 / 말이 안 되는 User-Agent
+zeek-cut id.orig_h host user_agent &lt; http.log | grep -E "AutoIt|Charon; Inferno|MSIE 7\.0" | sort | uniq -c
+# 닫힌 포트 하나에 계속 접속하는 호스트 (같은 목적지에 REJ가 많음)
+zeek-cut id.orig_h id.resp_h id.resp_p conn_state &lt; conn.log | awk -F'\t' '$4=="REJ"' | sort | uniq -c | sort -rn | head
+# SMTP(S)에 직접 접속하는 PC
+zeek-cut -u ts id.orig_h id.resp_h id.resp_p orig_bytes &lt; conn.log | awk -F'\t' '$4==25 || $4==465 || $4==587'
+</code></pre></div></div>
+</div>
+<div class="tabbed-block">
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"LOCAL LokiBot-style User-Agent Charon Inferno"; flow:established,to_server; content:"Charon|3B| Inferno"; http_header; classtype:trojan-activity; sid:1000701; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET $HTTP_PORTS (msg:"LOCAL AutoIt User-Agent"; flow:established,to_server; content:"User-Agent|3A| AutoIt|0D 0A|"; http_header; classtype:policy-violation; sid:1000702; rev:1;)
+alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 5552 (msg:"LOCAL Outbound TCP 5552 (njRAT default port)"; flags:S; threshold:type both, track by_src, count 10, seconds 60; classtype:trojan-activity; sid:1000703; rev:1;)
+</code></pre></div></div>
+</div>
+<div class="tabbed-block">
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:http (user_agent="AutoIt" OR user_agent="*Charon; Inferno*" OR resp_mime_types="*dosexec*")
+| table _time id.orig_h host uri user_agent resp_mime_types
+| sort _time
+</code></pre></div></div>
+<p>인덱스와 소스타입은 환경에 맞게 바꿉니다. Snort 룰의 <code>|3B|</code>와 <code>|3A|</code>는 <code>;</code>와 <code>:</code>의 16진수 표기입니다.</p>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h2 id="ko-lessons">교훈</h2>
+<ul>
+<li><strong>로그 목록도 증거입니다.</strong> <code>kerberos.log</code>가 없으면 도메인이 아니고, <code>pe.log</code>가 있으면 실행 파일이 오갔습니다.</li>
+<li><strong>해시 전에 <code>missing_bytes</code>를 확인합니다.</strong> 캡처 손실이 있으면 Zeek은 <code>md5</code>/<code>sha1</code>을 비워 두고, 꺼낸 파일의 해시는 틀린 값입니다. 크기는 <code>total_bytes</code>로 쓰고, 해시가 없는 이유를 적습니다.</li>
+<li><strong>User-Agent는 목적지와 같이 읽습니다.</strong> 이상한 Firefox 문자열은 광고였고, <code>AutoIt</code>과 <code>Charon; Inferno</code>는 악성코드였습니다.</li>
+<li><strong><code>service -</code> 안에 가장 큰 신호가 숨어 있었습니다.</strong> 한 포트로 거부된 232번의 접속은 알 수 없는 연결을 요약했을 때만 보였습니다.</li>
+<li><strong>웹메일 사용자의 PC에서 나간 암호화 SMTP는 어울리지 않습니다.</strong> 유출 가능성으로 보고하되, 내용은 볼 수 없다고 함께 적습니다.</li>
+<li><strong>tshark는 Zeek의 빈틈을 채웁니다:</strong> TTL, DHCP 벤더 클래스, 프로토콜 계층, NBNS 이름, 손실된 세그먼트 수.</li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

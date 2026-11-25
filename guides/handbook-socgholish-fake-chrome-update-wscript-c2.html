@@ -1,0 +1,1494 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Sorting through the alerts — hacked site to a fake Chrome update, WScript C2 and failed follow-on C2 · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="handbookCase12Title">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow">DFIR Handbook</p>
+      <h1 data-copy="handbookCase12Title">Sorting through the alerts — hacked site to a fake Chrome update, WScript C2 and failed follow-on C2</h1>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#en-summary">Case summary</a></li>
+<li><a href="#en-answers">Answers at a glance</a></li>
+<li><a href="#en-prep">Step 0 — Load the PCAP and check the case</a></li>
+<li><a href="#en-baseline">Step 1 — Baselining</a></li>
+<li><a href="#en-destinations">Step 2 — External destinations: remove the normal, see what is left</a></li>
+<li><a href="#en-followon">Step 5 — After the payload: back to baseline candidates 1 and 2</a></li>
+<li><a href="#en-snort">Step 6 — One simple Snort rule</a></li>
+<li><a href="#en-timeline">Timeline (2018-06-30, UTC)</a></li>
+<li><a href="#en-lessons">Lessons</a></li>
+<li><a href="#en-references">References</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#ko-summary">사례 요약</a></li>
+<li><a href="#ko-answers">한눈에 보는 답</a></li>
+<li><a href="#ko-prep">0단계 — PCAP 넣고 케이스 확인</a></li>
+<li><a href="#ko-baseline">1단계 — 베이스라이닝</a></li>
+<li><a href="#ko-destinations">2단계 — 외부 목적지: 정상을 지우고 남는 것 보기</a></li>
+<li><a href="#ko-followon">5단계 — 페이로드 다음: 베이스라인 후보 1, 2로 돌아가기</a></li>
+<li><a href="#ko-snort">6단계 — 간단한 Snort 룰 하나</a></li>
+<li><a href="#ko-timeline">타임라인 (2018-06-30, UTC)</a></li>
+<li><a href="#ko-lessons">배운 점</a></li>
+<li><a href="#ko-references">참고 자료</a></li>
+</ul>
+      </nav>
+      <article class="guide-article handbook-article">
+<div lang="en" data-guide-language>
+<section id="en-summary"><h2>Case summary</h2><p>The case traces a compromised church site, redirect infrastructure and a fake Chrome update, followed by WScript-associated C2. Pivot by UTC time from DNS and HTTP to TLS, then compare connection states and byte counts for the follow-on destinations.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/socgholish-fake-chrome-update-wscript-c2/">DFIR Handbook original</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Evidence</strong></td>
+<td><code>2018-06-30-traffic-analysis-exercise.pcap</code> — 2018-06-30 20:27:15 – 20:59:06 UTC (31.9 min)</td>
+</tr>
+<tr>
+<td><strong>Source</strong></td>
+<td><a href="https://malware-traffic-analysis.net/2018/06/30/index.html">malware-traffic-analysis.net 2018-06-30 "Sorting through the alerts"</a></td>
+</tr>
+<tr>
+<td><strong>Given</strong></td>
+<td>LAN 172.16.2.0/24, DC 172.16.2.9, domain fabulousdukes.com</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td>Closed network. pcapbox VM: Splunk (<code>index=zeek</code>, case field <code>pcap_case</code>), Arkime (tag = case name), Snort 2.9.20, CyberChef. <strong>No Wireshark.</strong></td>
+</tr>
+<tr>
+<td><strong>Case name</strong></td>
+<td><code>20180630_SORTING_THROUGH_THE_ALERTS</code></td>
+</tr>
+<tr>
+<td><strong>Deliverables</strong></td>
+<td>Analysis, decoded download URL and C2 bodies, one Snort rule</td>
+</tr>
+<tr>
+<td><strong>Related pages</strong></td>
+<td><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass (pcapbox, Snort test guide)</a> · <a href="handbook-beguilesoft-hawkeye-ftp-exfil.html">BEGUILESOFT (Splunk-first baselining)</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/splunk/spl-cheatsheet/">SPL cheat sheet</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/">Zeek logs</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="en-answers">Answers at a glance</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Item</th>
+<th scope="col">Answer</th>
+<th scope="col">Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Infected PC</td>
+<td><strong>172.16.2.169, CONSERVATOR-PC</strong>, Windows 7 x64</td>
+<td>Confirmed (Kerberos, NTLM, DNS)</td>
+</tr>
+<tr>
+<td>User</td>
+<td><strong>lloyd.maxwell</strong> (domain FABULOUSDUKES)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>DC</td>
+<td>172.16.2.9, FABULOUSDUKE-DC</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>First malicious event</td>
+<td><strong>20:27:53 UTC</strong> — visit to the hacked site <code>www.stmarybahrain[.]com</code> (66.226.144.232), no Referer</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>Redirect chain</td>
+<td>Site script → <code>track.positiverefreshment[.]org/s_code.js</code> (185.244.149.74, browser fingerprint) → fake page <code>lw2e.sineadhollywoodnutt[.]com/topics/index.php</code> (93.95.100.178)</td>
+<td>Confirmed</td>
+</tr>
+<tr>
+<td>Download</td>
+<td><code>hxxps://www.dropbox[.]com/s/fvl9rd86cmdilns/Chrome_72.3.22.js?dl=1</code> at 20:28:00–01, ~23 KB received</td>
+<td>URL decoded; download proven by SNI and timing; content not visible (HTTPS)</td>
+</tr>
+<tr>
+<td>Execution</td>
+<td>20:28:47 — <code>wscript.exe</code> POSTs to <code>bb17eb22.login3.kimbrelelectric[.]com/blank.gif</code> (93.95.100.138)</td>
+<td>Confirmed (body <code>b=</code> shows the script path and <code>wscript.exe</code>)</td>
+</tr>
+<tr>
+<td>Data sent</td>
+<td>Script path, host, user, domain, AV name, screen, process list</td>
+<td>Confirmed (decoded)</td>
+</tr>
+<tr>
+<td>Payload</td>
+<td>349 KB hex reply → reported as <code>C:\Users\LLOYD~1.MAX\AppData\Local\Temp\Chrome_72.3.22.exe</code></td>
+<td>Path confirmed; execution inferred from what follows</td>
+</tr>
+<tr>
+<td>Follow-on C2</td>
+<td>46.105.131.66:443 (refused) and 107.170.231.118:4143 (no answer), every ~7.5 min until the end</td>
+<td>Confirmed — <strong>no C2 session ever worked</strong></td>
+</tr>
+<tr>
+<td>Family</td>
+<td>SocGholish-style fake update; follow-on behaviour consistent with Dridex</td>
+<td>Not confirmed (no hash or signature)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-prep">Step 0 — Load the PCAP and check the case</h2>
+<p><strong>Goal:</strong> give the PCAP a <strong>case name</strong> so its logs do not mix with other exercises, and make sure all tools show <strong>UTC</strong>.</p>
+<ol>
+<li>Rename the file to <strong><code>20180630_SORTING_THROUGH_THE_ALERTS.pcap</code></strong> and drop it into <code>\\10.50.10.60\incoming</code>.</li>
+<li>On pcapbox, wait for <code>DONE case=20180630_SORTING_THROUGH_THE_ALERTS</code> in <code>tail -f /data/logs/ingest.log</code>.</li>
+<li>Splunk <strong>Preferences → Time zone = UTC</strong>; Arkime <strong>Settings → Timezone = UTC</strong>, time range <strong>All</strong>.</li>
+</ol>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn
+| stats count by pcap_case
+</code></pre></div></div>
+<ul>
+<li><code>index=zeek</code> — the index (Splunk's "drawer") that holds Zeek logs.</li>
+<li><code>sourcetype=zeek:conn</code> — the connection log, one line per connection.</li>
+<li><code>|</code> — pass the results on to the next command.</li>
+<li><code>stats count by pcap_case</code> — count lines per case name.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title"><code>ts</code>, not <code>_time</code></p>
+<p>Zeek's own event time is <strong><code>ts</code></strong> (epoch seconds). Every query on this page sorts and prints with <code>ts</code> so it also works on a Splunk where <code>_time</code> is the ingest time. <code>eval t=strftime(ts,"%H:%M:%S")</code> turns it into a readable time.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Long case names</p>
+<p><code>pcap_case=20180630_SORTING*</code> works in Splunk (<code>*</code> = anything) as long as it matches no other case. Arkime's <code>tags ==</code> needs the full name.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-baseline">Step 1 — Baselining</h2>
+<p>Baselining = learning what is <strong>normal</strong> in this capture before looking for anything bad: time range, log types, internal PCs, how busy they are, and who they are.</p>
+<h3 id="en-log-types">1-1. Which logs exist</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| stats count by sourcetype
+| sort - count
+</code></pre></div></div>
+<ul>
+<li>No <code>sourcetype</code> → all log types of this case. <code>sort - count</code> = largest first (<code>-</code> descending).</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>sourcetype          count
+zeek:conn           729
+zeek:dns            313
+zeek:ssl            265
+zeek:files          176
+zeek:x509           171
+zeek:http           134
+zeek:ocsp           72
+zeek:kerberos       37
+zeek:ldap_search    21
+zeek:dce_rpc        18
+zeek:ldap           13
+zeek:weird          7
+zeek:smb_mapping    6
+zeek:software       5
+zeek:ntp            4
+zeek:smb_files      2
+zeek:ntlm           1
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><strong><code>zeek:dhcp</code> is missing.</strong> The PC already had its IP lease when the capture started, so the host name must come from somewhere else (1-5).</li>
+<li><strong>Web logs dominate</strong> (<code>ssl</code> 265, <code>http</code> 134): someone was browsing. HTTPS is twice HTTP, but the <strong>134 HTTP requests can be read in full</strong> — they will be the main material.</li>
+<li><strong>Domain logs</strong> (<code>kerberos</code>, <code>ldap</code>, <code>dce_rpc</code>, <code>smb_*</code>, <code>ntlm</code>) = an AD PC talking to its DC: logons, group policy. User and computer names live here.</li>
+<li><code>ocsp</code> (certificate checks), <code>ntp</code> (time), <code>weird</code> (odd packets) are normally harmless. <code>software</code> lists programs Zeek recognised — useful in 1-5.</li>
+</ul>
+<h3 id="en-window">1-2. Capture window</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| stats min(ts) as first max(ts) as last count as sessions
+| eval duration_min=round((last-first)/60,1)
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")
+</code></pre></div></div>
+<ul>
+<li>Line 2: one summary row — earliest, latest, number of connections. <code>as</code> names the result.</li>
+<li>Line 3: <code>eval</code> computes a new field; minutes, one decimal.</li>
+<li>Line 4: epoch → readable date. <strong>Line 3 must come before line 4</strong> — after line 4 <code>first</code> and <code>last</code> are text and cannot be subtracted.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>first                 last                  sessions  duration_min
+2018-06-30 20:27:15   2018-06-30 20:59:06   729       31.9
+</code></pre></div></div>
+<h3 id="en-internal-hosts">1-3. Which internal IPs start connections</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first max(ts) as last by id_orig_h
+| eval first=strftime(first,"%H:%M:%S"), last=strftime(last,"%H:%M:%S")
+| sort - sessions
+</code></pre></div></div>
+<ul>
+<li><code>id_orig_h</code> = the IP that <strong>started</strong> the connection (<code>orig</code> = originator, <code>resp</code> = responder, <code>_h</code> = host, <code>_p</code> = port).</li>
+<li><code>dc()</code> = distinct count. <code>orig_bytes</code> / <code>resp_bytes</code> = payload bytes sent by each side.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h      sessions  destinations  sent     received   first     last
+172.16.2.169   729       184           845926   34269192   20:27:15  20:59:06
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><strong>One PC.</strong> The DC does not appear: Zeek files its NetBIOS reply under the connection the PC started (for UDP too, the side that sends first is <code>orig</code>).</li>
+<li><strong>184 destinations in 32 minutes</strong> — a beacon needs 1–3. This is a <strong>person browsing</strong> (one news page pulls dozens of ad and CDN servers), so "top talker" will not find the malware. The plan is to <strong>remove the normal and see what is left</strong>.</li>
+<li>Received ≫ sent (34 MB vs 0.85 MB) — normal for a PC. The reverse would suggest exfiltration.</li>
+</ul>
+<h3 id="en-arkime-baseline">1-4. Arkime cross-check</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>tags == 20180630_SORTING_THROUGH_THE_ALERTS
+</code></pre></div></div>
+<p><strong>654 sessions</strong> (Zeek 729 — the tools split UDP and retried connections differently; the picture is the same). <strong>SPIView → General → Src IP / Dst IP</strong> shows one PC and a long list of destinations.</p>
+<p><strong>How to read Databytes / Bytes:</strong> the top number is <strong>data</strong> (payload), the bottom is total bytes with headers. <strong>Databytes 0</strong> = only connection signals, no data.</p>
+<p><strong>[data] Lines that look different — noted, not concluded:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Destination</th>
+<th scope="col">Shape</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>46.105.131.66:443</code></td>
+<td>Several sessions per source port, 2 packets each, <strong>Databytes 0</strong>, repeating every few minutes</td>
+</tr>
+<tr>
+<td><code>107.170.231.118:4143</code></td>
+<td>3 packets, <strong>Databytes 0</strong>, unusual port, repeating every few minutes</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Everything else is ordinary DC traffic (53 DNS, 88 Kerberos, 123 NTP, 389 LDAP, 445 SMB, 137/138 NetBIOS, 5355 LLMNR <code>wpad</code>, 1900 SSDP) and <code>crl.microsoft.com</code>.</p>
+<h3 id="en-identity">1-5. Who is 172.16.2.169</h3>
+<p>No DHCP, so use the other places Windows says its name.</p>
+<p><strong>① Kerberos</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count values(request_type) as types values(success) as success values(error_msg) as errors by client
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>client</code> = <code>account/REALM</code>. <code>values()</code> = every distinct value. <code>request_type</code>: <strong>AS</strong> = logon ticket (TGT), <strong>TGS</strong> = service ticket, <strong>AP</strong> = presenting a ticket to a service.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>client                              first     count  types    success      errors
+/FABULOUSDUKES.COM                  20:27:17  13     AP       true
+CONSERVATOR-PC$/FABULOUSDUKES.COM   20:27:17  11     AS TGS   false true   KDC_ERR_PREAUTH_REQUIRED
+conservator-pc$/FABULOUSDUKES.COM   20:27:17  2      AS       false true   KDC_ERR_PREAUTH_REQUIRED
+lloyd.maxwell/FABULOUSDUKES         20:27:18  2      AS       false true   KDC_ERR_PREAUTH_REQUIRED
+lloyd.maxwell/FABULOUSDUKES.COM     20:27:18  5      TGS      true
+conservator-pc$/fabulousdukes.com   20:27:44  2      AS       false true   KDC_ERR_PREAUTH_REQUIRED
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Seen</th>
+<th scope="col">Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Name ends in <code>$</code></td>
+<td><strong>Computer account</strong> → host name <strong>CONSERVATOR-PC</strong></td>
+</tr>
+<tr>
+<td>No <code>$</code></td>
+<td><strong>User</strong> → <strong>lloyd.maxwell</strong>, logged on at 20:27:18</td>
+</tr>
+<tr>
+<td>Empty account (<code>/FABULOUSDUKES.COM</code>, AP)</td>
+<td>The name is inside the encrypted part of an AP request; Zeek cannot show it. Normal</td>
+</tr>
+<tr>
+<td>Same account in different case/realm</td>
+<td>Windows is not consistent; same account</td>
+</tr>
+<tr>
+<td><code>KDC_ERR_PREAUTH_REQUIRED</code> then success</td>
+<td>Normal pre-authentication. A wrong password would be <code>KDC_ERR_PREAUTH_FAILED</code> — none here</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>② NTLM</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:ntlm pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h id_resp_p username hostname domainname server_nb_computer_name success
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         id_orig_h     id_resp_h   id_resp_p  username          hostname         domainname     server_nb_computer_name  success
+20:27:35  172.16.2.169  172.16.2.9  445        CONSERVATOR-PC$   CONSERVATOR-PC   FABULOUSDUKES  FABULOUSDUKE-DC          true
+</code></pre></div></div>
+<p>The computer account logging on to the DC's SMB share at start-up (group policy). It also names the DC: <strong>FABULOUSDUKE-DC</strong>.</p>
+<p><strong>③ DNS dynamic update</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS qtype_name=SOA
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h query qtype_name rcode_name
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         id_orig_h     id_resp_h   query                              qtype_name  rcode_name
+20:37:03  172.16.2.169  172.16.2.9  conservator-pc.fabulousdukes.com   SOA         NOERROR
+20:27:16  172.16.2.169  172.16.2.9  conservator-pc.fabulousdukes.com   SOA         NOERROR
+</code></pre></div></div>
+<p>A domain PC registers its own name with the DC; the <code>SOA</code> query comes first. Exactly 10 minutes apart — Windows re-registering. Three sources agree: <strong>CONSERVATOR-PC / fabulousdukes.com</strong>.</p>
+<p><strong>④ Software</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:software pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| eval t=strftime(ts,"%H:%M:%S")
+| table t host software_type name unparsed_version
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         host          software_type   name                  unparsed_version
+20:43:13  172.16.2.169  OS::WINDOWS     Windows
+20:33:54  172.16.2.169  HTTP::BROWSER   Microsoft BITS        Microsoft BITS/7.5
+20:28:47  172.16.2.169  HTTP::BROWSER   MSIE                  Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Win64; x64; Trident/7.0; .NET CLR 2.0.50727; SLCC2; ...)
+20:28:00  172.16.2.169  HTTP::BROWSER   Microsoft-CryptoAPI   Microsoft-CryptoAPI/6.1
+20:27:53  172.16.2.169  HTTP::BROWSER   Chrome                Mozilla/5.0 (Windows NT 6.1; Win64; x64) ... Chrome/67.0.3396.99 Safari/537.36
+</code></pre></div></div>
+<ul>
+<li>Zeek writes each program it recognises once. <code>Windows NT 6.1</code> = Windows 7, <code>Win64; x64</code> = 64-bit.</li>
+<li>The user's browser is <strong>Chrome 67</strong> (20:27:53). BITS (Windows downloads) and CryptoAPI (certificate checks) are Windows itself.</li>
+<li><strong>[data] 54 s later something calls itself "MSIE 7.0"</strong> — a 2006 browser. With <code>Trident/7.0</code> (IE11's engine) on Windows 7 this is the default User-Agent of <strong>Windows' HTTP objects used by scripts</strong> (wscript, Office macros). Noted as a candidate.</li>
+</ul>
+<p><strong>Baseline notes — three candidates, no conclusions yet:</strong></p>
+<ol>
+<li><code>46.105.131.66:443</code> — no data, repeating</li>
+<li><code>107.170.231.118:4143</code> — no data, unusual port, repeating</li>
+<li>20:28:47 <code>MSIE 7.0</code> — a program that is not the user's browser</li>
+</ol>
+<hr>
+</section>
+<section>
+<h2 id="en-destinations">Step 2 — External destinations: remove the normal, see what is left</h2>
+<h3 id="en-ports">2-1. By port</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_orig_h=172.16.2.169 NOT id_resp_h=172.16.0.0/12 NOT id_resp_h=224.0.0.0/4
+| stats count dc(id_resp_h) as ips values(service) as service values(conn_state) as states sum(orig_bytes) as sent sum(resp_bytes) as received by proto id_resp_p
+| sort - count
+</code></pre></div></div>
+<ul>
+<li><code>NOT id_resp_h=172.16.0.0/12</code> — Splunk understands CIDR ranges on IP fields; drops internal addresses. <code>224.0.0.0/4</code> drops multicast.</li>
+<li><code>service</code> = the protocol Zeek recognised from the content; empty = Zeek could not tell.</li>
+<li><code>conn_state</code>: <strong>SF</strong> normal start and end · <strong>S0</strong> SYN, no answer · <strong>REJ</strong> SYN answered by RST (refused) · <strong>RSTO/RSTR</strong> reset by PC/server · <strong>SH/OTH</strong> partial, common at capture edges.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>proto  id_resp_p  count  ips  service  states                          sent    received
+tcp    443        364    163  ssl      OTH REJ RSTO RSTR S1 SF         642014  5667734
+tcp    80         27     14   http     RSTO SF                         58106   28337141
+tcp    4143       16     1             S0                              0       0
+udp    443        10     6             SF                              45454   174932
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li>tcp/443: HTTPS browsing — but a <strong>REJ</strong> is mixed in (2-3 shows who).</li>
+<li>tcp/80: <strong>28 MB</strong> received — 3-1 shows it is BITS from Google.</li>
+<li><strong>tcp/4143: one IP, no service, only S0, zero bytes.</strong> Unusual port, never answered.</li>
+<li>udp/443 with no service is <strong>QUIC</strong> (Google's HTTPS over UDP, used by Chrome). Zeek's QUIC analyser is off, hence empty. Normal.</li>
+</ul>
+<h3 id="en-domains">2-2. By domain</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_orig_h=172.16.2.169 NOT query="*fabulousdukes.com"
+| rex field=query "(?&lt;domain&gt;[^.]+\.[^.]+)$"
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count dc(query) as names values(query) as examples by domain
+| eval examples=mvindex(examples,0,2)
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>rex</code> cuts part of a value into a new field with a regular expression. <code>(?&lt;domain&gt; … )</code> names the part; <code>[^.]+</code> = characters that are not a dot; <code>\.</code> = a real dot; <code>$</code> = end. Result: the last two labels (<code>r4---sn-p5qs7nek.gvt1.com</code> → <code>gvt1.com</code>).</li>
+<li><code>mvindex(list,0,2)</code> keeps the first three values (counted from 0).</li>
+</ul>
+<p>116 domains came back. <strong>How to remove the normal:</strong></p>
+<ol>
+<li>Known companies: microsoft, google, googleapis, bing, facebook, twitter, yahoo, cloudfront, windows.net.</li>
+<li><strong>The CNN burst:</strong> <code>cnn.com</code> at 20:27:52, then dozens of ad and tracking domains 20:27:53–20:28:03 (optimizely, doubleclick, outbrain, rubiconproject, pubmatic, criteo …). Names with <em>ad, pixel, sync, match, track, cdn, beacon</em> are mostly ad tech.</li>
+<li>Windows itself: <code>gvt1.com</code> (BITS), <code>digicert.com</code>, <code>_tcp.local</code> (Chromecast discovery).</li>
+</ol>
+<p><strong>[data] What is left, in time order:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">First</th>
+<th scope="col">Domain</th>
+<th scope="col">Note</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20:27:52</td>
+<td><strong>stmarybahrain.com</strong> (<code>www.</code>)</td>
+<td>A church site, same second as CNN</td>
+</tr>
+<tr>
+<td>20:27:54</td>
+<td><strong>positiverefreshment.org</strong> (<code>track.</code>)</td>
+<td>"track" on a non-ad domain</td>
+</tr>
+<tr>
+<td>20:27:56</td>
+<td><strong>sineadhollywoodnutt.com</strong> (<code>lw2e.</code>)</td>
+<td>Person-like name, random-looking sub-domain</td>
+</tr>
+<tr>
+<td>20:27:59</td>
+<td>dropbox.com</td>
+<td>Legitimate, but a <strong>file download</strong> service</td>
+</tr>
+<tr>
+<td>20:28:00</td>
+<td>dropboxusercontent.com (<code>uc7cfbc6f….dl.</code>)</td>
+<td>Dropbox's file server</td>
+</tr>
+<tr>
+<td>20:28:24</td>
+<td>summerhamster.com</td>
+<td>Odd name — see the question box</td>
+</tr>
+<tr>
+<td>20:28:46</td>
+<td><strong>kimbrelelectric.com</strong> (<code>bb17eb22.login3.</code>)</td>
+<td>Electrical company name with a generated-looking sub-domain</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition question">
+<p class="admonition-title">Question: why is summerhamster.com not kept?</p>
+<p>Its DNS answer is a <strong>CNAME</strong> (alias) to <code>bc.sp-prod.net</code>, an ad platform, and Chrome made one HTTPS connection to it. Same shape as the other ad domains. <strong>Following the CNAME</strong> is another way to remove the normal:</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS query="www.summerhamster.com"
+| table ts query answers
+</code></pre></div></div>
+</div>
+<h3 id="en-no-dns">2-3. Destinations reached with no DNS lookup</h3>
+<p>People browse by name. A connection to an IP that was <strong>never looked up</strong> may be an address built into a program.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_orig_h=172.16.2.169 NOT id_resp_h=172.16.0.0/12 NOT id_resp_h=224.0.0.0/4
+    NOT [search index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS | mvexpand answers | rename answers as id_resp_h | dedup id_resp_h | fields id_resp_h]
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first max(t) as last count values(id_resp_p) as ports values(conn_state) as states sum(orig_bytes) as sent sum(resp_bytes) as received by id_resp_h
+| sort first
+</code></pre></div></div>
+<ul>
+<li>The <code>[ … ]</code> <strong>subsearch</strong> runs first: every IP in DNS answers (<code>mvexpand</code> splits a multi-value field into one row per value; <code>rename</code> matches the conn field name). It returns <code>(id_resp_h="a" OR id_resp_h="b" …)</code>; <code>NOT</code> keeps only IPs <strong>never</strong> seen in a DNS answer.</li>
+<li>Caveat: IPs looked up <strong>before</strong> the capture also appear here. Watch for those near the capture start.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_resp_h         first     last      count  ports  states  sent  received
+46.105.131.66     20:29:00  20:59:06  30     443    REJ     0     0
+107.170.231.118   20:31:14  20:53:51  16     4143   S0      0     0
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong> only <strong>two</strong> of 184 destinations — exactly baseline candidates 1 and 2. The REJ in 2-1's tcp/443 row is 46.105.131.66: port 443 but not HTTPS, refused every time. First seen almost 2 minutes after the capture starts, then repeated for 30 minutes — <strong>a program, not a person</strong>. And 20:29:00 is only <strong>13 seconds</strong> after candidate 3 (<code>MSIE 7.0</code>, 20:28:47).</p>
+<p><strong>Clues so far, in time order:</strong> church site (20:27:52) → <code>track.</code> (20:27:54) → <code>lw2e.</code> (20:27:56) → Dropbox file server (20:28:00) → <code>kimbrelelectric</code> (20:28:46) → <code>MSIE 7.0</code> (20:28:47) → no-DNS IP attempts (20:29:00). <strong>[inference]</strong> A site visit led to a download, something non-browser then talked to kimbrelelectric, then hard-coded IPs. Step 3 checks this with HTTP.</p>
+<hr>
+</section>
+<section>
+<h2 id="en-followon">Step 5 — After the payload: back to baseline candidates 1 and 2</h2>
+<p><strong>Why this step:</strong> <code>c=</code> says an EXE was <strong>saved</strong>. Saved is not run. <strong>[inference]</strong> A newly run malware program almost always contacts <strong>its own C2</strong> first. So the question becomes: <em>what new external traffic starts after 20:28:50?</em> The answer was already in the notes — 2-2 showed no new suspicious domains after 20:28:46, and 2-3 showed exactly two no-DNS IPs. They were unexplained in baselining; now they can be tested against the new fact.</p>
+<p>What the query looks for:</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Question</th>
+<th scope="col">How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Did it start right after the EXE?</td>
+<td>first <code>ts</code> vs <code>c=</code> (20:28:49.9)</td>
+</tr>
+<tr>
+<td>Program or person?</td>
+<td><code>delta</code> — a fixed rhythm</td>
+</tr>
+<tr>
+<td>Did any connection succeed?</td>
+<td><code>conn_state</code>, <code>history</code>, packet counts</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_resp_h IN ("46.105.131.66","107.170.231.118")
+| sort ts
+| delta ts as gap
+| eval t=strftime(ts,"%H:%M:%S.%3N"), gap=round(gap,1)
+| table t id_orig_p id_resp_h id_resp_p conn_state history orig_pkts resp_pkts gap
+</code></pre></div></div>
+<ul>
+<li><code>sort ts</code> first — <code>delta</code> works in row order. <code>delta ts as gap</code> = seconds since the previous row.</li>
+<li><code>history</code> = the TCP signals Zeek saw, <strong>upper case from the PC, lower case from the server</strong>: <code>S/s</code> SYN, <code>h</code> SYN-ACK, <code>R/r</code> RST, <code>D/d</code> data. <code>Sr</code> = "PC asked, server refused"; <code>S</code> = "PC asked, no answer".</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t              id_orig_p  id_resp_h         id_resp_p  conn_state  history  orig_pkts  resp_pkts  gap
+20:29:00.525   49447      46.105.131.66     443        REJ         Sr       1          1
+20:29:01.159   49447      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:29:01.795   49447      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:29:01.931   49448      46.105.131.66     443        REJ         Sr       1          1          0.1
+20:29:02.560   49448      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:29:03.200   49448      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:31:14.351   49471      107.170.231.118   4143       S0          S        2          0          131.2
+20:31:23.351   49471      107.170.231.118   4143       S0          S        1          0          9.0
+20:31:35.352   49472      107.170.231.118   4143       S0          S        2          0          12.0
+20:31:44.349   49472      107.170.231.118   4143       S0          S        1          0          9.0
+20:36:10.366   49491      46.105.131.66     443        REJ         Sr       1          1          266.0
+...            (same pattern)
+20:59:06.815   49514      46.105.131.66     443        REJ         Sr       1          1          0.6
+</code></pre></div></div>
+<p><strong>[data] Reading:</strong></p>
+<ul>
+<li><strong>First attempt 20:29:00.525 — about 10 s after <code>c=</code>.</strong></li>
+<li><strong>46.105.131.66:443 — <code>Sr</code>, 1 packet each way.</strong> The server is up but nothing listens on 443; it refuses. Windows retries a refused connection twice, 0.6 s apart, then tries again on a new port → <strong>6 rows per round</strong>. Zeek closes a connection on RST, so each retry is a new row: 6 × 5 rounds = the <strong>30</strong> in 2-3.</li>
+<li><strong>107.170.231.118:4143 — <code>S</code>, no reply at all.</strong> Server down or packets dropped on the way. Windows re-sends the SYN with growing gaps (~3 s, ~6 s), gives up after ~9 s, tries a new port. Zeek splits each port into two rows after the idle gap → 4 rows × 4 rounds = <strong>16</strong>.</li>
+<li>Arkime shows the same: <code>SYN 1  SYN-ACK 0  RST 1</code>, Databytes 0.</li>
+</ul>
+<p><strong>Rounds:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">46.105.131.66</th>
+<th scope="col">then, after ~2 min</th>
+<th scope="col">107.170.231.118</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20:29:00</td>
+<td>→</td>
+<td>20:31:14</td>
+</tr>
+<tr>
+<td>20:36:10</td>
+<td>→</td>
+<td>20:38:30</td>
+</tr>
+<tr>
+<td>20:43:37</td>
+<td>→</td>
+<td>20:45:53</td>
+</tr>
+<tr>
+<td>20:51:14</td>
+<td>→</td>
+<td>20:53:21</td>
+</tr>
+<tr>
+<td>20:59:04</td>
+<td>(capture ends)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The two IPs <strong>alternate</strong>: IP 1 → ~2 min → IP 2 → ~5 min → repeat, a cycle of ~7.5 minutes until the capture ends. <strong>[inference]</strong> A program working through a built-in C2 list and sleeping between rounds.</p>
+<p><strong>Conclusion:</strong></p>
+<ul>
+<li><strong>[data]</strong> 10 s after the EXE report: two hard-coded IPs, fixed rhythm, <strong>never connected</strong>. No C2 commands, no further downloads, no exfiltration on the network.</li>
+<li><strong>[inference]</strong> <code>%TEMP%\Chrome_72.3.22.exe</code> <strong>ran</strong> and tried its C2. Hard-coded IP:port C2 on 443 and odd high ports after a fake-update infection matches how <strong>Dridex</strong> behaved in 2018 — without a hash or signature the report says "consistent with Dridex (unconfirmed)".</li>
+<li>A dead C2 protects the PC only today. The host is infected: clean it, and treat the user's passwords as exposed.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="en-snort">Step 6 — One simple Snort rule</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Candidate</th>
+<th scope="col">For</th>
+<th scope="col">Against</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>C2 domain <code>kimbrelelectric.com</code></strong></td>
+<td>Confirmed post-execution traffic; plain HTTP</td>
+<td>The domain can change</td>
+</tr>
+<tr>
+<td><code>/chromefiles/</code></td>
+<td>Catches the pre-infection stage</td>
+<td>Other sites may use the name</td>
+</tr>
+<tr>
+<td>The two C2 IPs</td>
+<td>Catches the failed C2</td>
+<td>No content; IPs change easily</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"SocGholish C2 kimbrelelectric.com - Sung"; content:"kimbrelelectric.com"; nocase; sid:1000041; rev:1;)
+</code></pre></div></div>
+<ul>
+<li><code>$HOME_NET any -&gt; $EXTERNAL_NET 80</code> — inside to outside port 80. <code>content</code> + <code>nocase</code> — the text anywhere in the packet, any case (it is in each POST's <code>Host:</code> header). <code>sid</code> 1000000+ = own rules. The generated sub-domain (<code>bb17eb22.login3.</code>) is left out on purpose — it may change per victim.</li>
+</ul>
+<p>Add the rule on <strong>one line</strong> to <code>\\10.50.10.60\rules\local.rules</code>, then on pcapbox:</p>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>sudo snort -T -c /etc/snort/snort.conf 2&gt;&amp;1 | tail -5
+snort-test 20180630_SORTING_THROUGH_THE_ALERTS
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>[1/2] 문법 OK
+[2/2] /data/pcap/20180630_SORTING_THROUGH_THE_ALERTS.pcap
+  개수 [gid:sid:rev] 메시지
+      3 [1:1000041:1] SocGholish C2 kimbrelelectric.com - Sung
+</code></pre></div></div>
+<p><strong>3 alerts</strong> = the three POSTs. The DNS lookup has the name too, but DNS is UDP and the rule is TCP.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>sudo pcap-ingest: command not found</code> — and do not re-ingest anyway</p>
+<p>On Oracle Linux <code>sudo</code> only searches its <code>secure_path</code>, which does not include <code>/usr/local/bin</code>. Use the full path (<code>sudo /usr/local/bin/pcap-ingest …</code>) if you ever need it. But re-ingesting a case re-runs <strong>Zeek and Arkime</strong> too and can put every log into Splunk and Arkime <strong>twice</strong>, doubling the counts on this page. <code>snort-test</code> is enough to test a rule.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-timeline">Timeline (2018-06-30, UTC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="Evidence table"><table>
+<thead>
+<tr>
+<th scope="col">Time</th>
+<th scope="col">Event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20:27:15</td>
+<td>Capture starts</td>
+</tr>
+<tr>
+<td>20:27:17–18</td>
+<td>CONSERVATOR-PC and <strong>lloyd.maxwell</strong> log on (Kerberos)</td>
+</tr>
+<tr>
+<td>20:27:52</td>
+<td><code>www.cnn.com</code> opened (noise — ads follow)</td>
+</tr>
+<tr>
+<td>20:27:53</td>
+<td><code>www.stmarybahrain[.]com</code> opened, no Referer — <strong>hacked site</strong></td>
+</tr>
+<tr>
+<td>20:27:55–56</td>
+<td><code>track.positiverefreshment[.]org/s_code.js</code> ×3 — fingerprint, TDS passes the PC</td>
+</tr>
+<tr>
+<td>20:27:57</td>
+<td>Fake <strong>"Update Chrome"</strong> page from <code>lw2e.sineadhollywoodnutt[.]com</code></td>
+</tr>
+<tr>
+<td>20:28:00–01</td>
+<td>3 s timer → Dropbox → <code>Chrome_72.3.22.js</code> (~20 KB, HTTPS)</td>
+</tr>
+<tr>
+<td>20:28:46</td>
+<td>DNS <code>bb17eb22.login3.kimbrelelectric[.]com</code> — <strong>user ran the .js</strong></td>
+</tr>
+<tr>
+<td>20:28:47</td>
+<td>POST <code>a=</code> — check-in</td>
+</tr>
+<tr>
+<td>20:28:48</td>
+<td>POST <code>b=</code> — host profile; reply <strong>349 KB</strong> hex payload</td>
+</tr>
+<tr>
+<td>20:28:50</td>
+<td>POST <code>c=</code> — <code>%TEMP%\Chrome_72.3.22.exe</code> reported</td>
+</tr>
+<tr>
+<td>20:29:00</td>
+<td>First C2 attempt 46.105.131.66:443 (refused)</td>
+</tr>
+<tr>
+<td>20:31:14</td>
+<td>First C2 attempt 107.170.231.118:4143 (no answer)</td>
+</tr>
+<tr>
+<td>20:29–20:59</td>
+<td>Attempts alternate every ~7.5 min — never connect</td>
+</tr>
+<tr>
+<td>20:33–20:35</td>
+<td>Chrome component update via BITS (normal)</td>
+</tr>
+<tr>
+<td>20:59:06</td>
+<td>Capture ends</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="en-lessons">Lessons</h2>
+<ol>
+<li><strong>Baselining notes pay off later.</strong> Three unexplained lines (two silent IPs, one odd User-Agent) were the whole infection; each was explained only once later facts arrived.</li>
+<li><strong>Busy browsing hides a short attack.</strong> 184 destinations; the infection is a handful of hosts in one minute. Remove the known-good (CDN, ads, BITS, CryptoAPI, CNAME to ad platforms) and read what is left.</li>
+<li><strong>No DNS + a fixed rhythm = a program.</strong> The no-DNS subsearch reduced 184 destinations to the two C2 IPs.</li>
+<li><strong>The Referer is the chain.</strong> Every malicious request pointed back to the church page.</li>
+<li><strong>A new User-Agent = a new program.</strong> <code>MSIE 7.0</code> + <code>UA-CPU</code> 46 s after a download meant the file had run; <code>b=</code> proved it.</li>
+<li><strong>Splunk for who/when/how much, Arkime for what exactly.</strong> The download URL and the profile data were only in bodies.</li>
+<li><strong>Decoders travel with the encoded text.</strong> Read the function and translate it, or run it alone in an offline console. Without a decoder, read the shape: character set → layer → crib from the format.</li>
+<li><strong>Check the input before blaming the recipe.</strong> Quotes, a missing prefix or a cut-off wrap changed every result; <code>ABC</code> and Zeek's body length catch it.</li>
+<li><strong>Know your tools' limits.</strong> Multi-value <code>host</code> doubled counts; Arkime's 200-packet limit hid <code>c=</code>; re-ingesting would have doubled everything.</li>
+<li><strong>Keep data and inference apart.</strong> "Timing fits" is inference; "the decoded code says so" is evidence. The report gets evidence.</li>
+</ol>
+</section>
+<section>
+<h2 id="en-references">References</h2>
+<ul>
+<li><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew, second pass — pcapbox, Snort test guide</a> · <a href="handbook-beguilesoft-hawkeye-ftp-exfil.html">BEGUILESOFT — Splunk-first baselining</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/splunk/spl-cheatsheet/">SPL cheat sheet</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/arkime/search-syntax/">Arkime search syntax</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/">Zeek logs</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/conn-log/">conn.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/files-log/">files.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/zeek/ssl-x509/">ssl &amp; x509</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/network/beaconing-c2/">Beaconing &amp; C2</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/playbooks/compromised-workstation/">Playbook: compromised workstation</a></li>
+<li>Original exercise: <a href="https://malware-traffic-analysis.net/2018/06/30/index.html">malware-traffic-analysis.net — 2018-06-30 Sorting through the alerts</a></li>
+</ul>
+</section>
+</div>
+<div lang="ko" data-guide-language hidden>
+<section id="ko-summary"><h2>사례 요약</h2><p>침해된 교회 사이트, 리다이렉트 인프라, 가짜 Chrome 업데이트, 이후 WScript 관련 C2 순서로 추적합니다. UTC 시각으로 DNS·HTTP에서 TLS로 이동한 다음 후속 목적지의 연결 상태와 바이트 수를 비교합니다.</p>
+<p><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/investigations/socgholish-fake-chrome-update-wscript-c2/">DFIR Handbook 원문</a></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col"></th>
+<th scope="col"></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>증거</strong></td>
+<td><code>2018-06-30-traffic-analysis-exercise.pcap</code> — 2018-06-30 20:27:15 – 20:59:06 UTC (31.9분)</td>
+</tr>
+<tr>
+<td><strong>출처</strong></td>
+<td><a href="https://malware-traffic-analysis.net/2018/06/30/index.html">malware-traffic-analysis.net 2018-06-30 "Sorting through the alerts"</a></td>
+</tr>
+<tr>
+<td><strong>주어진 정보</strong></td>
+<td>LAN 172.16.2.0/24, DC 172.16.2.9, 도메인 fabulousdukes.com</td>
+</tr>
+<tr>
+<td><strong>환경</strong></td>
+<td>폐쇄망. pcapbox VM: Splunk(<code>index=zeek</code>, 케이스 필드 <code>pcap_case</code>), Arkime(태그 = 케이스 이름), Snort 2.9.20, CyberChef. <strong>Wireshark 사용 안 함.</strong></td>
+</tr>
+<tr>
+<td><strong>케이스 이름</strong></td>
+<td><code>20180630_SORTING_THROUGH_THE_ALERTS</code></td>
+</tr>
+<tr>
+<td><strong>결과물</strong></td>
+<td>분석, 풀어 낸 다운로드 URL과 C2 본문, Snort 룰 하나</td>
+</tr>
+<tr>
+<td><strong>관련 페이지</strong></td>
+<td><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석(pcapbox, Snort 테스트 가이드)</a> · <a href="handbook-beguilesoft-hawkeye-ftp-exfil.html">BEGUILESOFT(Splunk 중심 베이스라이닝)</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/splunk/spl-cheatsheet/">SPL 치트시트</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/">Zeek 로그</a></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section>
+<h2 id="ko-answers">한눈에 보는 답</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">항목</th>
+<th scope="col">답</th>
+<th scope="col">상태</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>감염된 PC</td>
+<td><strong>172.16.2.169, CONSERVATOR-PC</strong>, 윈도우 7 x64</td>
+<td>확인(Kerberos, NTLM, DNS)</td>
+</tr>
+<tr>
+<td>사용자</td>
+<td><strong>lloyd.maxwell</strong> (도메인 FABULOUSDUKES)</td>
+<td>확인</td>
+</tr>
+<tr>
+<td>DC</td>
+<td>172.16.2.9, FABULOUSDUKE-DC</td>
+<td>확인</td>
+</tr>
+<tr>
+<td>첫 악성 이벤트</td>
+<td><strong>20:27:53 UTC</strong> — 해킹된 사이트 <code>www.stmarybahrain[.]com</code>(66.226.144.232) 방문, Referer 없음</td>
+<td>확인</td>
+</tr>
+<tr>
+<td>리다이렉트 경로</td>
+<td>사이트 스크립트 → <code>track.positiverefreshment[.]org/s_code.js</code>(185.244.149.74, 브라우저 지문) → 가짜 페이지 <code>lw2e.sineadhollywoodnutt[.]com/topics/index.php</code>(93.95.100.178)</td>
+<td>확인</td>
+</tr>
+<tr>
+<td>다운로드</td>
+<td>20:28:00–01 <code>hxxps://www.dropbox[.]com/s/fvl9rd86cmdilns/Chrome_72.3.22.js?dl=1</code>, 약 23 KB 받음</td>
+<td>URL 해독 확인, SNI와 시간으로 다운로드 증명, 내용은 안 보임(HTTPS)</td>
+</tr>
+<tr>
+<td>실행</td>
+<td>20:28:47 — <code>wscript.exe</code>가 <code>bb17eb22.login3.kimbrelelectric[.]com/blank.gif</code>(93.95.100.138)로 POST</td>
+<td>확인(<code>b=</code> 본문에 스크립트 경로와 <code>wscript.exe</code>)</td>
+</tr>
+<tr>
+<td>보낸 정보</td>
+<td>스크립트 경로, 호스트, 사용자, 도메인, 백신, 화면, 프로세스 목록</td>
+<td>확인(해독)</td>
+</tr>
+<tr>
+<td>페이로드</td>
+<td>349 KB hex 응답 → <code>C:\Users\LLOYD~1.MAX\AppData\Local\Temp\Chrome_72.3.22.exe</code>로 보고</td>
+<td>경로 확인, 실행은 이후 트래픽으로 추정</td>
+</tr>
+<tr>
+<td>후속 C2</td>
+<td>46.105.131.66:443(거절), 107.170.231.118:4143(대답 없음), 끝날 때까지 약 7.5분마다</td>
+<td>확인 — <strong>C2 연결은 한 번도 성공 안 함</strong></td>
+</tr>
+<tr>
+<td>계열</td>
+<td>SocGholish 유형 가짜 업데이트, 후속 동작은 Dridex와 비슷</td>
+<td>확인 안 됨(해시·시그니처 없음)</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-prep">0단계 — PCAP 넣고 케이스 확인</h2>
+<p><strong>목적:</strong> PCAP에 <strong>케이스 이름</strong>을 붙여서 다른 실습 로그와 섞이지 않게 하고, 모든 도구가 <strong>UTC</strong>로 보이게 해요.</p>
+<ol>
+<li>파일 이름을 <strong><code>20180630_SORTING_THROUGH_THE_ALERTS.pcap</code></strong>으로 바꾸고 <code>\\10.50.10.60\incoming</code>에 넣어요.</li>
+<li>pcapbox에서 <code>tail -f /data/logs/ingest.log</code>를 보다가 <code>DONE case=20180630_SORTING_THROUGH_THE_ALERTS</code>가 나오면 끝이에요.</li>
+<li>Splunk <strong>Preferences → Time zone = UTC</strong>, Arkime <strong>Settings → Timezone = UTC</strong>, 시간 범위 <strong>All</strong>.</li>
+</ol>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn
+| stats count by pcap_case
+</code></pre></div></div>
+<ul>
+<li><code>index=zeek</code> — Zeek 로그가 든 인덱스(Splunk의 "서랍")만 봐요.</li>
+<li><code>sourcetype=zeek:conn</code> — 연결 로그예요. 연결 하나가 한 줄이에요.</li>
+<li><code>|</code> — 왼쪽 결과를 다음 명령으로 넘겨요.</li>
+<li><code>stats count by pcap_case</code> — 케이스 이름마다 줄 수를 세요.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title"><code>_time</code>이 아니라 <code>ts</code></p>
+<p>Zeek의 이벤트 시간은 <strong><code>ts</code></strong>(epoch 초)예요. 이 페이지의 쿼리는 모두 <code>ts</code>로 정렬하고 출력해요. 그러면 <code>_time</code>이 색인 시각으로 찍히는 Splunk에서도 맞게 나와요. <code>eval t=strftime(ts,"%H:%M:%S")</code>로 읽기 쉽게 바꿔요.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">케이스 이름이 길 때</p>
+<p>Splunk에서는 <code>pcap_case=20180630_SORTING*</code>처럼 <code>*</code>(아무 글자)를 써도 돼요. 다른 케이스와 겹치지 않을 때만요. Arkime의 <code>tags ==</code>에는 전체 이름을 써요.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-baseline">1단계 — 베이스라이닝</h2>
+<p>베이스라이닝 = 나쁜 것을 찾기 전에 이 캡처의 <strong>평소 모습</strong>을 먼저 아는 거예요. 시간 범위, 로그 종류, 내부 PC, 얼마나 바쁜지, 누구인지를 봐요.</p>
+<h3 id="ko-log-types">1-1. 어떤 로그가 있나</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| stats count by sourcetype
+| sort - count
+</code></pre></div></div>
+<ul>
+<li><code>sourcetype</code>을 안 적어서 이 케이스의 <strong>모든 로그 종류</strong>를 가져와요. <code>sort - count</code> = 많은 순서(<code>-</code>는 내림차순).</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>sourcetype          count
+zeek:conn           729
+zeek:dns            313
+zeek:ssl            265
+zeek:files          176
+zeek:x509           171
+zeek:http           134
+zeek:ocsp           72
+zeek:kerberos       37
+zeek:ldap_search    21
+zeek:dce_rpc        18
+zeek:ldap           13
+zeek:weird          7
+zeek:smb_mapping    6
+zeek:software       5
+zeek:ntp            4
+zeek:smb_files      2
+zeek:ntlm           1
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li><strong><code>zeek:dhcp</code>가 없어요.</strong> 캡처가 시작될 때 PC가 이미 IP를 갖고 있었다는 뜻이에요. 호스트 이름은 다른 곳에서 찾아야 해요(1-5).</li>
+<li><strong>웹 로그가 가장 많아요</strong>(<code>ssl</code> 265, <code>http</code> 134). 누군가 웹을 보고 있었어요. HTTPS가 HTTP의 두 배지만, <strong>HTTP 134개는 내용을 다 볼 수 있어서</strong> 핵심 재료가 돼요.</li>
+<li><strong>도메인 로그</strong>(<code>kerberos</code>, <code>ldap</code>, <code>dce_rpc</code>, <code>smb_*</code>, <code>ntlm</code>) = AD PC가 DC와 하는 평소 대화예요(로그온, 그룹 정책). 사용자와 컴퓨터 이름이 여기 있어요.</li>
+<li><code>ocsp</code>(인증서 확인), <code>ntp</code>(시간), <code>weird</code>(이상한 패킷)는 보통 별일 아니에요. <code>software</code>는 Zeek가 알아본 프로그램 목록이에요(1-5에서 써요).</li>
+</ul>
+<h3 id="ko-window">1-2. 캡처 시간 범위</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| stats min(ts) as first max(ts) as last count as sessions
+| eval duration_min=round((last-first)/60,1)
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S"), last=strftime(last,"%Y-%m-%d %H:%M:%S")
+</code></pre></div></div>
+<ul>
+<li>2줄: 전체를 한 줄로 요약해요 — 가장 이른 시간, 가장 늦은 시간, 연결 수. <code>as</code>는 결과에 이름을 붙여요.</li>
+<li>3줄: <code>eval</code>로 새 필드를 계산해요. 분 단위, 소수 한 자리.</li>
+<li>4줄: epoch → 읽을 수 있는 날짜. <strong>3줄이 4줄보다 먼저</strong>여야 해요. 4줄을 지나면 <code>first</code>, <code>last</code>가 글자가 돼서 뺄셈을 못 해요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>first                 last                  sessions  duration_min
+2018-06-30 20:27:15   2018-06-30 20:59:06   729       31.9
+</code></pre></div></div>
+<h3 id="ko-internal-hosts">1-3. 어떤 내부 IP가 연결을 시작하나</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| stats count as sessions dc(id_resp_h) as destinations sum(orig_bytes) as sent sum(resp_bytes) as received min(ts) as first max(ts) as last by id_orig_h
+| eval first=strftime(first,"%H:%M:%S"), last=strftime(last,"%H:%M:%S")
+| sort - sessions
+</code></pre></div></div>
+<ul>
+<li><code>id_orig_h</code> = 연결을 <strong>시작한</strong> IP예요(<code>orig</code> = 시작한 쪽, <code>resp</code> = 받은 쪽, <code>_h</code> = IP, <code>_p</code> = 포트).</li>
+<li><code>dc()</code> = 중복 빼고 세기. <code>orig_bytes</code> / <code>resp_bytes</code> = 양쪽이 보낸 데이터 바이트.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_orig_h      sessions  destinations  sent     received   first     last
+172.16.2.169   729       184           845926   34269192   20:27:15  20:59:06
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li><strong>PC는 한 대예요.</strong> DC는 안 나와요. Zeek는 DC의 NetBIOS 응답을 PC가 시작한 연결 안에 넣어요(UDP도 먼저 보낸 쪽이 <code>orig</code>예요).</li>
+<li><strong>32분 동안 목적지 184곳</strong> — 비콘이라면 1~3곳이에요. 이건 <strong>사람이 웹을 본 모습</strong>이에요(뉴스 페이지 하나가 광고·CDN을 수십 곳 불러요). 그래서 "많이 통신한 곳"으로는 악성코드를 못 찾아요. <strong>정상을 지우고 남는 것을 보는</strong> 방법으로 가요.</li>
+<li>받은 양 ≫ 보낸 양(34 MB 대 0.85 MB) — PC의 정상 모습이에요. 반대면 유출을 의심해요.</li>
+</ul>
+<h3 id="ko-arkime-baseline">1-4. Arkime 교차 확인</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Arkime</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>tags == 20180630_SORTING_THROUGH_THE_ALERTS
+</code></pre></div></div>
+<p><strong>세션 654개</strong>예요(Zeek 729 — 두 도구가 UDP와 재시도 연결을 나누는 방식이 달라요. 큰 그림은 같아요). <strong>SPIView → General → Src IP / Dst IP</strong>에 PC 한 대와 긴 목적지 목록이 보여요.</p>
+<p><strong>Databytes / Bytes 읽는 법:</strong> 윗줄은 <strong>데이터</strong>(페이로드), 아랫줄은 헤더까지 포함한 전체 바이트예요. <strong>Databytes 0</strong> = 연결 신호만 오가고 데이터는 없음.</p>
+<p><strong>[데이터] 모양이 다른 줄 — 메모만, 결론은 아직:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">목적지</th>
+<th scope="col">모양</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>46.105.131.66:443</code></td>
+<td>출발 포트마다 세션 여러 개, 패킷 2개씩, <strong>Databytes 0</strong>, 몇 분마다 반복</td>
+</tr>
+<tr>
+<td><code>107.170.231.118:4143</code></td>
+<td>패킷 3개, <strong>Databytes 0</strong>, 흔하지 않은 포트, 몇 분마다 반복</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>나머지는 DC와의 평소 통신(53 DNS, 88 Kerberos, 123 NTP, 389 LDAP, 445 SMB, 137/138 NetBIOS, 5355 LLMNR <code>wpad</code>, 1900 SSDP)과 <code>crl.microsoft.com</code>이에요.</p>
+<h3 id="ko-identity">1-5. 172.16.2.169는 누구인가</h3>
+<p>DHCP가 없으니 윈도우가 자기 이름을 말하는 다른 곳을 봐요.</p>
+<p><strong>① Kerberos</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:kerberos pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count values(request_type) as types values(success) as success values(error_msg) as errors by client
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>client</code> = <code>계정/영역(REALM)</code>. <code>values()</code> = 서로 다른 값 전부. <code>request_type</code>: <strong>AS</strong> = 로그온 티켓(TGT), <strong>TGS</strong> = 서비스 티켓, <strong>AP</strong> = 받은 티켓을 서비스에 내미는 단계.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>client                              first     count  types    success      errors
+/FABULOUSDUKES.COM                  20:27:17  13     AP       true
+CONSERVATOR-PC$/FABULOUSDUKES.COM   20:27:17  11     AS TGS   false true   KDC_ERR_PREAUTH_REQUIRED
+conservator-pc$/FABULOUSDUKES.COM   20:27:17  2      AS       false true   KDC_ERR_PREAUTH_REQUIRED
+lloyd.maxwell/FABULOUSDUKES         20:27:18  2      AS       false true   KDC_ERR_PREAUTH_REQUIRED
+lloyd.maxwell/FABULOUSDUKES.COM     20:27:18  5      TGS      true
+conservator-pc$/fabulousdukes.com   20:27:44  2      AS       false true   KDC_ERR_PREAUTH_REQUIRED
+</code></pre></div></div>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">보이는 것</th>
+<th scope="col">뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>이름이 <code>$</code>로 끝남</td>
+<td><strong>컴퓨터 계정</strong> → 호스트 이름 <strong>CONSERVATOR-PC</strong></td>
+</tr>
+<tr>
+<td><code>$</code> 없음</td>
+<td><strong>사용자</strong> → <strong>lloyd.maxwell</strong>, 20:27:18 로그온</td>
+</tr>
+<tr>
+<td>계정 이름이 빈 줄(<code>/FABULOUSDUKES.COM</code>, AP)</td>
+<td>AP 요청은 이름이 암호화된 부분 안에 있어서 Zeek가 못 보여 줘요. 정상</td>
+</tr>
+<tr>
+<td>같은 계정이 대소문자·REALM만 다름</td>
+<td>윈도우가 일정하지 않을 뿐 같은 계정</td>
+</tr>
+<tr>
+<td><code>KDC_ERR_PREAUTH_REQUIRED</code> 뒤 성공</td>
+<td>정상적인 사전 인증. 비밀번호가 틀리면 <code>KDC_ERR_PREAUTH_FAILED</code> — 여기엔 없음</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p><strong>② NTLM</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:ntlm pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h id_resp_p username hostname domainname server_nb_computer_name success
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         id_orig_h     id_resp_h   id_resp_p  username          hostname         domainname     server_nb_computer_name  success
+20:27:35  172.16.2.169  172.16.2.9  445        CONSERVATOR-PC$   CONSERVATOR-PC   FABULOUSDUKES  FABULOUSDUKE-DC          true
+</code></pre></div></div>
+<p>PC가 켜질 때 컴퓨터 계정이 DC의 SMB 공유(그룹 정책)에 로그온한 거예요. DC 이름도 나와요: <strong>FABULOUSDUKE-DC</strong>.</p>
+<p><strong>③ DNS 동적 업데이트</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS qtype_name=SOA
+| eval t=strftime(ts,"%H:%M:%S")
+| table t id_orig_h id_resp_h query qtype_name rcode_name
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         id_orig_h     id_resp_h   query                              qtype_name  rcode_name
+20:37:03  172.16.2.169  172.16.2.9  conservator-pc.fabulousdukes.com   SOA         NOERROR
+20:27:16  172.16.2.169  172.16.2.9  conservator-pc.fabulousdukes.com   SOA         NOERROR
+</code></pre></div></div>
+<p>도메인 PC는 자기 이름을 DC에 등록해요. 등록 전에 <code>SOA</code> 질의를 먼저 보내요. 정확히 10분 간격 — 윈도우의 주기적 재등록이에요. 세 곳이 모두 <strong>CONSERVATOR-PC / fabulousdukes.com</strong>으로 같아요.</p>
+<p><strong>④ software</strong></p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:software pcap_case=20180630_SORTING_THROUGH_THE_ALERTS
+| eval t=strftime(ts,"%H:%M:%S")
+| table t host software_type name unparsed_version
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t         host          software_type   name                  unparsed_version
+20:43:13  172.16.2.169  OS::WINDOWS     Windows
+20:33:54  172.16.2.169  HTTP::BROWSER   Microsoft BITS        Microsoft BITS/7.5
+20:28:47  172.16.2.169  HTTP::BROWSER   MSIE                  Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; Win64; x64; Trident/7.0; .NET CLR 2.0.50727; SLCC2; ...)
+20:28:00  172.16.2.169  HTTP::BROWSER   Microsoft-CryptoAPI   Microsoft-CryptoAPI/6.1
+20:27:53  172.16.2.169  HTTP::BROWSER   Chrome                Mozilla/5.0 (Windows NT 6.1; Win64; x64) ... Chrome/67.0.3396.99 Safari/537.36
+</code></pre></div></div>
+<ul>
+<li>Zeek는 알아본 프로그램을 한 번씩 적어요. <code>Windows NT 6.1</code> = 윈도우 7, <code>Win64; x64</code> = 64비트.</li>
+<li>사용자의 브라우저는 <strong>Chrome 67</strong>(20:27:53)이에요. BITS(윈도우 다운로드)와 CryptoAPI(인증서 확인)는 윈도우 자체예요.</li>
+<li><strong>[데이터] 54초 뒤 "MSIE 7.0"이라고 말하는 프로그램</strong>이 나와요. 2006년 브라우저예요. 윈도우 7에서 <code>Trident/7.0</code>(IE11 엔진)과 함께 나오면 <strong>스크립트가 쓰는 윈도우 HTTP 객체</strong>(wscript, 오피스 매크로 등)의 기본 User-Agent예요. 후보로 메모해요.</li>
+</ul>
+<p><strong>베이스라인 메모 — 후보 3개, 결론은 아직:</strong></p>
+<ol>
+<li><code>46.105.131.66:443</code> — 데이터 없음, 반복</li>
+<li><code>107.170.231.118:4143</code> — 데이터 없음, 흔하지 않은 포트, 반복</li>
+<li>20:28:47 <code>MSIE 7.0</code> — 사용자 브라우저가 아닌 프로그램</li>
+</ol>
+<hr>
+</section>
+<section>
+<h2 id="ko-destinations">2단계 — 외부 목적지: 정상을 지우고 남는 것 보기</h2>
+<h3 id="ko-ports">2-1. 포트별로</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_orig_h=172.16.2.169 NOT id_resp_h=172.16.0.0/12 NOT id_resp_h=224.0.0.0/4
+| stats count dc(id_resp_h) as ips values(service) as service values(conn_state) as states sum(orig_bytes) as sent sum(resp_bytes) as received by proto id_resp_p
+| sort - count
+</code></pre></div></div>
+<ul>
+<li><code>NOT id_resp_h=172.16.0.0/12</code> — Splunk는 IP 필드에 대역(CIDR)을 쓰면 알아서 맞춰 봐요. 내부 주소를 빼요. <code>224.0.0.0/4</code>는 멀티캐스트를 빼요.</li>
+<li><code>service</code> = Zeek가 내용으로 알아본 프로토콜. 비어 있으면 Zeek도 몰랐다는 뜻.</li>
+<li><code>conn_state</code>: <strong>SF</strong> 정상 시작·종료 · <strong>S0</strong> SYN에 대답 없음 · <strong>REJ</strong> SYN에 RST(거절) · <strong>RSTO/RSTR</strong> PC/서버가 강제 종료 · <strong>SH/OTH</strong> 일부만 보임(캡처 시작·끝에서 흔함).</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>proto  id_resp_p  count  ips  service  states                          sent    received
+tcp    443        364    163  ssl      OTH REJ RSTO RSTR S1 SF         642014  5667734
+tcp    80         27     14   http     RSTO SF                         58106   28337141
+tcp    4143       16     1             S0                              0       0
+udp    443        10     6             SF                              45454   174932
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li>tcp/443: HTTPS 브라우징. 그런데 <strong>REJ</strong>가 섞여 있어요(2-3에서 정체가 나와요).</li>
+<li>tcp/80: <strong>28 MB</strong> 받음 — 3-1에서 구글의 BITS 다운로드로 확인돼요.</li>
+<li><strong>tcp/4143: IP 한 곳, service 없음, S0만, 0바이트.</strong> 흔하지 않은 포트, 대답 한 번도 없음.</li>
+<li>udp/443에 service가 없는 건 <strong>QUIC</strong>이에요(구글이 만든 UDP HTTPS, Chrome이 써요). Zeek의 QUIC 분석기가 꺼져 있어서 비어 있어요. 정상이에요.</li>
+</ul>
+<h3 id="ko-domains">2-2. 도메인별로</h3>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_orig_h=172.16.2.169 NOT query="*fabulousdukes.com"
+| rex field=query "(?&lt;domain&gt;[^.]+\.[^.]+)$"
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first count dc(query) as names values(query) as examples by domain
+| eval examples=mvindex(examples,0,2)
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>rex</code>는 정규식으로 값의 일부를 잘라 새 필드를 만들어요. <code>(?&lt;domain&gt; … )</code> = 걸린 부분의 이름, <code>[^.]+</code> = 점이 아닌 글자들, <code>\.</code> = 진짜 점, <code>$</code> = 끝. 결과는 맨 끝 두 이름이에요(<code>r4---sn-p5qs7nek.gvt1.com</code> → <code>gvt1.com</code>).</li>
+<li><code>mvindex(목록,0,2)</code> = 앞의 세 값만 남겨요(0부터 세요).</li>
+</ul>
+<p>도메인 116개가 나왔어요. <strong>정상을 지우는 방법:</strong></p>
+<ol>
+<li>잘 아는 회사: microsoft, google, googleapis, bing, facebook, twitter, yahoo, cloudfront, windows.net.</li>
+<li><strong>CNN 묶음:</strong> <code>cnn.com</code>이 20:27:52, 바로 뒤 20:27:53~20:28:03에 광고·추적 도메인 수십 개(optimizely, doubleclick, outbrain, rubiconproject, pubmatic, criteo …). 이름에 <em>ad, pixel, sync, match, track, cdn, beacon</em>이 있으면 대부분 광고 기술이에요.</li>
+<li>윈도우 자체: <code>gvt1.com</code>(BITS), <code>digicert.com</code>, <code>_tcp.local</code>(크롬캐스트 찾기).</li>
+</ol>
+<p><strong>[데이터] 남는 것(시간 순서):</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">처음</th>
+<th scope="col">도메인</th>
+<th scope="col">메모</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20:27:52</td>
+<td><strong>stmarybahrain.com</strong> (<code>www.</code>)</td>
+<td>교회 사이트, CNN과 같은 초</td>
+</tr>
+<tr>
+<td>20:27:54</td>
+<td><strong>positiverefreshment.org</strong> (<code>track.</code>)</td>
+<td>광고 회사도 아닌데 "track"</td>
+</tr>
+<tr>
+<td>20:27:56</td>
+<td><strong>sineadhollywoodnutt.com</strong> (<code>lw2e.</code>)</td>
+<td>사람 이름 같은 도메인, 아무렇게나 만든 듯한 하위 이름</td>
+</tr>
+<tr>
+<td>20:27:59</td>
+<td>dropbox.com</td>
+<td>정상 서비스지만 <strong>파일 다운로드</strong>용</td>
+</tr>
+<tr>
+<td>20:28:00</td>
+<td>dropboxusercontent.com (<code>uc7cfbc6f….dl.</code>)</td>
+<td>Dropbox 파일 서버</td>
+</tr>
+<tr>
+<td>20:28:24</td>
+<td>summerhamster.com</td>
+<td>이상한 이름 — 질문 상자 참고</td>
+</tr>
+<tr>
+<td>20:28:46</td>
+<td><strong>kimbrelelectric.com</strong> (<code>bb17eb22.login3.</code>)</td>
+<td>전기 회사 이름인데 하위 이름이 만든 것 같은 모양</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition question">
+<p class="admonition-title">질문: summerhamster.com은 왜 남기지 않나요?</p>
+<p>DNS 답이 광고 회사 서버 <code>bc.sp-prod.net</code>을 가리키는 <strong>CNAME</strong>(별명)이고, Chrome이 HTTPS로 한 번 접속했어요. 다른 광고 도메인과 같은 모양이에요. <strong>CNAME을 따라가 보는 것</strong>도 정상을 지우는 방법이에요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS query="www.summerhamster.com"
+| table ts query answers
+</code></pre></div></div>
+</div>
+<h3 id="ko-no-dns">2-3. DNS 없이 간 목적지</h3>
+<p>사람은 이름으로 웹을 봐요. <strong>이름을 찾은 적 없는 IP</strong>로 간 연결은 프로그램 안에 박힌 주소일 수 있어요.</p>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_orig_h=172.16.2.169 NOT id_resp_h=172.16.0.0/12 NOT id_resp_h=224.0.0.0/4
+    NOT [search index=zeek sourcetype=zeek:dns pcap_case=20180630_SORTING_THROUGH_THE_ALERTS | mvexpand answers | rename answers as id_resp_h | dedup id_resp_h | fields id_resp_h]
+| eval t=strftime(ts,"%H:%M:%S")
+| stats min(t) as first max(t) as last count values(id_resp_p) as ports values(conn_state) as states sum(orig_bytes) as sent sum(resp_bytes) as received by id_resp_h
+| sort first
+</code></pre></div></div>
+<ul>
+<li><code>[ … ]</code> <strong>서브서치</strong>가 먼저 실행돼요. DNS 답에 나온 모든 IP를 모아요(<code>mvexpand</code> = 값이 여러 개인 필드를 값 하나당 한 줄로 펼치기, <code>rename</code> = conn 필드 이름과 맞추기). 결과는 <code>(id_resp_h="a" OR id_resp_h="b" …)</code>가 되고, <code>NOT</code>이 붙어서 <strong>DNS 답에 한 번도 안 나온 IP만</strong> 남아요.</li>
+<li>주의: 캡처 <strong>전에</strong> 이름을 찾아 둔 IP도 여기 나와요. 캡처 시작 무렵에 나오는 IP는 그럴 수 있어요.</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>id_resp_h         first     last      count  ports  states  sent  received
+46.105.131.66     20:29:00  20:59:06  30     443    REJ     0     0
+107.170.231.118   20:31:14  20:53:51  16     4143   S0      0     0
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong> 184곳 중 <strong>두 곳만</strong> 남았고, 베이스라인 후보 1, 2와 정확히 같아요. 2-1의 tcp/443 REJ가 46.105.131.66이에요. 443 포트지만 HTTPS가 아니고 매번 거절당했어요. 캡처 시작 2분쯤 뒤에 처음 나와서 30분 동안 반복돼요 — <strong>사람이 아니라 프로그램</strong>이에요. 20:29:00은 후보 3(<code>MSIE 7.0</code>, 20:28:47)과 <strong>13초</strong> 차이예요.</p>
+<p><strong>지금까지의 단서(시간 순서):</strong> 교회 사이트(20:27:52) → <code>track.</code>(20:27:54) → <code>lw2e.</code>(20:27:56) → Dropbox 파일 서버(20:28:00) → <code>kimbrelelectric</code>(20:28:46) → <code>MSIE 7.0</code>(20:28:47) → DNS 없는 IP 시도(20:29:00). <strong>[추측]</strong> 사이트 방문 → 다운로드 → 브라우저가 아닌 무언가가 kimbrelelectric과 통신 → 하드코딩된 IP. 3단계에서 HTTP로 확인해요.</p>
+<hr>
+</section>
+<section>
+<h2 id="ko-followon">5단계 — 페이로드 다음: 베이스라인 후보 1, 2로 돌아가기</h2>
+<p><strong>왜 이 단계인가:</strong> <code>c=</code>는 EXE를 <strong>저장</strong>했다고 했어요. 저장과 실행은 달라요. <strong>[추측]</strong> 새로 실행된 악성코드는 거의 항상 <strong>자기 C2</strong>에 먼저 연락해요. 그래서 질문은 *20:28:50 이후에 새로 시작한 외부 통신이 있나?*가 돼요. 답은 이미 메모에 있었어요. 2-2에서 20:28:46 뒤에 수상한 새 도메인은 없었고, 2-3에서 DNS 없는 IP가 딱 두 곳 나왔어요. 베이스라이닝 때는 설명할 수 없었던 것을, 이제 새로 안 사실로 시험해요.</p>
+<p>쿼리로 보려는 것:</p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">질문</th>
+<th scope="col">방법</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EXE 직후에 시작했나?</td>
+<td>첫 <code>ts</code>와 <code>c=</code>(20:28:49.9) 비교</td>
+</tr>
+<tr>
+<td>프로그램인가, 사람인가?</td>
+<td><code>delta</code> — 일정한 박자</td>
+</tr>
+<tr>
+<td>연결이 성공했나?</td>
+<td><code>conn_state</code>, <code>history</code>, 패킷 수</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">SPL</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case=20180630_SORTING_THROUGH_THE_ALERTS id_resp_h IN ("46.105.131.66","107.170.231.118")
+| sort ts
+| delta ts as gap
+| eval t=strftime(ts,"%H:%M:%S.%3N"), gap=round(gap,1)
+| table t id_orig_p id_resp_h id_resp_p conn_state history orig_pkts resp_pkts gap
+</code></pre></div></div>
+<ul>
+<li><code>sort ts</code>를 먼저 해요 — <code>delta</code>는 줄 순서대로 계산해요. <code>delta ts as gap</code> = 바로 위 줄과의 시간 차이(초).</li>
+<li><code>history</code> = Zeek가 본 TCP 신호. <strong>대문자는 PC, 소문자는 서버</strong>: <code>S/s</code> SYN, <code>h</code> SYN-ACK, <code>R/r</code> RST, <code>D/d</code> 데이터. <code>Sr</code> = "PC가 요청, 서버가 거절", <code>S</code> = "PC가 요청, 대답 없음".</li>
+</ul>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>t              id_orig_p  id_resp_h         id_resp_p  conn_state  history  orig_pkts  resp_pkts  gap
+20:29:00.525   49447      46.105.131.66     443        REJ         Sr       1          1
+20:29:01.159   49447      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:29:01.795   49447      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:29:01.931   49448      46.105.131.66     443        REJ         Sr       1          1          0.1
+20:29:02.560   49448      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:29:03.200   49448      46.105.131.66     443        REJ         Sr       1          1          0.6
+20:31:14.351   49471      107.170.231.118   4143       S0          S        2          0          131.2
+20:31:23.351   49471      107.170.231.118   4143       S0          S        1          0          9.0
+20:31:35.352   49472      107.170.231.118   4143       S0          S        2          0          12.0
+20:31:44.349   49472      107.170.231.118   4143       S0          S        1          0          9.0
+20:36:10.366   49491      46.105.131.66     443        REJ         Sr       1          1          266.0
+...            (같은 모양 반복)
+20:59:06.815   49514      46.105.131.66     443        REJ         Sr       1          1          0.6
+</code></pre></div></div>
+<p><strong>[데이터] 결과 읽기:</strong></p>
+<ul>
+<li><strong>첫 시도 20:29:00.525 — <code>c=</code> 약 10초 뒤.</strong></li>
+<li><strong>46.105.131.66:443 — <code>Sr</code>, 양쪽 패킷 1개씩.</strong> 서버는 켜져 있는데 443에서 듣는 프로그램이 없어서 거절해요. 윈도우는 거절당하면 0.6초 간격으로 두 번 더 시도하고, 새 포트로 다시 해요 → <strong>회차마다 6줄</strong>. Zeek는 RST로 연결을 닫아서 재시도마다 새 줄을 만들어요. 6 × 5회차 = 2-3의 <strong>30</strong>.</li>
+<li><strong>107.170.231.118:4143 — <code>S</code>, 대답 전혀 없음.</strong> 서버가 꺼졌거나 중간에서 패킷이 버려졌어요. 윈도우는 SYN을 간격을 늘리며(약 3초, 약 6초) 다시 보내고 약 9초 뒤 포기한 다음 새 포트로 해요. Zeek가 쉬는 시간 때문에 포트 하나를 두 줄로 나눠서 4줄 × 4회차 = <strong>16</strong>.</li>
+<li>Arkime도 같아요: <code>SYN 1  SYN-ACK 0  RST 1</code>, Databytes 0.</li>
+</ul>
+<p><strong>회차:</strong></p>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">46.105.131.66</th>
+<th scope="col">약 2분 뒤</th>
+<th scope="col">107.170.231.118</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20:29:00</td>
+<td>→</td>
+<td>20:31:14</td>
+</tr>
+<tr>
+<td>20:36:10</td>
+<td>→</td>
+<td>20:38:30</td>
+</tr>
+<tr>
+<td>20:43:37</td>
+<td>→</td>
+<td>20:45:53</td>
+</tr>
+<tr>
+<td>20:51:14</td>
+<td>→</td>
+<td>20:53:21</td>
+</tr>
+<tr>
+<td>20:59:04</td>
+<td>(캡처 끝)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>두 IP가 <strong>번갈아</strong> 나와요. IP 1 → 약 2분 → IP 2 → 약 5분 → 반복, 한 바퀴 약 7.5분, 캡처 끝까지. <strong>[추측]</strong> 프로그램 안의 C2 목록을 차례로 시도하고 회차 사이에 쉬는 모습이에요.</p>
+<p><strong>결론:</strong></p>
+<ul>
+<li><strong>[데이터]</strong> EXE 보고 10초 뒤부터 하드코딩된 IP 두 곳에 일정한 박자로 접속을 시도했고, <strong>한 번도 연결되지 않았어요</strong>. 네트워크에 C2 명령, 추가 다운로드, 유출이 없어요.</li>
+<li><strong>[추측]</strong> <code>%TEMP%\Chrome_72.3.22.exe</code>가 <strong>실행됐고</strong> C2를 시도했어요. 가짜 업데이트 감염 뒤 443과 이상한 높은 포트의 하드코딩된 IP:포트 C2는 2018년 <strong>Dridex</strong>의 모습과 같아요. 해시나 시그니처가 없으니 보고서에는 "consistent with Dridex (unconfirmed)"라고 써요.</li>
+<li>C2가 죽어 있는 건 오늘만 PC를 지켜 줘요. 호스트는 감염됐어요. 정리하고, 사용자 비밀번호는 노출된 것으로 봐요.</li>
+</ul>
+<hr>
+</section>
+<section>
+<h2 id="ko-snort">6단계 — 간단한 Snort 룰 하나</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">후보</th>
+<th scope="col">장점</th>
+<th scope="col">단점</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>C2 도메인 <code>kimbrelelectric.com</code></strong></td>
+<td>실행이 확인된 통신, 평문 HTTP</td>
+<td>도메인이 바뀔 수 있음</td>
+</tr>
+<tr>
+<td><code>/chromefiles/</code></td>
+<td>감염 전 단계를 잡음</td>
+<td>다른 사이트도 쓸 수 있음</td>
+</tr>
+<tr>
+<td>C2 IP 두 곳</td>
+<td>실패한 C2를 잡음</td>
+<td>내용 없음, IP는 쉽게 바뀜</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="language-text highlight"><div class="query-block"><div class="query-bar"><span class="query-type">Snort</span><span class="query-status" role="status" data-copy-status></span><button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button></div><pre tabindex="0"><code>alert tcp $HOME_NET any -&gt; $EXTERNAL_NET 80 (msg:"SocGholish C2 kimbrelelectric.com - Sung"; content:"kimbrelelectric.com"; nocase; sid:1000041; rev:1;)
+</code></pre></div></div>
+<ul>
+<li><code>$HOME_NET any -&gt; $EXTERNAL_NET 80</code> — 내부에서 외부 80번 포트로. <code>content</code> + <code>nocase</code> — 패킷 어디든 이 글자, 대소문자 무시(POST마다 <code>Host:</code> 헤더에 있어요). <code>sid</code> 1000000 이상 = 직접 만든 룰. 만든 것 같은 하위 이름(<code>bb17eb22.login3.</code>)은 피해자마다 바뀔 수 있어서 일부러 뺐어요.</li>
+</ul>
+<p>룰을 <strong>한 줄로</strong> <code>\\10.50.10.60\rules\local.rules</code>에 넣고 pcapbox에서:</p>
+<div class="language-bash highlight"><div class="query-block"><pre tabindex="0"><code>sudo snort -T -c /etc/snort/snort.conf 2&gt;&amp;1 | tail -5
+snort-test 20180630_SORTING_THROUGH_THE_ALERTS
+</code></pre></div></div>
+<div class="language-text highlight"><div class="query-block"><pre tabindex="0"><code>[1/2] 문법 OK
+[2/2] /data/pcap/20180630_SORTING_THROUGH_THE_ALERTS.pcap
+  개수 [gid:sid:rev] 메시지
+      3 [1:1000041:1] SocGholish C2 kimbrelelectric.com - Sung
+</code></pre></div></div>
+<p><strong>경보 3개</strong> = POST 3개. DNS 질의에도 이름이 있지만 DNS는 UDP이고 룰은 TCP예요.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>sudo pcap-ingest: command not found</code> — 그리고 다시 넣지 마세요</p>
+<p>Oracle Linux에서 <code>sudo</code>는 <code>secure_path</code>만 찾고, 거기엔 <code>/usr/local/bin</code>이 없어요. 필요하면 전체 경로(<code>sudo /usr/local/bin/pcap-ingest …</code>)로 실행해요. 하지만 케이스를 다시 넣으면 <strong>Zeek와 Arkime까지</strong> 다시 돌아서 Splunk와 Arkime에 로그가 <strong>두 번</strong> 들어가고 이 페이지의 숫자가 두 배가 될 수 있어요. 룰 시험은 <code>snort-test</code>면 충분해요.</p>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-timeline">타임라인 (2018-06-30, UTC)</h2>
+<div class="guide-table" tabindex="0" role="region" aria-label="근거 표"><table>
+<thead>
+<tr>
+<th scope="col">시각</th>
+<th scope="col">이벤트</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>20:27:15</td>
+<td>캡처 시작</td>
+</tr>
+<tr>
+<td>20:27:17–18</td>
+<td>CONSERVATOR-PC와 <strong>lloyd.maxwell</strong> 로그온(Kerberos)</td>
+</tr>
+<tr>
+<td>20:27:52</td>
+<td><code>www.cnn.com</code> 열림(잡음 — 광고가 따라옴)</td>
+</tr>
+<tr>
+<td>20:27:53</td>
+<td><code>www.stmarybahrain[.]com</code> 열림, Referer 없음 — <strong>해킹된 사이트</strong></td>
+</tr>
+<tr>
+<td>20:27:55–56</td>
+<td><code>track.positiverefreshment[.]org/s_code.js</code> 3번 — 지문 검사, TDS 통과</td>
+</tr>
+<tr>
+<td>20:27:57</td>
+<td><code>lw2e.sineadhollywoodnutt[.]com</code>의 가짜 <strong>"Update Chrome"</strong> 페이지</td>
+</tr>
+<tr>
+<td>20:28:00–01</td>
+<td>3초 타이머 → Dropbox → <code>Chrome_72.3.22.js</code>(약 20 KB, HTTPS)</td>
+</tr>
+<tr>
+<td>20:28:46</td>
+<td>DNS <code>bb17eb22.login3.kimbrelelectric[.]com</code> — <strong>사용자가 .js 실행</strong></td>
+</tr>
+<tr>
+<td>20:28:47</td>
+<td>POST <code>a=</code> — 체크인</td>
+</tr>
+<tr>
+<td>20:28:48</td>
+<td>POST <code>b=</code> — PC 프로필, 응답 <strong>349 KB</strong> hex 페이로드</td>
+</tr>
+<tr>
+<td>20:28:50</td>
+<td>POST <code>c=</code> — <code>%TEMP%\Chrome_72.3.22.exe</code> 보고</td>
+</tr>
+<tr>
+<td>20:29:00</td>
+<td>첫 C2 시도 46.105.131.66:443(거절)</td>
+</tr>
+<tr>
+<td>20:31:14</td>
+<td>첫 C2 시도 107.170.231.118:4143(대답 없음)</td>
+</tr>
+<tr>
+<td>20:29–20:59</td>
+<td>약 7.5분마다 번갈아 시도 — 연결 안 됨</td>
+</tr>
+<tr>
+<td>20:33–20:35</td>
+<td>BITS로 Chrome 구성 요소 업데이트(정상)</td>
+</tr>
+<tr>
+<td>20:59:06</td>
+<td>캡처 끝</td>
+</tr>
+</tbody>
+</table>
+</div>
+<hr>
+</section>
+<section>
+<h2 id="ko-lessons">배운 점</h2>
+<ol>
+<li><strong>베이스라이닝 메모는 나중에 빛나요.</strong> 설명 안 되던 세 줄(조용한 IP 두 곳, 이상한 User-Agent 하나)이 감염 전체였어요. 각각은 나중에 새 사실이 나와서야 설명됐어요.</li>
+<li><strong>바쁜 브라우징은 짧은 공격을 숨겨요.</strong> 목적지 184곳 중 감염은 1분 동안의 몇 곳이에요. 아는 정상(CDN, 광고, BITS, CryptoAPI, 광고 플랫폼 CNAME)을 지우고 남은 것을 읽어요.</li>
+<li><strong>DNS 없음 + 일정한 박자 = 프로그램.</strong> DNS 없는 목적지 서브서치가 184곳을 C2 IP 두 곳으로 줄였어요.</li>
+<li><strong>Referer가 곧 사슬이에요.</strong> 악성 요청은 모두 교회 페이지를 가리켰어요.</li>
+<li><strong>새 User-Agent = 새 프로그램.</strong> 다운로드 46초 뒤 <code>MSIE 7.0</code> + <code>UA-CPU</code>는 파일이 실행됐다는 신호였고, <code>b=</code>가 증명했어요.</li>
+<li><strong>누가/언제/얼마나는 Splunk, 정확히 무엇은 Arkime.</strong> 다운로드 URL과 프로필 정보는 본문에만 있었어요.</li>
+<li><strong>해독기는 숨긴 글자와 같이 다녀요.</strong> 함수를 읽고 옮기거나, 오프라인 콘솔에서 함수만 실행해요. 해독기가 없으면 모양을 읽어요: 글자 종류 → 겹 → 형식에서 고른 crib.</li>
+<li><strong>레시피를 탓하기 전에 입력을 확인해요.</strong> 따옴표, 빠진 앞부분, 잘린 줄 접기가 결과를 다 바꿨어요. <code>ABC</code>와 Zeek의 본문 길이로 잡아요.</li>
+<li><strong>도구의 한계를 알아요.</strong> 값이 두 개인 <code>host</code>가 숫자를 두 배로, Arkime의 200패킷 제한이 <code>c=</code>를 숨겼고, 재색인은 모든 걸 두 배로 만들 뻔했어요.</li>
+<li><strong>데이터와 추측을 구별해요.</strong> "시간이 맞는다"는 추측, "풀어 낸 코드에 그렇게 있다"는 증거예요. 보고서에는 증거를 써요.</li>
+</ol>
+</section>
+<section>
+<h2 id="ko-references">참고 자료</h2>
+<ul>
+<li><a href="handbook-night-dew-arkime-splunk-netlogon-bruteforce.html">Night Dew 두 번째 분석 — pcapbox, Snort 테스트 가이드</a> · <a href="handbook-beguilesoft-hawkeye-ftp-exfil.html">BEGUILESOFT — Splunk 중심 베이스라이닝</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/splunk/spl-cheatsheet/">SPL 치트시트</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/arkime/search-syntax/">Arkime 검색 문법</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/">Zeek 로그</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/conn-log/">conn.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/files-log/">files.log</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/zeek/ssl-x509/">ssl &amp; x509</a></li>
+<li><a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/network/beaconing-c2/">비콘과 C2</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/ko/blueteam/playbooks/compromised-workstation/">플레이북: 침해된 워크스테이션</a></li>
+<li>원래 실습: <a href="https://malware-traffic-analysis.net/2018/06/30/index.html">malware-traffic-analysis.net — 2018-06-30 Sorting through the alerts</a></li>
+</ul>
+</section>
+</div>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
