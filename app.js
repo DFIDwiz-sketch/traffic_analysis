@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    macAdTrafficCaseTitle: "macOS malware · distinguish large uploads from polling",
+    macAdTrafficCaseSummary: "Compare the POST body coverage with the later GET cadence and reply metadata.",
+    kongTukeSmbCaseTitle: "KongTuke Rebuke · trace domain-share and RPC activity",
+    kongTukeSmbCaseSummary: "Check policy reads and named-pipe exchanges while scoping the workstation's outbound traffic.",
     bigFishSmbCaseTitle: "Big Fish in a Little Pond · investigate shares and external POSTs",
     bigFishSmbCaseSummary: "Separate observed DC share activity from the workstation’s recurring outbound HTTP.",
     androidWebSocketCaseTitle: "Android malware · verify WebSocket upgrades",
@@ -75,6 +79,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    macAdTrafficCaseTitle: "macOS 악성코드 · 대용량 업로드와 폴링 구분",
+    macAdTrafficCaseSummary: "POST 본문의 캡처 범위와 이후 GET의 반복 간격 및 응답을 비교합니다.",
+    kongTukeSmbCaseTitle: "KongTuke Rebuke · 도메인 공유와 RPC 활동 추적",
+    kongTukeSmbCaseSummary: "정책 읽기와 파이프 교환을 확인하고 워크스테이션의 외부 통신 범위를 좁힙니다.",
     bigFishSmbCaseTitle: "Big Fish in a Little Pond · SMB 공유 접근과 외부 POST 조사",
     bigFishSmbCaseSummary: "DC 공유에서 확인한 동작과 워크스테이션의 반복 외부 HTTP를 구분합니다.",
     androidWebSocketCaseTitle: "Android 악성코드 · WebSocket 전환 확인",
