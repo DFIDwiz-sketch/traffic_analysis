@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    pelicanworksTrickbotCaseTitle: "Emotet, IcedID and Trickbot · order SMB writes and egress",
+    pelicanworksTrickbotCaseSummary: "Separate the direction of the file writes from the order of the later outbound HTTP.",
+    icedidAdminShareCaseTitle: "IcedID and Trickbot · distinguish disk writes from pipe access",
+    icedidAdminShareCaseSummary: "Follow two acknowledged C$ writes and a separate service-control pipe open on the same connection.",
     mondogreekSmbResetCaseTitle: "Mondogreek · distinguish SMB negotiation from TCP success",
     mondogreekSmbResetCaseSummary: "Compare a domain policy read with a burst of negotiations that end in TCP resets.",
     qakSessionEnumCaseTitle: "Qakbot · scope session enumeration over SMB",
@@ -99,6 +103,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    pelicanworksTrickbotCaseTitle: "Emotet·IcedID·Trickbot · SMB 쓰기와 외부 통신의 순서",
+    pelicanworksTrickbotCaseSummary: "파일 쓰기 방향과 이후 외부 HTTP의 순서를 구분합니다.",
+    icedidAdminShareCaseTitle: "IcedID와 Trickbot · 디스크 쓰기와 파이프 접근 구분",
+    icedidAdminShareCaseSummary: "같은 연결에서 C$ 쓰기 성공 두 건과 별도 서비스 제어 파이프 열기를 추적합니다.",
     mondogreekSmbResetCaseTitle: "Mondogreek · SMB 협상과 TCP 연결 성공 구분",
     mondogreekSmbResetCaseSummary: "정책 파일 읽기와 TCP 리셋으로 끝난 SMB 협상 시도를 비교합니다.",
     qakSessionEnumCaseTitle: "Qakbot · SMB를 통한 세션 열거 범위 확인",
