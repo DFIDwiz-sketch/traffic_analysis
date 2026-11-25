@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    mondogreekSmbResetCaseTitle: "Mondogreek · distinguish SMB negotiation from TCP success",
+    mondogreekSmbResetCaseSummary: "Compare a domain policy read with a burst of negotiations that end in TCP resets.",
+    qakSessionEnumCaseTitle: "Qakbot · scope session enumeration over SMB",
+    qakSessionEnumCaseSummary: "Correlate SMB trees and RPC requests to three internal systems.",
     trickbotDcEgressCaseTitle: "Trickbot · trace DC-originated HTTP after an SMB burst",
     trickbotDcEgressCaseSummary: "Use traffic direction to separate the workstation’s session from the DC’s external request.",
     lummaIpcCaseTitle: "Lumma exercise · separate disk-share and IPC activity",
@@ -95,6 +99,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    mondogreekSmbResetCaseTitle: "Mondogreek · SMB 협상과 TCP 연결 성공 구분",
+    mondogreekSmbResetCaseSummary: "정책 파일 읽기와 TCP 리셋으로 끝난 SMB 협상 시도를 비교합니다.",
+    qakSessionEnumCaseTitle: "Qakbot · SMB를 통한 세션 열거 범위 확인",
+    qakSessionEnumCaseSummary: "내부 시스템 세 곳의 SMB 트리와 RPC 요청을 연결합니다.",
     trickbotDcEgressCaseTitle: "Trickbot · SMB 급증 뒤 DC가 보낸 HTTP 추적",
     trickbotDcEgressCaseSummary: "패킷 방향으로 워크스테이션 세션과 DC의 외부 요청을 구분합니다.",
     lummaIpcCaseTitle: "Lumma 실습 · 디스크 공유와 IPC 활동 구분",

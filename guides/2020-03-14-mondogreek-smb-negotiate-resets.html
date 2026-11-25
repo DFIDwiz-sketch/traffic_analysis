@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Mondogreek · distinguish SMB negotiation from TCP success · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="mondogreekSmbResetCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="mondogreekSmbResetCaseTitle">Mondogreek · distinguish SMB negotiation from TCP success</h1>
+      <p class="guide-meta">
+        <time datetime="2020-03-14">2020-03-14</time>
+        <span aria-hidden="true">·</span><span>SMB / TCP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">How far did each SMB connection get?</a></li>
+<li><a href="#baseline">1 · Compare the three workstations’ SMB reach</a></li>
+<li><a href="#evidence">2 · Identify the last stage reached by each flow</a></li>
+<li><a href="#arkime">3 · Verify the sequence on both peers in Arkime</a></li>
+<li><a href="#tshark">4 · Confirm the request and reset offline if needed</a></li>
+<li><a href="#incident-note">5 · Record a scoped outcome for the SOC ticket</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">각 연결은 SMB의 어느 단계까지 진행됐는가?</a></li>
+<li><a href="#baseline">1 · 워크스테이션 세 대의 SMB 접속 범위 비교하기</a></li>
+<li><a href="#evidence">2 · 흐름별로 마지막으로 확인된 단계 찾기</a></li>
+<li><a href="#arkime">3 · Arkime에서 두 피어의 패킷 순서 확인하기</a></li>
+<li><a href="#tshark">4 · 필요할 때만 요청과 리셋을 오프라인으로 확인하기</a></li>
+<li><a href="#incident-note">5 · SOC 티켓에 연결별 결과 기록하기</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>How far did each SMB connection get?</h2>
+<p>Mondogreek provides a capture from an Active Directory network and asks for an incident report. In the original PCAP, <code>10.3.11.194</code> reads a policy file from DC <code>10.3.11.3</code>, then later contacts multiple internal systems on TCP/445. Two peer workstations complete TCP handshakes and reset their connections directly after SMB1 Negotiate requests. Compare those peer attempts with the working policy session.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2020-03-14-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2020-03-11 21:22:34.987 – 2020-03-11 22:06:40.899</li>
+<li>Packets · 30,239</li>
+<li>SHA-256 · <code>8df815a53e873e01803010c33752080414b0975709c1c02327e12661eec883a4</code></li>
+</ul>
+
+<p>The source page is dated 14 March and the captured packets are from 11 March. The topology and exercise brief come from the publisher. The time, frame and outcome evidence below comes from the original capture. SPL examples are for your own Zeek import.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>각 연결은 SMB의 어느 단계까지 진행됐는가?</h2>
+<p>Mondogreek 실습은 Active Directory 네트워크 캡처를 바탕으로 사고 보고서를 작성하는 사례입니다. 원본에서 <code>10.3.11.194</code>는 DC <code>10.3.11.3</code>의 정책 파일을 읽고, 이후 내부 시스템 여러 곳의 TCP/445에 접속합니다. 동료 워크스테이션 두 곳은 TCP 핸드셰이크 뒤 SMB1 Negotiate 요청을 받고 곧바로 리셋을 보냅니다. 이 시도들을 정상적으로 진행된 정책 세션과 비교합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2020-03-14-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2020-03-11 21:22:34.987 – 2020-03-11 22:06:40.899</li>
+<li>패킷 · 30,239</li>
+<li>SHA-256 · <code>8df815a53e873e01803010c33752080414b0975709c1c02327e12661eec883a4</code></li>
+</ul>
+
+<p>원문 게시일은 3월 14일이고 패킷은 3월 11일에 캡처됐습니다. 토폴로지와 실습 과제는 공개 원문에 나옵니다. 아래 시각, 프레임, 통신 결과는 원본 PCAP에서 확인했습니다. SPL은 자신의 Zeek 수집 환경에서 검증할 예시입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Compare the three workstations’ SMB reach</h2>
+<p>Set <code>&lt;CASE&gt;</code> to the capture tag. Cover the full UTC capture interval. If Splunk filters on ingest time, include that interval and order results by numeric Zeek <code>ts</code>. The examples assume flattened fields.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Check connection, SMB mapping and SMB file log coverage before comparing the workstations.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+    id_orig_h IN ("10.3.11.194","10.3.11.218","10.3.11.119")
+| eval second=floor(ts)
+| stats dc(uid) as flows dc(id_resp_h) as peers values(id_resp_h) as responders by second id_orig_h
+| sort 0 second</code></pre>
+</div>
+<p>Find the increase in destinations for <code>.194</code> at 21:36:47 UTC. The original packets show 12 distinct outbound SYN tuples across six internal IPs from 21:36:47.303 through 21:36:47.355. Counts from <code>conn.log</code> group flows by Zeek connection start and can differ from counts of SYN frames. Compare with <code>.218</code> and <code>.119</code> as initiators to place the burst in context.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1 · 워크스테이션 세 대의 SMB 접속 범위 비교하기</h2>
+<p><code>&lt;CASE&gt;</code>에 캡처 태그를 넣고 UTC로 전체 캡처 구간을 선택합니다. 수집 시각 기준이라면 가져온 구간을 포함하고 숫자형 Zeek <code>ts</code>로 정렬합니다. 예시는 평탄화된 필드명을 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>비교 전 연결, SMB 공유 매핑, 파일 로그의 수집 범위를 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445
+    id_orig_h IN ("10.3.11.194","10.3.11.218","10.3.11.119")
+| eval second=floor(ts)
+| stats dc(uid) as flows dc(id_resp_h) as peers values(id_resp_h) as responders by second id_orig_h
+| sort 0 second</code></pre>
+</div>
+<p>21:36:47 UTC에 <code>.194</code>의 목적지 수가 늘어나는 구간을 찾습니다. 원본 패킷에서 21:36:47.303부터 21:36:47.355까지 내부 IP 여섯 곳으로 고유한 주소·포트 조합의 SYN 12건이 관찰됩니다. <code>conn.log</code>는 Zeek가 기록한 연결 시작 시각으로 집계하므로 SYN 프레임 수와 다를 수 있습니다. <code>.218</code>, <code>.119</code>가 시작한 세션도 비교해 변화의 범위를 확인합니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Identify the last stage reached by each flow</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445 id_orig_h=10.3.11.194
+| sort 0 ts
+| table ts uid id_resp_h id_orig_p conn_state history service duration orig_pkts resp_pkts orig_bytes resp_bytes</code></pre>
+</div>
+<p>Check the state and packet history for the DC, gateway and peer destinations. Look for activity on ports 49921 and 49927. A SYN-ACK confirms a TCP response. Inspect the packets after the handshake to evaluate SMB negotiation separately.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files")
+| sort 0 ts
+| table ts sourcetype uid id_resp_h id_orig_p id_resp_p conn_state path name action</code></pre>
+</div>
+<p>Query each selected connection with its own UID from <strong>the same Zeek processing run</strong>. First compare a peer tuple, then the policy session on client port 49683. If application rows are missing, use the packet evidence to determine whether the server sent an SMB reply. TCP reset flags and SMB status codes describe different layers.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Identify the last stage reached by each flow"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 11 March 2020</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>21:23:02.453</td>
+<td>1467, 1468</td>
+<td><code>.194</code> reads <code>gpt.ini</code> on the DC's SMB2 policy tree, with a 22-byte read reply</td>
+</tr>
+<tr class="even">
+<td>21:36:47.303</td>
+<td>18934, 18935</td>
+<td>SYN to <code>10.3.11.1:445</code> receives RST+ACK</td>
+</tr>
+<tr class="odd">
+<td>21:36:47.326–21:36:47.328</td>
+<td>18958, 18961, 18962</td>
+<td>Port 49921 opens TCP to <code>.218</code>, sends SMB1 Negotiate and receives RST+ACK</td>
+</tr>
+<tr class="even">
+<td>21:36:47.330–21:36:47.331</td>
+<td>18974, 18977, 18978</td>
+<td>Port 49927 opens TCP to <code>.119</code>, sends SMB1 Negotiate and receives RST+ACK</td>
+</tr>
+<tr class="odd">
+<td>21:37:17.218–21:37:17.223</td>
+<td>21068, 21069, 21075, 21076</td>
+<td>Both peers again send resets after SMB1 Negotiate on fresh connections</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The pattern is compatible with automated SMB discovery. An approved scanner, legacy software or a device enforcing a protocol policy could produce similar observations. For the two peer tuples shown, the capture ends the exchange at a transport reset. It leaves the responding device’s enforcement policy and the initiating process unresolved.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2 · 흐름별로 마지막으로 확인된 단계 찾기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_resp_p=445 id_orig_h=10.3.11.194
+| sort 0 ts
+| table ts uid id_resp_h id_orig_p conn_state history service duration orig_pkts resp_pkts orig_bytes resp_bytes</code></pre>
+</div>
+<p>DC, 게이트웨이, 피어별 연결 상태와 패킷 이력을 봅니다. 클라이언트 포트 49921과 49927을 확인합니다. SYN-ACK은 TCP 응답을 확인하는 근거입니다. 핸드셰이크 이후 패킷에서 SMB 협상 결과를 별도로 판단합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files")
+| sort 0 ts
+| table ts sourcetype uid id_resp_h id_orig_p id_resp_p conn_state path name action</code></pre>
+</div>
+<p>선택한 연결마다 <strong>동일한 Zeek 처리 실행</strong>에서 생성된 해당 UID로 조회합니다. 피어 연결을 조회한 뒤 포트 49683의 정책 연결과 비교합니다. 애플리케이션 로그가 비어 있으면 서버가 SMB 응답을 보냈는지 패킷에서 확인합니다. TCP 리셋 플래그와 SMB 상태 코드는 서로 다른 계층의 결과입니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · 흐름별로 마지막으로 확인된 단계 찾기"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2020년 3월 11일</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 관찰한 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>21:23:02.453</td>
+<td>1467, 1468</td>
+<td><code>.194</code>가 DC의 SMB2 정책 트리에서 <code>gpt.ini</code>를 읽고 22바이트 읽기 응답을 받음</td>
+</tr>
+<tr class="even">
+<td>21:36:47.303</td>
+<td>18934, 18935</td>
+<td><code>10.3.11.1:445</code>에 보낸 SYN에 RST+ACK 수신</td>
+</tr>
+<tr class="odd">
+<td>21:36:47.326–21:36:47.328</td>
+<td>18958, 18961, 18962</td>
+<td>포트 49921에서 <code>.218</code>로 TCP 연결 후 SMB1 Negotiate를 보내고 RST+ACK 수신</td>
+</tr>
+<tr class="even">
+<td>21:36:47.330–21:36:47.331</td>
+<td>18974, 18977, 18978</td>
+<td>포트 49927에서 <code>.119</code>로 TCP 연결 후 SMB1 Negotiate를 보내고 RST+ACK 수신</td>
+</tr>
+<tr class="odd">
+<td>21:37:17.218–21:37:17.223</td>
+<td>21068, 21069, 21075, 21076</td>
+<td>새 연결에서 두 피어가 SMB1 Negotiate 뒤 다시 리셋을 보냄</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>자동화된 SMB 탐색과 부합할 수 있는 패턴입니다. 승인된 스캐너, 구형 소프트웨어 또는 프로토콜 정책을 적용하는 장비에서도 비슷한 현상이 나타날 수 있습니다. 선택한 피어 연결 두 건에서 캡처가 보여 주는 마지막 결과는 TCP 리셋입니다. 어떤 정책이 적용됐는지와 연결을 시작한 프로세스는 추가 확인이 필요합니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Verify the sequence on both peers in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.11.194 &amp;&amp; ip.dst == 10.3.11.218 &amp;&amp; port.src == 49921 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Open the selected <code>.218</code> session and follow SYN, SYN-ACK, ACK, SMB Negotiate and RST+ACK. Retain direction and timestamps in your notes, since exported frames may be renumbered.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.11.194 &amp;&amp; ip.dst == 10.3.11.119 &amp;&amp; port.src == 49927 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Find the matching pattern on <code>.119</code> and check it against the working policy session to the DC. Compare the point at which each connection stops carrying application messages.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3 · Arkime에서 두 피어의 패킷 순서 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.11.194 &amp;&amp; ip.dst == 10.3.11.218 &amp;&amp; port.src == 49921 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p><code>.218</code> 세션에서 SYN, SYN-ACK, ACK, SMB Negotiate, RST+ACK 순서를 확인합니다. 내보내면 프레임 번호가 바뀔 수 있으므로 방향과 시각을 기록합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.11.194 &amp;&amp; ip.dst == 10.3.11.119 &amp;&amp; port.src == 49927 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p><code>.119</code>에서도 같은 패턴을 확인하고 DC로 향한 정상 정책 세션과 비교합니다. 각 연결에서 애플리케이션 메시지가 어디서 끝나는지 살펴봅니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Confirm the request and reset offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2020-03-14-traffic-analysis-exercise.pcap" \
+  -Y 'frame.number == 18961 || frame.number == 18962 || frame.number == 18977 || frame.number == 18978' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream \
+  -e ip.src -e ip.dst -e smb.cmd -e tcp.flags.reset</code></pre>
+</div>
+<p>If Arkime does not show the SMB command or reset flag clearly, inspect the four original frames. Pair each request and reset by TCP stream, then check direction. This view returns header metadata without accessing SMB contents.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4 · 필요할 때만 요청과 리셋을 오프라인으로 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2020-03-14-traffic-analysis-exercise.pcap" \
+  -Y 'frame.number == 18961 || frame.number == 18962 || frame.number == 18977 || frame.number == 18978' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream \
+  -e ip.src -e ip.dst -e smb.cmd -e tcp.flags.reset</code></pre>
+</div>
+<p>Arkime에서 SMB 명령이나 리셋 플래그가 명확하지 않으면 원본의 네 프레임을 확인합니다. TCP 스트림으로 각 요청과 리셋을 연결한 다음 방향을 확인합니다. 출력은 헤더 메타데이터로 제한합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record a scoped outcome for the SOC ticket</h2>
+<p>Add the capture hash, source host, destination set, UTC interval and selected outcomes. Review source process-network telemetry, peer firewall or SMB logs and any authorized scanning schedule. Check other sensors for authentication, tree access or file operations before confirming lateral movement.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2020/03/14/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2020/03/14/2020-03-14-traffic-analysis-exercise.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://docs.zeek.org/en/current/reference/logs/conn.html">Zeek conn.log</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb.html">Wireshark SMB fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5 · SOC 티켓에 연결별 결과 기록하기</h2>
+<p>캡처 해시, 송신 호스트, 목적지 집합, UTC 구간, 선택한 연결별 결과를 남깁니다. 송신 프로세스의 네트워크 기록, 피어의 방화벽·SMB 로그, 승인된 스캔 일정을 확인합니다. 횡적 이동을 확정하기 전에 다른 센서에서 인증, 공유 접근 또는 파일 작업이 있었는지 확인합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2020/03/14/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2020/03/14/2020-03-14-traffic-analysis-exercise.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/reference/logs/smb.html">Zeek SMB logs</a> · <a href="https://docs.zeek.org/en/current/reference/logs/conn.html">Zeek conn.log</a> · <a href="https://www.wireshark.org/docs/dfref/s/smb.html">Wireshark SMB fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
