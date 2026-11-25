@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    nightDewRpcCaseTitle: "Night Dew · distinguish a Netlogon burst from SMB",
+    nightDewRpcCaseSummary: "Separate routine policy reads from 1,522 authentication RPC calls on a different transport.",
+    purpleFoxProbeCaseTitle: "PurpleFox and NuggetPhantom · scope TCP/445 probing",
+    purpleFoxProbeCaseSummary: "Measure rapid destination fan-out and check whether any connection reached SMB negotiation.",
     empireProtocolCaseTitle: "Trickbot and PowerShell Empire · identify the protocol from packets",
     empireProtocolCaseSummary: "Compare an earlier TCP/80 exchange with plaintext HTTP on TCP/443.",
     firstToLastSmbCaseTitle: "First to Last · distinguish policy reads from shared document access",
@@ -83,6 +87,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    nightDewRpcCaseTitle: "Night Dew · Netlogon 요청 급증과 SMB 구분",
+    nightDewRpcCaseSummary: "일반적인 정책 파일 읽기와 별도 전송 경로의 인증 RPC 호출 1,522건을 구분합니다.",
+    purpleFoxProbeCaseTitle: "PurpleFox와 NuggetPhantom · TCP/445 연결 시도 범위 확인",
+    purpleFoxProbeCaseSummary: "짧은 시간에 접촉한 목적지 수를 측정하고 SMB 협상까지 이어졌는지 확인합니다.",
     empireProtocolCaseTitle: "Trickbot과 PowerShell Empire · 패킷으로 프로토콜 식별",
     empireProtocolCaseSummary: "앞선 TCP/80 교환과 TCP/443의 평문 HTTP를 대조합니다.",
     firstToLastSmbCaseTitle: "First to Last · 정책 읽기와 공유 문서 접근 구분",

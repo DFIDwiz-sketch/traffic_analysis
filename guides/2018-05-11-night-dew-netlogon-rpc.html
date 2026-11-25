@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Night Dew · distinguish a Netlogon burst from SMB · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="nightDewRpcCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="nightDewRpcCaseTitle">Night Dew · distinguish a Netlogon burst from SMB</h1>
+      <p class="guide-meta">
+        <time datetime="2018-05-11">2018-05-11</time>
+        <span aria-hidden="true">·</span><span>SMB / DCE/RPC</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Did the burst go through the SMB share?</a></li>
+<li><a href="#baseline">1 · Baseline the client-to-DC traffic</a></li>
+<li><a href="#evidence">2 · Count Netlogon calls and verify the transport</a></li>
+<li><a href="#arkime">3 · Compare the two transports in Arkime</a></li>
+<li><a href="#tshark">4 · Check the first and last RPC call IDs offline if needed</a></li>
+<li><a href="#incident-note">5 · Record the burst and check authentication outcomes</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">급증한 인증 요청은 SMB 공유를 거쳤는가?</a></li>
+<li><a href="#baseline">1 · 클라이언트와 DC 사이의 트래픽을 기준선으로 잡기</a></li>
+<li><a href="#evidence">2 · Netlogon 요청을 집계하고 전송 경로 확인하기</a></li>
+<li><a href="#arkime">3 · Arkime에서 두 전송 경로 비교하기</a></li>
+<li><a href="#tshark">4 · 필요할 때만 양 끝의 RPC 호출 ID를 오프라인으로 확인하기</a></li>
+<li><a href="#incident-note">5 · 요청 급증을 기록하고 인증 결과 확인하기</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Did the burst go through the SMB share?</h2>
+<p>The publisher’s Night Dew exercise places a Windows client in an Active Directory environment and asks the analyst to investigate an infection. In the capture, <code>10.0.14.129</code> reads a policy file over SMB on the domain controller <code>10.0.14.3</code>. The same client later sends 1,522 Netlogon validation requests to the DC over a separate TCP/49158 connection. This guide scopes the authentication burst and tests whether SMB carried it.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2018-05-11-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2018-05-11 02:06:51.484 – 2018-05-11 02:49:40.893</li>
+<li>Packets · 7,295</li>
+<li>SHA-256 · <code>b2c8d0fed6765dc4d2036fae6587a3bac9c27184a3032bd3899eefac4d13e51e</code></li>
+</ul>
+
+<p>The scenario and DC address come from the publisher. The flows, frames and call counts below were checked in the original PCAP. The SPL examples are for verification in your Zeek import.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>급증한 인증 요청은 SMB 공유를 거쳤는가?</h2>
+<p>공개 실습 Night Dew는 Active Directory 환경의 Windows 클라이언트에서 발생한 감염을 조사하는 사례입니다. 원본 캡처에서 <code>10.0.14.129</code>는 도메인 컨트롤러 <code>10.0.14.3</code>의 정책 파일을 SMB로 읽습니다. 이후 같은 클라이언트가 별도 TCP/49158 연결에서 해당 DC로 Netlogon 검증 요청 1,522건을 보냅니다. 인증 요청의 범위를 좁히고 SMB가 그 요청을 운반했는지 확인합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2018-05-11-traffic-analysis-exercise.pcap</code></li>
+<li>UTC · 2018-05-11 02:06:51.484 – 2018-05-11 02:49:40.893</li>
+<li>패킷 · 7,295</li>
+<li>SHA-256 · <code>b2c8d0fed6765dc4d2036fae6587a3bac9c27184a3032bd3899eefac4d13e51e</code></li>
+</ul>
+
+<p>실습 시나리오와 DC 주소는 공개 원문에 나옵니다. 아래 흐름, 프레임, 호출 수는 원본 PCAP에서 직접 확인했습니다. SPL은 자신의 Zeek 수집 환경에서 검증할 예시입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline the client-to-DC traffic</h2>
+<p>Set <code>&lt;CASE&gt;</code> to the case tag, select the full capture interval and display in UTC. If your time picker filters ingest time, include the import interval and use numeric Zeek <code>ts</code> for capture-time analysis. These searches use flattened field names.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Confirm the connection, SMB and DCE/RPC sourcetypes present in the import. Check sensor and ingest coverage if one is missing.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp
+    id_orig_h=10.0.14.129 id_resp_h=10.0.14.3
+| stats dc(uid) as connections values(service) as analyzer values(conn_state) as states
+    sum(orig_bytes) as client_payload_bytes sum(resp_bytes) as dc_payload_bytes by id_resp_p
+| sort 0 - client_payload_bytes</code></pre>
+</div>
+<p>Compare the sessions and payload bytes for TCP/445 and TCP/49158 for the same client/DC pair. Keep destination port in the result so the shared endpoint addresses do not merge the two transports.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1 · 클라이언트와 DC 사이의 트래픽을 기준선으로 잡기</h2>
+<p><code>&lt;CASE&gt;</code>에 사례 태그를 넣고 전체 캡처 구간을 선택한 뒤 UTC로 표시합니다. 시간 선택기가 수집 시각을 기준으로 동작하면 가져온 시점을 포함하고, 캡처 시각 분석에는 Zeek의 숫자형 <code>ts</code>를 사용합니다. 예시는 평탄화된 필드명을 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>연결, SMB, DCE/RPC 로그 유형이 있는지 확인합니다. 필요한 로그가 비어 있으면 센서와 수집 설정의 처리 범위를 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp
+    id_orig_h=10.0.14.129 id_resp_h=10.0.14.3
+| stats dc(uid) as connections values(service) as analyzer values(conn_state) as states
+    sum(orig_bytes) as client_payload_bytes sum(resp_bytes) as dc_payload_bytes by id_resp_p
+| sort 0 - client_payload_bytes</code></pre>
+</div>
+<p>같은 클라이언트와 DC 사이에서 TCP/445와 TCP/49158의 연결 수 및 페이로드 바이트를 비교합니다. 동일한 주소 쌍의 서로 다른 전송 경로가 한 행에 합쳐지지 않도록 목적지 포트로 나눠 봅니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Count Netlogon calls and verify the transport</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dce_rpc pcap_case="&lt;CASE&gt;"
+    id_orig_h=10.0.14.129 id_resp_h=10.0.14.3 id_resp_p=49158
+| stats count as records min(ts) as first_log_ts max(ts) as last_log_ts
+    by uid id_orig_p endpoint operation
+| eval log_span_s=round(last_log_ts-first_log_ts,3)
+| sort 0 - records</code></pre>
+</div>
+<p>Compare client ports 49161 and 49201. Use <code>endpoint</code> and <code>operation</code> to distinguish the setup calls from the validation burst. The duration shown by this search is the span of log timestamps. Use packet request timestamps for the duration of the burst and <code>conn.log</code> for the lifespan of the TCP connection.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_p service path name action endpoint operation</code></pre>
+</div>
+<p>Run this search for one UID at a time, first for the RPC connection and then for SMB on client port 49173. Use UIDs from <strong>the same Zeek processing run</strong>. A shared IP pair cannot serve as a join key. Zeek’s DCE/RPC <code>named_pipe</code> field can hold a port number, so check <code>id_resp_p</code> and the actual transport.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Count Netlogon calls and verify the transport"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 11 May 2018</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>02:06:52.152</td>
+<td>78, 79</td>
+<td>DCE/RPC bind and acknowledgement on TCP/49158 from client port 49161</td>
+</tr>
+<tr class="even">
+<td>02:06:52.501–02:06:52.502</td>
+<td>269, 270</td>
+<td>SMB2 READ of <code>gpt.ini</code> returns 22 bytes on the <code>SYSVOL</code> connection from port 49173</td>
+</tr>
+<tr class="odd">
+<td>02:08:12.836</td>
+<td>716, 717</td>
+<td>Netlogon interface bind and acknowledgement on TCP/49158 from client port 49201</td>
+</tr>
+<tr class="even">
+<td>02:08:12.836–02:08:16.870</td>
+<td>718, 719, 4001, 4002</td>
+<td>First and last request/reply pairs. The capture contains 1,522 distinct opnum 45 requests with matching reply call IDs.</td>
+</tr>
+<tr class="odd">
+<td>02:08:45.139</td>
+<td>4021, 4026</td>
+<td>Both sides send TCP FIN on the burst connection</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Microsoft maps Netlogon opnum 45 to <code>NetrLogonSamLogonWithFlags</code>. The request burst spans about four seconds, while the TCP connection stays open for about 32 seconds. The high call rate is compatible with automated credential testing. A noisy legitimate authentication client or retry behavior is also possible. An RPC response confirms a reply arrived. The reviewed metadata leaves account targets and authentication outcomes unresolved.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2 · Netlogon 요청을 집계하고 전송 경로 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:dce_rpc pcap_case="&lt;CASE&gt;"
+    id_orig_h=10.0.14.129 id_resp_h=10.0.14.3 id_resp_p=49158
+| stats count as records min(ts) as first_log_ts max(ts) as last_log_ts
+    by uid id_orig_p endpoint operation
+| eval log_span_s=round(last_log_ts-first_log_ts,3)
+| sort 0 - records</code></pre>
+</div>
+<p>클라이언트 포트 49161과 49201을 비교합니다. <code>endpoint</code>와 <code>operation</code>으로 초기 설정 호출과 집중적으로 발생한 검증 요청을 구분합니다. 쿼리가 보여 주는 구간은 로그 시각의 범위입니다. 요청 집중 구간은 패킷 시각으로, 전체 TCP 연결 수명은 <code>conn.log</code>로 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_p service path name action endpoint operation</code></pre>
+</div>
+<p>RPC 연결과 클라이언트 포트 49173의 SMB 연결을 UID 한 개씩 조회합니다. <strong>동일한 Zeek 처리 실행</strong>의 UID를 사용합니다. 양쪽 IP가 같아도 동일 연결로 묶을 수 없습니다. Zeek의 DCE/RPC <code>named_pipe</code>에는 포트 번호가 들어갈 수 있으므로 <code>id_resp_p</code>와 실제 전송 경로를 확인합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Netlogon 요청을 집계하고 전송 경로 확인하기"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2018년 5월 11일</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 관찰한 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>02:06:52.152</td>
+<td>78, 79</td>
+<td>클라이언트 포트 49161에서 TCP/49158로 DCE/RPC 바인드 및 응답</td>
+</tr>
+<tr class="even">
+<td>02:06:52.501–02:06:52.502</td>
+<td>269, 270</td>
+<td>포트 49173에서 시작한 <code>SYSVOL</code> 연결의 SMB2 <code>gpt.ini</code> 읽기에 22바이트가 반환됨</td>
+</tr>
+<tr class="odd">
+<td>02:08:12.836</td>
+<td>716, 717</td>
+<td>클라이언트 포트 49201에서 TCP/49158로 Netlogon 인터페이스 바인드 및 응답</td>
+</tr>
+<tr class="even">
+<td>02:08:12.836–02:08:16.870</td>
+<td>718, 719, 4001, 4002</td>
+<td>첫 요청·응답과 마지막 요청·응답. 고유한 opnum 45 요청 1,522건에 각각 같은 호출 ID의 응답이 있음</td>
+</tr>
+<tr class="odd">
+<td>02:08:45.139</td>
+<td>4021, 4026</td>
+<td>인증 요청이 집중된 연결에서 양쪽이 TCP FIN 전송</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>Microsoft 명세에서 Netlogon opnum 45는 <code>NetrLogonSamLogonWithFlags</code>입니다. 요청은 약 4초에 집중됐고 TCP 연결은 약 32초간 열려 있었습니다. 이 요청률은 자동화된 자격증명 검사와 부합할 수 있습니다. 정상 인증 프로그램의 요청 폭주나 반복 시도도 가능한 설명입니다. RPC 응답은 서버가 회신했음을 보여 주며, 확인한 메타데이터로는 대상 계정과 인증 결과를 판단할 수 없습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Compare the two transports in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.14.129 &amp;&amp; ip.dst == 10.0.14.3 &amp;&amp; port.src == 49201 &amp;&amp; port.dst == 49158</code></pre>
+</div>
+<p>Open the RPC session and confirm the TCP tuple and first data in both directions. Check the bind and the sequence of subsequent request/reply packets around 02:08:12 UTC. Use session times and the tuple when exported frame numbers differ.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.14.129 &amp;&amp; ip.dst == 10.0.14.3 &amp;&amp; port.src == 49173 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Open the earlier SMB session. Verify the share and selected policy read from the packet view. Build separate evidence entries for the SMB and Netlogon sessions.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3 · Arkime에서 두 전송 경로 비교하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.14.129 &amp;&amp; ip.dst == 10.0.14.3 &amp;&amp; port.src == 49201 &amp;&amp; port.dst == 49158</code></pre>
+</div>
+<p>RPC 세션을 열어 양쪽 주소와 포트, 양방향의 첫 데이터 패킷을 확인합니다. 02:08:12 UTC 전후의 바인드와 이후 요청·응답 순서를 살펴봅니다. 내보내기 후 프레임 번호가 바뀔 수 있으므로 세션 시각과 주소·포트도 남깁니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.0.14.129 &amp;&amp; ip.dst == 10.0.14.3 &amp;&amp; port.src == 49173 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>앞선 SMB 세션에서 공유 이름과 정책 파일 읽기 패킷을 확인합니다. SMB 세션과 Netlogon 세션의 근거를 각각 기록합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Check the first and last RPC call IDs offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -2 -n -r "2018-05-11-traffic-analysis-exercise.pcap" -d tcp.port==49158,dcerpc \
+  -Y 'frame.number == 718 || frame.number == 719 || frame.number == 4001 || frame.number == 4002' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream \
+  -e dcerpc.cn_call_id -e dcerpc.opnum</code></pre>
+</div>
+<p>If the session view does not expose the call IDs, check these four frames in the original capture. Match request and reply on the same TCP stream by call ID. The opnum is carried in the request. Compare frame times to distinguish the burst from the later TCP teardown.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4 · 필요할 때만 양 끝의 RPC 호출 ID를 오프라인으로 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -2 -n -r "2018-05-11-traffic-analysis-exercise.pcap" -d tcp.port==49158,dcerpc \
+  -Y 'frame.number == 718 || frame.number == 719 || frame.number == 4001 || frame.number == 4002' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream \
+  -e dcerpc.cn_call_id -e dcerpc.opnum</code></pre>
+</div>
+<p>세션 화면에서 호출 ID를 볼 수 없으면 원본의 네 프레임을 조회합니다. 같은 TCP 스트림에서 호출 ID로 요청과 응답을 짝짓습니다. opnum은 요청에 담겨 있습니다. 프레임 시각을 비교해 요청 집중 구간과 이후 TCP 종료를 구분합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record the burst and check authentication outcomes</h2>
+<p>Record both TCP tuples, the capture hash, the burst start/end in UTC, and the count of unique request call IDs. Ask the DC and endpoint owners for authentication events, account-lockout records, process-network telemetry and known retry patterns in that window. Correlate identities and successful or failed validations before assigning password spraying, targeted guessing or compromise.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/05/11/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2018/05/11/2018-05-11-traffic-analysis-exercise.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/scripts/base/protocols/dce-rpc/main.zeek.html">Zeek DCE/RPC</a> · <a href="https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrpc/d17f1077-de4b-4fcd-8867-39068cb789f5">Microsoft MS-NRPC</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/night-dew-arkime-splunk-netlogon-bruteforce/">DFIR Handbook</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5 · 요청 급증을 기록하고 인증 결과 확인하기</h2>
+<p>SOC 티켓에 두 TCP 연결의 주소·포트, 캡처 해시, 요청 집중 구간의 UTC 시작·종료 시각, 고유 요청 수를 기록합니다. DC와 엔드포인트 담당자에게 해당 시각의 인증 이벤트, 계정 잠금 기록, 프로세스별 네트워크 기록, 알려진 재시도 패턴을 확인합니다. 계정과 성공·실패 결과를 연결한 뒤 패스워드 스프레이, 특정 계정에 대한 대입, 침해 여부를 판단합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2018/05/11/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2018/05/11/2018-05-11-traffic-analysis-exercise.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/scripts/base/protocols/dce-rpc/main.zeek.html">Zeek DCE/RPC</a> · <a href="https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nrpc/d17f1077-de4b-4fcd-8867-39068cb789f5">Microsoft MS-NRPC</a> · <a href="https://dfidwiz-sketch.github.io/dfir-handbook/blueteam/investigations/night-dew-arkime-splunk-netlogon-bruteforce/">DFIR Handbook</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>

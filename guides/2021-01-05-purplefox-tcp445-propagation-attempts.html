@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>PurpleFox and NuggetPhantom · scope TCP/445 probing · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="purpleFoxProbeCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="purpleFoxProbeCaseTitle">PurpleFox and NuggetPhantom · scope TCP/445 probing</h1>
+      <p class="guide-meta">
+        <time datetime="2021-01-05">2021-01-05</time>
+        <span aria-hidden="true">·</span><span>TCP / SMB</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">Did the outbound probes reach SMB negotiation?</a></li>
+<li><a href="#baseline">1 · Baseline connection starts by second and port</a></li>
+<li><a href="#evidence">2 · Separate attempts, resets and completed sessions</a></li>
+<li><a href="#arkime">3 · Compare a reset and an unanswered flow in Arkime</a></li>
+<li><a href="#tshark">4 · Check one TCP tuple offline if needed</a></li>
+<li><a href="#incident-note">5 · Scope the SOC ticket and corroborate the sender</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">외부 연결 시도가 SMB 협상까지 이어졌는가?</a></li>
+<li><a href="#baseline">1 · 초 단위로 포트별 연결 기준선 만들기</a></li>
+<li><a href="#evidence">2 · 연결 시도, 리셋, 수립된 세션 구분하기</a></li>
+<li><a href="#arkime">3 · Arkime에서 리셋 흐름과 응답 미관찰 흐름 비교하기</a></li>
+<li><a href="#tshark">4 · 필요할 때만 TCP 연결 하나를 오프라인으로 조회하기</a></li>
+<li><a href="#incident-note">5 · SOC 티켓에 관찰 범위를 기록하고 송신 주체 확인하기</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>Did the outbound probes reach SMB negotiation?</h2>
+<p>The publisher identifies the captured infection as PurpleFox delivery followed by NuggetPhantom. The original capture shows <code>10.1.5.101</code> abruptly sending SYNs to 309 globally routable IPv4 destinations on TCP/445 near its end. The observed return packets were TCP resets. Use this case to measure the scope of possible propagation activity and check whether any peer reached SMB negotiation within the capture.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2021-01-05-PurpleFox-EK-and-post-infection-traffic.pcap</code></li>
+<li>UTC · 2021-01-05 04:13:09.492 – 2021-01-05 04:34:33.442</li>
+<li>Packets · 10,389</li>
+<li>SHA-256 · <code>9abe078c1e7a106d2010d67885ab15a21253788c24bcc6270fd7f71d80d57b5a</code></li>
+</ul>
+
+<p>The malware attribution comes from the publisher. Counts, flags and times below were measured from the original packets. The SPL examples are checks for your own Zeek import.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>외부 연결 시도가 SMB 협상까지 이어졌는가?</h2>
+<p>공개 원문은 PurpleFox를 통한 전달과 후속 NuggetPhantom 활동을 설명합니다. 원본 캡처가 끝나기 직전, <code>10.1.5.101</code>은 외부로 라우팅 가능한 IPv4 목적지 309곳의 TCP/445에 SYN을 보냅니다. 캡처된 응답은 모두 TCP 리셋입니다. 전파 시도로 볼 수 있는 트래픽의 범위를 측정하고 관찰 구간에 SMB 협상까지 진행된 연결이 있는지 확인합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2021-01-05-PurpleFox-EK-and-post-infection-traffic.pcap</code></li>
+<li>UTC · 2021-01-05 04:13:09.492 – 2021-01-05 04:34:33.442</li>
+<li>패킷 · 10,389</li>
+<li>SHA-256 · <code>9abe078c1e7a106d2010d67885ab15a21253788c24bcc6270fd7f71d80d57b5a</code></li>
+</ul>
+
+<p>악성코드 분류는 공개 원문에 근거합니다. 아래 수량, 플래그와 시각은 원본 패킷에서 직접 확인했습니다. SPL은 각자의 Zeek 수집 환경에서 검증할 예시입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Baseline connection starts by second and port</h2>
+<p>Use the import’s tag for <code>&lt;CASE&gt;</code> and the full capture window in UTC. Account for ingest time if your Splunk picker uses it. The examples use flattened Zeek fields and numeric capture time <code>ts</code>.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Confirm that connection logs cover the end of the capture. The inventory also shows which application log types the importer recognized.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_orig_h=10.1.5.101
+| eval second=floor(ts)
+| stats dc(uid) as connections dc(id_resp_h) as peers values(conn_state) as states by second id_resp_p
+| sort 0 second id_resp_p</code></pre>
+</div>
+<p>Compare the client’s distinct destination counts by second and port. Look for the late TCP/445 spike. Each row counts distinct values within that second. A peer can appear in more than one bucket, so count unique peers across the whole capture separately.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1 · 초 단위로 포트별 연결 기준선 만들기</h2>
+<p><code>&lt;CASE&gt;</code>에 사례 태그를 입력하고 전체 캡처 구간을 UTC로 확인합니다. Splunk 시간 선택기가 수집 시각을 쓰면 해당 시점도 범위에 넣습니다. 예시는 평탄화된 Zeek 필드명과 숫자형 캡처 시각 <code>ts</code>를 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>캡처 마지막 부분까지 연결 로그가 있는지 확인합니다. 로그 목록에는 수집 과정에서 식별한 애플리케이션 로그 종류도 표시됩니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_orig_h=10.1.5.101
+| eval second=floor(ts)
+| stats dc(uid) as connections dc(id_resp_h) as peers values(conn_state) as states by second id_resp_p
+| sort 0 second id_resp_p</code></pre>
+</div>
+<p>클라이언트 기준으로 초·포트별 고유 목적지 수를 비교합니다. 마지막 TCP/445 급증에 주목합니다. 같은 목적지가 여러 초에 나타날 수 있으므로 전체 구간의 고유 목적지 수는 별도로 계산합니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Separate attempts, resets and completed sessions</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_orig_h=10.1.5.101 id_resp_p=445
+| stats dc(uid) as connections dc(id_resp_h) as distinct_peers
+    sum(orig_pkts) as outbound_packets sum(resp_pkts) as return_packets
+    sum(orig_bytes) as client_payload_bytes sum(resp_bytes) as peer_payload_bytes by conn_state history
+| sort 0 - connections</code></pre>
+</div>
+<p>Compare states and history with return packet counts and payload bytes. Use the packet flags to distinguish reset replies from SYN-ACKs. A peer count grouped by state can overlap across rows. In the original capture, 615 outbound SYNs collapse to 309 distinct initial attempts using destination, client port and raw TCP sequence. All 21 captured return packets had RST and ACK set, with zero SYN-ACKs and zero TCP payload on the scoped flows.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_h id_orig_p id_resp_h id_resp_p conn_state history path name action</code></pre>
+</div>
+<p>Take the connection UID for the session from client port 49226 to <code>66.191.65.191:445</code>. Use the same case and <strong>the same Zeek processing run</strong> when looking for SMB records by UID. Repeat with the unacknowledged sample below. The packet evidence resolves whether the selected flow reached an SMB session if application records are absent.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Separate attempts, resets and completed sessions"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 5 January 2021</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>04:13:18.564</td>
+<td>200</td>
+<td>Earlier HTTP GET to <code>185.178.208.171:80</code> from the same client</td>
+</tr>
+<tr class="even">
+<td>04:34:30.315</td>
+<td>9752</td>
+<td>First outbound SYN in the TCP/445 burst, to <code>66.191.220.80</code></td>
+</tr>
+<tr class="odd">
+<td>04:34:30.326–04:34:30.411</td>
+<td>9812, 10047</td>
+<td>SYN and RST+ACK on the sampled tuple to <code>66.191.65.191:445</code></td>
+</tr>
+<tr class="even">
+<td>04:34:30.927–04:34:31.587</td>
+<td>10061, 10064, 10076, 10078</td>
+<td>Two further SYN/RST+ACK pairs on the same tuple with unchanged SYN sequence number</td>
+</tr>
+<tr class="odd">
+<td>04:34:33.428–04:34:33.442</td>
+<td>10384, 10389</td>
+<td>Last previously unseen destination and last captured TCP/445 SYN</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>The volume and timing are consistent with automated probing. A sanctioned scanner or a security test could produce similar transport metadata. This capture ends during the burst and leaves later outcomes and the sending process unresolved. Record the observed TCP/445 activity as attempted connections. A reset identifies a transport outcome, and packet capture alone cannot establish what device generated it or whether a target was vulnerable.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2 · 연결 시도, 리셋, 수립된 세션 구분하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:conn pcap_case="&lt;CASE&gt;" proto=tcp id_orig_h=10.1.5.101 id_resp_p=445
+| stats dc(uid) as connections dc(id_resp_h) as distinct_peers
+    sum(orig_pkts) as outbound_packets sum(resp_pkts) as return_packets
+    sum(orig_bytes) as client_payload_bytes sum(resp_bytes) as peer_payload_bytes by conn_state history
+| sort 0 - connections</code></pre>
+</div>
+<p>연결 상태와 플래그 이력을 응답 패킷 수 및 페이로드 바이트와 함께 봅니다. 리셋과 SYN-ACK은 패킷 플래그로 구분합니다. 상태별 고유 목적지 수는 그룹 간에 겹칠 수 있습니다. 원본에서 나가는 SYN은 615개이며, 목적지·클라이언트 포트·원시 TCP 시퀀스 번호 기준으로 중복을 제거하면 309건입니다. 해당 흐름에서 캡처된 응답 21개는 모두 RST와 ACK가 설정돼 있었으며, SYN-ACK과 TCP 페이로드는 관찰되지 않았습니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:smb_mapping","zeek:smb_files","zeek:dce_rpc")
+| sort 0 ts
+| table ts sourcetype uid id_orig_h id_orig_p id_resp_h id_resp_p conn_state history path name action</code></pre>
+</div>
+<p>클라이언트 포트 49226에서 <code>66.191.65.191:445</code>로 향한 연결의 UID를 사용합니다. SMB 로그를 UID로 찾을 때는 같은 사례의 <strong>동일한 Zeek 처리 실행</strong>을 사용합니다. 아래의 응답 미관찰 사례도 같은 방식으로 확인합니다. 애플리케이션 기록이 없으면 패킷에서 SMB 단계에 진입했는지 판단합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · 연결 시도, 리셋, 수립된 세션 구분하기"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2021년 1월 5일</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 관찰한 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>04:13:18.564</td>
+<td>200</td>
+<td>같은 클라이언트가 앞서 <code>185.178.208.171:80</code>으로 HTTP GET 전송</td>
+</tr>
+<tr class="even">
+<td>04:34:30.315</td>
+<td>9752</td>
+<td>TCP/445 급증에서 처음 관찰한 SYN. 목적지는 <code>66.191.220.80</code></td>
+</tr>
+<tr class="odd">
+<td>04:34:30.326–04:34:30.411</td>
+<td>9812, 10047</td>
+<td><code>66.191.65.191:445</code>로 향한 예시 연결의 SYN과 RST+ACK</td>
+</tr>
+<tr class="even">
+<td>04:34:30.927–04:34:31.587</td>
+<td>10061, 10064, 10076, 10078</td>
+<td>같은 주소·포트 쌍에서 동일한 SYN 시퀀스 번호로 두 차례 더 SYN과 RST+ACK 교환</td>
+</tr>
+<tr class="odd">
+<td>04:34:33.428–04:34:33.442</td>
+<td>10384, 10389</td>
+<td>마지막으로 처음 등장한 목적지와 캡처에서 마지막으로 관찰한 TCP/445 SYN</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>짧은 시간에 많은 목적지를 접촉한 패턴은 자동화된 탐색과 부합합니다. 승인된 스캐너나 보안 점검도 유사한 메타데이터를 남길 수 있습니다. 캡처는 트래픽이 급증한 상태에서 끝나므로 이후 결과와 송신 프로세스는 확인이 필요합니다. 관찰된 TCP/445 활동은 연결 시도로 기록합니다. 리셋은 전송 계층의 결과이며, 패킷만으로 어느 장비가 리셋을 보냈는지 또는 상대가 취약했는지 판단할 수 없습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Compare a reset and an unanswered flow in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.1.5.101 &amp;&amp; ip.dst == 66.191.65.191 &amp;&amp; port.src == 49226 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Open the sampled session and check both packet directions. Verify the first SYN, its RST+ACK reply and the repeated sequence number. Use the case tag, UTC time and full tuple because exported frame numbers may differ.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.1.5.101 &amp;&amp; ip.dst == 66.191.220.80 &amp;&amp; port.src == 49166 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>Check the second session for outbound SYNs and look for a captured response in the opposite direction. Handle a missing response as a capture-scoped fact and check firewall telemetry before assigning a cause.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3 · Arkime에서 리셋 흐름과 응답 미관찰 흐름 비교하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.1.5.101 &amp;&amp; ip.dst == 66.191.65.191 &amp;&amp; port.src == 49226 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>예시 세션을 열어 양방향 패킷을 살펴봅니다. 첫 SYN, RST+ACK 응답, 반복되는 시퀀스 번호를 확인합니다. 내보낸 뒤 번호가 달라질 수 있으므로 사례 태그, UTC 시각과 전체 주소·포트를 함께 기록합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.1.5.101 &amp;&amp; ip.dst == 66.191.220.80 &amp;&amp; port.src == 49166 &amp;&amp; port.dst == 445</code></pre>
+</div>
+<p>두 번째 세션에서 나가는 SYN과 반대 방향 응답이 있는지 확인합니다. 응답이 없다면 캡처 범위에서 관찰되지 않은 것으로 기록하고, 원인을 판단하기 전에 방화벽 로그를 확인합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Check one TCP tuple offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2021-01-05-PurpleFox-EK-and-post-infection-traffic.pcap" \
+  -Y 'ip.addr == 10.1.5.101 &amp;&amp; ip.addr == 66.191.65.191 &amp;&amp; tcp.port == 49226 &amp;&amp; tcp.port == 445' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src \
+  -e tcp.seq_raw -e tcp.ack_raw -e tcp.flags -e tcp.len</code></pre>
+</div>
+<p>Use the original PCAP if the Arkime view cannot distinguish repeats from new requests. Read the raw SYN sequence and the reversed RST+ACK’s acknowledgement number. In the selected sample, the reply acknowledges the SYN sequence plus one. The filter returns header metadata only.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4 · 필요할 때만 TCP 연결 하나를 오프라인으로 조회하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -n -r "2021-01-05-PurpleFox-EK-and-post-infection-traffic.pcap" \
+  -Y 'ip.addr == 10.1.5.101 &amp;&amp; ip.addr == 66.191.65.191 &amp;&amp; tcp.port == 49226 &amp;&amp; tcp.port == 445' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e ip.src \
+  -e tcp.seq_raw -e tcp.ack_raw -e tcp.flags -e tcp.len</code></pre>
+</div>
+<p>Arkime에서 재전송과 새 시도를 구분하기 어렵다면 원본 PCAP을 조회합니다. SYN의 원시 시퀀스와 반대 방향 RST+ACK의 확인 응답 번호를 비교합니다. 선택한 예시에서는 응답 번호가 SYN 시퀀스에 1을 더한 값입니다. 쿼리는 헤더 메타데이터만 출력합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Scope the SOC ticket and corroborate the sender</h2>
+<p>Record the capture hash, source host, UTC interval, distinct destinations, resets and packet visibility limit. Compare endpoint process-network records, approved scan schedules and firewall flows both during and after the window. If other sensors show handshakes or application traffic on TCP/445, open a separate review for those sessions and check the destination evidence.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2021/01/05/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2021/01/05/2021-01-05-PurpleFox-EK-and-post-infection-traffic.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/scripts/base/protocols/conn/main.zeek.html">Zeek Connection Log</a> · <a href="https://www.wireshark.org/docs/dfref/t/tcp.html">Wireshark TCP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5 · SOC 티켓에 관찰 범위를 기록하고 송신 주체 확인하기</h2>
+<p>캡처 해시, 송신 호스트, UTC 구간, 고유 목적지 수, 리셋과 캡처 범위의 한계를 기록합니다. 해당 구간과 직후의 프로세스별 네트워크 기록, 승인된 스캔 일정, 방화벽 흐름을 비교합니다. 다른 센서에서 TCP/445 연결 수립이나 애플리케이션 트래픽이 보이면 해당 세션을 별도로 조사하고 목적지 측 로그를 확인합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2021/01/05/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2021/01/05/2021-01-05-PurpleFox-EK-and-post-infection-traffic.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/scripts/base/protocols/conn/main.zeek.html">Zeek Connection Log</a> · <a href="https://www.wireshark.org/docs/dfref/t/tcp.html">Wireshark TCP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
