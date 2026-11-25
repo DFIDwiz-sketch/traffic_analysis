@@ -1,5 +1,9 @@
 const copy = {
   en: {
+    emotetMethodCaseTitle: "Emotet · trace the change from GET to POST",
+    emotetMethodCaseSummary: "Compare plaintext HTTP methods before and after 21:43 UTC, including on TCP/443.",
+    badbundtPipeCaseTitle: "Badbundt · investigate a burst of SMB named-pipe writes",
+    badbundtPipeCaseSummary: "Compare policy-file reads with the later SMB1 IPC activity on the domain controller.",
     nightDewRpcCaseTitle: "Night Dew · distinguish a Netlogon burst from SMB",
     nightDewRpcCaseSummary: "Separate routine policy reads from 1,522 authentication RPC calls on a different transport.",
     purpleFoxProbeCaseTitle: "PurpleFox and NuggetPhantom · scope TCP/445 probing",
@@ -87,6 +91,10 @@ const copy = {
     copyUnavailable: "Select the query to copy it manually.",
   },
   ko: {
+    emotetMethodCaseTitle: "Emotet · GET에서 POST로 바뀐 시점 추적",
+    emotetMethodCaseSummary: "TCP/443을 포함해 21:43 UTC 전후 평문 HTTP 요청을 비교합니다.",
+    badbundtPipeCaseTitle: "Badbundt · SMB 네임드 파이프 쓰기 급증 조사",
+    badbundtPipeCaseSummary: "DC에서 일어난 정책 파일 읽기와 이후 SMB1 IPC 활동을 비교합니다.",
     nightDewRpcCaseTitle: "Night Dew · Netlogon 요청 급증과 SMB 구분",
     nightDewRpcCaseSummary: "일반적인 정책 파일 읽기와 별도 전송 경로의 인증 RPC 호출 1,522건을 구분합니다.",
     purpleFoxProbeCaseTitle: "PurpleFox와 NuggetPhantom · TCP/445 연결 시도 범위 확인",

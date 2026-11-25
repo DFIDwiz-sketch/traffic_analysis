@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4ead1">
+  <title>Emotet · trace the change from GET to POST · Traffic Analysis</title>
+  <script src="../theme.js"></script>
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="./guide.css">
+  <script src="../app.js" defer></script>
+</head>
+<body data-title="emotetMethodCaseTitle">
+  <a class="skip-link" href="#main" data-copy="skip">Skip to content</a>
+  <header class="topbar">
+    <div class="frame topbar-inner">
+      <a class="brand" href="../index.html#overview">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span data-copy="brand">Traffic Analysis</span>
+      </a>
+      <div class="header-actions">
+        <a class="github" href="https://github.com/DFIDwiz-sketch/traffic_analysis">GitHub</a>
+        <div class="language" role="group" aria-label="Language" data-label="language">
+          <button type="button" lang="en" data-language="en" aria-pressed="true">EN</button>
+          <button type="button" lang="ko" data-language="ko" aria-pressed="false">한국어</button>
+        </div>
+        <button class="theme-toggle" type="button" data-theme-toggle data-label="darkTheme"
+                aria-label="Dark theme" aria-pressed="false" title="Dark theme">
+          <span class="theme-icon" aria-hidden="true"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="frame" id="main" tabindex="-1">
+    <header class="guide-header">
+      <a class="guide-back" href="../index.html#investigations" data-copy="backToInvestigations">Back to investigations</a>
+      <p class="eyebrow" data-copy="baselineTools">Splunk / Zeek / Arkime</p>
+      <h1 data-copy="emotetMethodCaseTitle">Emotet · trace the change from GET to POST</h1>
+      <p class="guide-meta">
+        <time datetime="2019-03-14">2019-03-14</time>
+        <span aria-hidden="true">·</span><span>HTTP</span>
+      </p>
+    </header>
+    <div class="guide-layout">
+      <nav class="guide-toc" aria-labelledby="guide-toc-title">
+        <h2 id="guide-toc-title" data-copy="guideContents">On this page</h2>
+<ul lang="en" data-guide-language>
+<li><a href="#findings">When did the request pattern change?</a></li>
+<li><a href="#baseline">1 · Compare HTTP methods over time for the same client</a></li>
+<li><a href="#evidence">2 · Rebuild the sequence across two connections to one server</a></li>
+<li><a href="#arkime">3 · Check the before-and-after headers in Arkime</a></li>
+<li><a href="#tshark">4 · Verify methods and declared size offline if needed</a></li>
+<li><a href="#incident-note">5 · Record the method change and identify the originating process</a></li>
+</ul>
+<ul lang="ko" data-guide-language hidden>
+<li><a href="#findings">HTTP 요청 패턴은 언제 바뀌었는가?</a></li>
+<li><a href="#baseline">1 · 같은 클라이언트의 HTTP 메서드를 시간순으로 비교하기</a></li>
+<li><a href="#evidence">2 · 같은 서버로 향한 두 연결의 순서 재구성하기</a></li>
+<li><a href="#arkime">3 · Arkime에서 전후 요청의 헤더 확인하기</a></li>
+<li><a href="#tshark">4 · 필요할 때만 메서드와 선언된 크기를 오프라인에서 확인하기</a></li>
+<li><a href="#incident-note">5 · 메서드 변화를 기록하고 송신 프로세스 확인하기</a></li>
+</ul>
+      </nav>
+      <article class="guide-article">
+<section id="findings">
+<div lang="en" data-guide-language>
+<h2>When did the request pattern change?</h2>
+<p>On 15 March 2019 the publisher reported that traffic attributed to Emotet shifted from HTTP GETs to POSTs. The selected archive begins on 14 March. In the original capture, client <code>10.3.14.102</code> sends a GET and then a multipart POST to the same server on TCP/443 in separate connections about 35 seconds apart. Read the actual request headers to verify the protocol and compare how the traffic changed.</p>
+
+<p><strong>Capture metadata (directly measured)</strong></p>
+
+<ul>
+<li>PCAP · <code>2019-03-14-Emotet-with-Trickbot-infection-traffic.pcap</code></li>
+<li>UTC · 2019-03-14 20:57:54.371 – 2019-03-15 06:30:09.664</li>
+<li>Packets · 16,928</li>
+<li>SHA-256 · <code>2b95748c4217a1a5bd233658005ed5efe97fe8a6025e7655b9a0466ae067d8e5</code></li>
+</ul>
+
+<p>The malware attribution and the approximate change time are reported by the publisher. The request lines, header metadata and frame times in the table were verified in the original PCAP. SPL examples are for verification in your own Zeek import.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>HTTP 요청 패턴은 언제 바뀌었는가?</h2>
+<p>저자는 2019년 3월 15일에 Emotet로 분류한 트래픽이 HTTP GET에서 POST로 전환됐다고 보고했습니다. 선택한 캡처는 3월 14일에 시작합니다. 원본에서 <code>10.3.14.102</code>는 약 35초 간격으로 같은 서버의 TCP/443에 GET과 멀티파트 POST를 각각 별도 연결에서 보냅니다. 실제 요청 헤더로 프로토콜과 패턴의 변화를 확인합니다.</p>
+
+<p><strong>캡처 메타데이터 (직접 확인)</strong></p>
+
+<ul>
+<li>PCAP · <code>2019-03-14-Emotet-with-Trickbot-infection-traffic.pcap</code></li>
+<li>UTC · 2019-03-14 20:57:54.371 – 2019-03-15 06:30:09.664</li>
+<li>패킷 · 16,928</li>
+<li>SHA-256 · <code>2b95748c4217a1a5bd233658005ed5efe97fe8a6025e7655b9a0466ae067d8e5</code></li>
+</ul>
+
+<p>악성코드 분류와 대략적인 전환 시각은 원문에 근거합니다. 표의 요청 줄, 헤더 메타데이터와 프레임 시각은 원본 PCAP에서 확인했습니다. SPL은 자신의 Zeek 수집 환경에서 검증할 예시입니다.</p>
+
+</div>
+</section>
+<section id="baseline">
+<div lang="en" data-guide-language>
+<h2>1 · Compare HTTP methods over time for the same client</h2>
+<p>Set <code>&lt;CASE&gt;</code> from the case tag. Cover both UTC dates in the capture, and include the ingest interval if your picker uses ingest time. Use numeric Zeek <code>ts</code> for the capture timeline. These examples assume flattened field names.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>Confirm HTTP and connection logs are present. Look for whether the importer identified HTTP on all relevant ports. If it only recognized traffic on default ports, verify the missing flows in packets.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.3.14.102
+| eval minute=floor(ts/60)*60
+| stats count as transactions dc(uid) as connections dc(id_resp_h) as peers
+    by minute id_resp_p method
+| sort 0 minute id_resp_p method</code></pre>
+</div>
+<p>Compare method counts by minute and server port. Around 21:43 UTC on 14 March, look for the arrival of multipart POSTs alongside the earlier GET pattern. Transaction rows, distinct connections and distinct peers answer different questions. Limit conclusions about change to the endpoint or traffic sequence you examined.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>1 · 같은 클라이언트의 HTTP 메서드를 시간순으로 비교하기</h2>
+<p><code>&lt;CASE&gt;</code>에 사례 태그를 넣습니다. UTC로 캡처에 걸친 이틀을 포함하고, 시간 선택기가 수집 시각을 사용하면 가져온 구간도 포함합니다. 타임라인에는 숫자형 Zeek <code>ts</code>를 씁니다. 예시는 평탄화된 필드명을 사용합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;"
+| stats count min(ts) as first max(ts) as last by sourcetype
+| eval first=strftime(first,"%Y-%m-%d %H:%M:%S %Z"), last=strftime(last,"%Y-%m-%d %H:%M:%S %Z")
+| sort - count</code></pre>
+</div>
+<p>HTTP와 연결 로그가 있는지 확인합니다. 관련 포트의 HTTP가 로그에 잡혔는지 살펴봅니다. 기본 포트의 트래픽만 식별됐다면 로그에서 빠진 연결을 패킷으로 확인합니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.3.14.102
+| eval minute=floor(ts/60)*60
+| stats count as transactions dc(uid) as connections dc(id_resp_h) as peers
+    by minute id_resp_p method
+| sort 0 minute id_resp_p method</code></pre>
+</div>
+<p>분과 서버 포트별로 메서드 건수를 비교합니다. 3월 14일 21:43 UTC 전후에 앞선 GET 패턴과 이후 멀티파트 POST의 등장 시점을 살펴봅니다. 트랜잭션, 연결, 상대 호스트는 서로 다른 집계 단위입니다. 확인한 목적지나 트래픽 흐름의 범위 안에서 변화를 해석합니다.</p>
+
+</div>
+</section>
+<section id="evidence">
+<div lang="en" data-guide-language>
+<h2>2 · Rebuild the sequence across two connections to one server</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.3.14.102
+    ((id_resp_h=82.78.228.57 id_resp_p=443) OR (id_resp_h=190.146.86.180 id_resp_p=443))
+| sort 0 ts
+| table ts uid id_orig_p id_resp_h id_resp_p trans_depth method request_body_len status_code</code></pre>
+</div>
+<p>The first server provides a before/after comparison on the same destination TCP port. The second server provides a directly observed HTTP response to a later POST. Check <code>request_body_len</code> as Zeek’s observed body length. A Content-Length header is the sender's declared size. Differences can warrant a capture and reassembly check.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:http","zeek:ssl")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p service trans_depth method status_code</code></pre>
+</div>
+<p>Use the UID from each selected connection in <strong>the same Zeek processing run</strong>. Run the query separately for ports 49290, 49292 and 49294. <code>trans_depth</code> identifies transactions within one HTTP connection. To compare the two different connections to the same server, use the endpoint pair and capture times while keeping each UID distinct.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · Rebuild the sequence across two connections to one server"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 14 March 2019</th>
+<th scope="col">Original frames</th>
+<th scope="col">Directly observed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>20:58:48.090</td>
+<td>592</td>
+<td>Earlier GET to <code>82.78.228.57:443</code> from client port 49197</td>
+</tr>
+<tr class="even">
+<td>21:42:37.333</td>
+<td>13626</td>
+<td>Plaintext GET to <code>82.78.228.57:443</code> from client port 49290, path <code>/</code>, Cookie header present</td>
+</tr>
+<tr class="odd">
+<td>21:43:12.152</td>
+<td>13811</td>
+<td>Plaintext multipart POST to the same endpoint from port 49292. Declared body length is 465 bytes.</td>
+</tr>
+<tr class="even">
+<td>21:44:22.987–21:44:29.968</td>
+<td>13863, 13869</td>
+<td>Plaintext multipart POST to <code>190.146.86.180:443</code> from port 49294, followed by HTTP 200</td>
+</tr>
+<tr class="odd">
+<td>21:58:04.319</td>
+<td>14615</td>
+<td>Another multipart POST to <code>82.78.228.57:443</code>, from port 49341</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>A browser or another approved tool can also issue GETs and multipart POSTs. The shared endpoint, close timing and repeated pattern support a targeted review. HTTP 200 shows the server returned a success status for the request. Process ownership, body contents and how the server used the data are outside these confirmed observations.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>2 · 같은 서버로 향한 두 연결의 순서 재구성하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek sourcetype=zeek:http pcap_case="&lt;CASE&gt;" id_orig_h=10.3.14.102
+    ((id_resp_h=82.78.228.57 id_resp_p=443) OR (id_resp_h=190.146.86.180 id_resp_p=443))
+| sort 0 ts
+| table ts uid id_orig_p id_resp_h id_resp_p trans_depth method request_body_len status_code</code></pre>
+</div>
+<p>첫 서버는 같은 목적지 포트에서 전후 요청을 비교하기에 적합합니다. 두 번째 서버에서는 이후 POST에 대한 HTTP 응답을 직접 확인할 수 있습니다. <code>request_body_len</code>은 Zeek가 관찰한 본문 길이이고, Content-Length는 송신자가 선언한 크기입니다. 값이 다르면 캡처 범위와 재조립 상태를 살펴봅니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">SPL</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="spl" tabindex="0"><code>index=zeek pcap_case="&lt;CASE&gt;" uid="&lt;SELECTED_UID&gt;"
+    sourcetype IN ("zeek:conn","zeek:http","zeek:ssl")
+| sort 0 ts
+| table ts sourcetype uid id_orig_p id_resp_h id_resp_p service trans_depth method status_code</code></pre>
+</div>
+<p>선택한 연결마다 <strong>동일한 Zeek 처리 실행</strong>의 UID를 사용합니다. 포트 49290, 49292, 49294를 각각 조회합니다. <code>trans_depth</code>는 한 HTTP 연결 내의 트랜잭션을 구분합니다. 같은 서버를 향한 별도 연결은 서로 다른 UID를 유지하고 주소 쌍과 캡처 시각으로 비교합니다.</p>
+
+<div class="guide-table" tabindex="0" role="region" aria-label="2 · 같은 서버로 향한 두 연결의 순서 재구성하기"><table>
+<thead>
+<tr class="header">
+<th scope="col">UTC · 2019년 3월 14일</th>
+<th scope="col">원본 프레임</th>
+<th scope="col">직접 관찰한 내용</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>20:58:48.090</td>
+<td>592</td>
+<td>클라이언트 포트 49197에서 <code>82.78.228.57:443</code>으로 앞선 GET 전송</td>
+</tr>
+<tr class="even">
+<td>21:42:37.333</td>
+<td>13626</td>
+<td>포트 49290에서 <code>82.78.228.57:443</code>으로 평문 GET 전송. 경로는 <code>/</code>이고 Cookie 헤더가 존재함</td>
+</tr>
+<tr class="odd">
+<td>21:43:12.152</td>
+<td>13811</td>
+<td>포트 49292에서 같은 목적지로 평문 멀티파트 POST 전송. 헤더에 선언된 본문 크기는 465바이트</td>
+</tr>
+<tr class="even">
+<td>21:44:22.987–21:44:29.968</td>
+<td>13863, 13869</td>
+<td>포트 49294에서 <code>190.146.86.180:443</code>으로 평문 멀티파트 POST를 보내고 HTTP 200 응답을 받음</td>
+</tr>
+<tr class="odd">
+<td>21:58:04.319</td>
+<td>14615</td>
+<td>포트 49341에서 <code>82.78.228.57:443</code>으로 다시 멀티파트 POST 전송</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>브라우저와 승인된 소프트웨어도 GET과 멀티파트 POST를 보낼 수 있습니다. 같은 목적지, 가까운 시각, 반복 패턴을 근거로 확인 범위를 좁힙니다. HTTP 200은 서버가 해당 요청에 성공 상태를 반환했다는 근거입니다. 실행 프로세스, 본문 내용과 서버에서의 데이터 처리는 이 관찰로 확인할 수 없습니다.</p>
+
+</div>
+</section>
+<section id="arkime">
+<div lang="en" data-guide-language>
+<h2>3 · Check the before-and-after headers in Arkime</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.14.102 &amp;&amp; ip.dst == 82.78.228.57 &amp;&amp; port.dst == 443 &amp;&amp; (port.src == 49290 || port.src == 49292)</code></pre>
+</div>
+<p>Open both sessions and confirm the request line and HTTP version. Compare the GET and POST, then check header presence, content type and declared length while keeping the request bodies out of the evidence notes. Use the tuple and times as references if exported frames are renumbered.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.14.102 &amp;&amp; ip.dst == 190.146.86.180 &amp;&amp; port.dst == 443 &amp;&amp; port.src == 49294</code></pre>
+</div>
+<p>Check the later POST and locate the HTTP 200 status line in the reverse direction. Keep that response with its own session so it is not attributed to the earlier endpoint.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>3 · Arkime에서 전후 요청의 헤더 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.14.102 &amp;&amp; ip.dst == 82.78.228.57 &amp;&amp; port.dst == 443 &amp;&amp; (port.src == 49290 || port.src == 49292)</code></pre>
+</div>
+<p>두 세션을 열어 요청 줄과 HTTP 버전을 확인합니다. GET과 POST를 비교한 다음 헤더 존재 여부, 콘텐츠 유형과 선언된 크기를 확인합니다. 근거에는 요청 본문을 포함할 필요가 없습니다. 내보낸 뒤 프레임 번호가 바뀔 수 있으므로 주소·포트와 시각도 남깁니다.</p>
+
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">Arkime</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="arkime" tabindex="0"><code>tags == "&lt;CASE&gt;" &amp;&amp; ip.src == 10.3.14.102 &amp;&amp; ip.dst == 190.146.86.180 &amp;&amp; port.dst == 443 &amp;&amp; port.src == 49294</code></pre>
+</div>
+<p>이후 POST를 열고 반대 방향 패킷에서 HTTP 200 상태 줄을 확인합니다. 앞선 목적지의 응답과 혼동하지 않도록 이 세션에 연결해 기록합니다.</p>
+
+</div>
+</section>
+<section id="tshark">
+<div lang="en" data-guide-language>
+<h2>4 · Verify methods and declared size offline if needed</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">Copy query</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -2 -n -r "2019-03-14-Emotet-with-Trickbot-infection-traffic.pcap" -d tcp.port==49290,http -d tcp.port==49292,http -d tcp.port==49294,http \
+  -Y 'frame.number == 13626 || frame.number == 13811 || frame.number == 13863 || frame.number == 13869' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream \
+  -e http.request.method -e http.content_type -e http.content_length_header -e http.response.code</code></pre>
+</div>
+<p>If Arkime does not identify HTTP on TCP/443, apply HTTP decoding to these three selected client ports in the original capture. Compare the method, content type and Content-Length on the four original frames. Match the HTTP 200 with its POST using <code>tcp.stream</code>. The output contains only metadata fields.</p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>4 · 필요할 때만 메서드와 선언된 크기를 오프라인에서 확인하기</h2>
+<div class="query-block">
+  <div class="query-bar">
+    <span class="query-type">TShark</span>
+    <span class="query-status" role="status" data-copy-status></span>
+    <button class="query-copy" type="button" data-copy-query data-copy="copyQuery">쿼리 복사</button>
+  </div>
+<pre class="tshark" tabindex="0"><code>tshark -2 -n -r "2019-03-14-Emotet-with-Trickbot-infection-traffic.pcap" -d tcp.port==49290,http -d tcp.port==49292,http -d tcp.port==49294,http \
+  -Y 'frame.number == 13626 || frame.number == 13811 || frame.number == 13863 || frame.number == 13869' \
+  -T fields -E header=y -e frame.number -e frame.time_epoch -e tcp.stream \
+  -e http.request.method -e http.content_type -e http.content_length_header -e http.response.code</code></pre>
+</div>
+<p>Arkime에서 TCP/443의 HTTP를 확인하기 어려우면 원본에서 선택한 클라이언트 포트 세 개에 HTTP 디코딩을 적용합니다. 네 프레임의 메서드, 콘텐츠 유형, Content-Length를 확인합니다. <code>tcp.stream</code>으로 HTTP 200을 해당 POST와 짝짓습니다. 출력은 메타데이터 필드로 제한합니다.</p>
+
+</div>
+</section>
+<section id="incident-note">
+<div lang="en" data-guide-language>
+<h2>5 · Record the method change and identify the originating process</h2>
+<p>Add the capture hash, source host, UTC times, tuples and original frame references to the SOC ticket. Check proxy and endpoint telemetry for the process and any permitted service using that destination. Look for before/after differences in other captures while allowing for legitimate multipart uploads on unusual ports.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2019/03/15/index.html">Original report and PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2019/03/15/2019-03-14-Emotet-with-Trickbot-infection-traffic.pcap.zip">PCAP archive</a> · <a href="https://docs.zeek.org/en/current/scripts/base/protocols/http/main.zeek.html">Zeek HTTP log fields</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+<div lang="ko" data-guide-language hidden>
+<h2>5 · 메서드 변화를 기록하고 송신 프로세스 확인하기</h2>
+<p>SOC 티켓에 캡처 해시, 송신 호스트, UTC 시각, 주소·포트와 원본 프레임 번호를 남깁니다. 프록시와 엔드포인트 기록에서 송신 프로세스와 승인된 서비스가 해당 목적지를 사용했는지 확인합니다. 다른 캡처에서도 요청 패턴의 전후 차이를 확인하고, 비표준 포트의 정상적인 멀티파트 업로드 가능성도 확인합니다.</p>
+
+<p><a href="https://www.malware-traffic-analysis.net/2019/03/15/index.html">공개 원문 및 PCAP</a> · <a href="https://arkime.com/">Arkime</a> · <a href="https://www.wireshark.org/docs/man-pages/tshark.html">TShark</a> · <a href="https://www.malware-traffic-analysis.net/2019/03/15/2019-03-14-Emotet-with-Trickbot-infection-traffic.pcap.zip">PCAP 압축 파일</a> · <a href="https://docs.zeek.org/en/current/scripts/base/protocols/http/main.zeek.html">Zeek HTTP log fields</a> · <a href="https://www.wireshark.org/docs/dfref/h/http.html">Wireshark HTTP fields</a></p>
+
+</div>
+</section>
+      </article>
+    </div>
+  </main>
+</body>
+</html>
